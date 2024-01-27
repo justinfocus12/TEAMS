@@ -1,15 +1,22 @@
 from abc import ABC, abstractmethod
 import numpy as np
 import forcing as fc
+import matplotlib
+import matplotlib.pyplot as plt
+matplotlib.rcParams.update({
+    "font.family": "monospace",
+    "font.size": 15
+})
+pltkwargs = dict(bbox_inches="tight",pad_inches=0.2)
 
 class DynamicalSystem(ABC):
     def __init__(self):
         return
-    @abstractmethod
-    def run_trajectory(self, forcing, observables):
-        # return some metadata sufficient to reconstruct the output, for example (1) a filename, (2) full numpy array of the output of an ODE solver. 
-        # Optionally, return some observables passed as a dictionary of function handles
-        pass 
+    #@abstractmethod
+    #def run_trajectory(self, forcing, observables):
+    #    # return some metadata sufficient to reconstruct the output, for example (1) a filename, (2) full numpy array of the output of an ODE solver. 
+    #    # Optionally, return some observables passed as a dictionary of function handles
+    #    pass 
 
 
 class ODESystem(DynamicalSystem):
@@ -25,66 +32,81 @@ class ODESystem(DynamicalSystem):
     @abstractmethod
     def tendency(self, t, x):
         pass
-    def run_trajectory_unperturbed(self, init_time, fin_time, observables, method):
-        tarr_solve = np.arange(init_time, term_time+2, self.dt_step)
-        tarr_save = np.arange(int(np.ceil(init_time)), int(fin_time)+1)
-        Nt_solve = len(tarr_solve)
-        Nt_save = len(tarr_save)
-        # calculate weights from tarr_solve to tarr_save 
-        weights = np.zeros((Nt_save,2))
-        idx_lower = np.where(np.diff(np.floor(tarr_solve)) == 1)[0]
-        if Nt_save-1 in idx_lower:
-            idx_lower = idx_lower[:-1]
-        weights[:-1,1] = (tarr_save - tarr_solve[idx_lower[:-1] 
-        Nt = len(tarr)
-        idx2save_lower = np.where(np.diff(np.floor(tarr) == 1))[0]
-        idx2save_upper = idx2save_upper + 1
-        indicator_idx2save_upper = np.zeros(Nt)
-        indicator_idx2save_upper[idx2save_upper] = 1
-        tarr_save = np.floor(idx_save_upper)
-        lower_frac = (tarr_save - tarr[idx2save_lower]) / (tarr[idx2save_upper] - tarr[idx2save_lower])
-        upper_frac = 1 - lower_frac
-
-        Nt = len(tarr)
-        xarr = np.zeros((Nt, self.state_dim))
+    def run_trajectory_unperturbed(self, init_cond, init_time, fin_time, method):
+        t_save = np.arange(int(np.ceil(init_time)), int(np.floor(fin_time))+1, 1) # unitless
+        tp_save = t_save * self.dt_save # physical (unitful)
+        Nt_save = len(t_save)
+        # Initialize the solution array
+        x_save = np.zeros((Nt_save, self.state_dim))
+        # special cases: endpoints
+        if init_time % 1 == 0:
+            x_save[0] = init_cond
+            i_save = 1
+        else:
+            i_save = 0
+        tp_save_next = tp_save[i_save]
         x = init_cond
-        t = init_time
-        x[0] = x
+        tp = init_time * self.dt_save # physical units
         if method == 'rk4':
-            for i_t in range(1,Nt):
-                k1 = self.dt * self.tendency(t,x)
-                k2 = self.dt * self.tendency(t+self.dt/2, x+k1/2)
-                k3 = self.dt * self.tendency(t+self.dt/2, x+k2/2)
-                k4 = self.dt * self.tendency(t+self.dt, x+k3)
+            while tp < tp_save[-1]:
+                k1 = self.dt_step * self.tendency(tp,x)
+                k2 = self.dt_step * self.tendency(tp+self.dt_step/2, x+k1/2)
+                k3 = self.dt_step * self.tendency(tp+self.dt_step/2, x+k2/2)
+                k4 = self.dt_step * self.tendency(tp+self.dt_step, x+k3)
                 xnew = x + (k1 + 2*(k2 + k3) + k4)/6
-                if indicator_idx2save_upper[i_t]:
-                    x[
-
-
-
-    def run_trajectory(self, force, observables, method):
-        # Special cases 
-        t = np.arange(force.init_time, force.term_time+1, 1)
-        Nt = len(t)
-        x = np.zeros((Nt, self.state_dim))
-        x[0] = force.init_cond
-        if isinstance(force, forcing.ImpulsiveForcing):
-            # Integrate piecewise from one input forcing to the next
-            if 
-            
+                tpnew = tp + self.dt_step
+                if tpnew > tp_save_next:
+                    new_weight = (tp_save_next - tp)/self.dt_step 
+                    x_save[i_save] = (1-new_weight)*x + new_weight*xnew 
+                    i_save += 1
+                    if i_save < Nt_save:
+                        tp_save_next = tp_save[i_save]
+                x = xnew
+                tp = tpnew
+        return t_save,x_save
 
 class Lorenz96(ODESystem):
+    def __init__(self, config):
+        state_dim = config['K']
+        super().__init__(state_dim, config)
     def derive_parameters(self, config):
         self.K = config['K']
         self.F = config['F']
-        self.dt_step = config['dt_step']
-        self.dt_save = config['dt_save']
-        self.time_unit = config['time_unit']
+        self.dt_step = config['dt_step'] # physical
+        self.dt_save = config['dt_save'] # physical
+        # all time arrays will have integers as entries, for unambiguous time alignment
         return
-    def tendency(self, x):
+    def tendency(self, t, x):
         return np.roll(x,1) * (np.roll(x, -1) - np.roll(x,2)) - x + self.F
     
 
+
+def test_Lorenz96():
+    config = dict({'K': 40, 'F': 6.0, 'dt_step': 0.001, 'dt_save': 0.05})
+    ode = Lorenz96(config)
+    tu = ode.dt_save
+    init_cond = 0.001*np.random.randn(config['K'])
+    init_time = -4.0/tu
+    fin_time = 15.0/tu
+    method = 'rk4'
+    t_save,x_save = ode.run_trajectory_unperturbed(init_cond, init_time, fin_time, method)
+
+    fig,axes = plt.subplots(nrows=2,figsize=(10,10), sharex=True, constrained_layout=True)
+    ax = axes[0]
+    ax.plot(t_save*tu, x_save[:,0])
+    ax.set_xlabel('time')
+    ax.set_ylabel('x0')
+
+    ax = axes[1]
+    im = ax.pcolormesh(t_save*tu, np.arange(ode.K)[::-1], x_save.T, shading='nearest', cmap='BrBG')
+    ax.set_xlabel('time')
+    ax.set_ylabel('Longitude $k$')
+    fig.savefig('test_Lorenz96', **pltkwargs)
+    plt.close(fig)
+    return t_save, x_save
+
+if __name__ == "__main__":
+    test_Lorenz96()
 
 
 
