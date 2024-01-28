@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 import numpy as np
 from numpy.random import default_rng
+from scipy import sparse as sps
 import forcing
 import matplotlib
 import matplotlib.pyplot as plt
@@ -55,7 +56,7 @@ class ODESystem(DynamicalSystem):
     @staticmethod
     def timestep_euler_maruyama(t, x, dt, drift, diffusion, rng): # physical time units
         k1 = dt * tendency(t,x)
-        sdw = np.sqrt(dt) * diffusion(t,x) @ rng.normal(size=(self.noise_dim,))
+        sdw = np.sqrt(dt) * diffusion(t,x) @ rng.normal(size=(self.white_noise_dim,))
         xnew = x + k1 + sdw
         return t+dt, xnew
     def run_trajectory_unperturbed(self, init_cond, init_time, fin_time, method, rng=None):
@@ -147,19 +148,63 @@ class Lorenz96(ODESystem):
     def derive_parameters(self, config):
         self.K = config['K']
         self.F = config['F']
-        self.dt_step = config['dt_step'] # physical
-        self.dt_save = config['dt_save'] # physical
-        # all time arrays will have integers as entries, for unambiguous time alignment
+        self.dt_step = config['dt_step']
+        self.dt_save = config['dt_save'] 
+        if config['forcing']['type'] == 'white':
+            fpar = config['forcing']['white']
+            self.white_noise_dim = 2*len(fpar['wavenumbers']) + len(fpar['sites'])
+            diffmat = np.zeros((self.K, self.white_noise_dim))
+            i_noise = 0
+            for i_wn,wn in enumerate(fpar['wavenumbers']):
+                diffmat[:,i_noise] = fpar['wavenumber_magnitudes'][i_wn] * np.cos(2*np.pi*wn*np.arange(self.K)/self.K)
+                i_noise += 1
+                diffmat[:,i_noise] = fpar['wavenumber_magnitudes'][i_wn] * np.sin(2*np.pi*wn*np.arange(self.K)/self.K)
+                i_noise += 1
+            for i_site,site in enumerate(fpar['sites']):
+                diffmat[site,i_noise] = fpar['site_magnitudes'][i_site]
+                i_noise += 1
+            self.diffusion_matrix = sps.csr_matrix(diffmat)
+        elif config['forcing']['type'] == 'impulsive':
+            fpar = config['forcing']['impulsive']
+            self.impulse_dim = 2*len(fpar['wavenumbers']) + len(fpar['sites'])
+            impmat = np.zeros((self.K, self.impulse_dim))
+            i_noise = 0
+            for i_wn,wn in enumerate(fpar['wavenumbers']):
+                impmat[:,i_noise] = fpar['wavenumber_magnitudes'][i_wn] * np.cos(2*np.pi*wn*np.arange(self.K)/self.K)
+                i_noise += 1
+                impmat[:,i_noise] = fpar['wavenumber_magnitudes'][i_wn] * np.sin(2*np.pi*wn*np.arange(self.K)/self.K)
+                i_noise += 1
+            for i_site,site in enumerate(fpar['sites']):
+                impmat[site,i_noise] = fpar['site_magnitudes'][i_site]
+                i_noise += 1
+            self.impulse_matrix = sps.csr_matrix(impmat)
         return
     def tendency(self, t, x):
         return np.roll(x,1) * (np.roll(x, -1) - np.roll(x,2)) - x + self.F
     def apply_impulse(self, t, x, imp):
-        return x + imp[0]*np.cos(2*np.pi*4*np.arange(self.K)/self.K) + imp[1]*np.sin(2*np.pi*4*np.arange(self.K)/self.K)
+        print(f'{imp = }')
+        return x + self.impulse_matrix @ imp #imp[0]*np.cos(2*np.pi*4*np.arange(self.K)/self.K) + imp[1]*np.sin(2*np.pi*4*np.arange(self.K)/self.K)
     
+def test_Lorenz96_whitenoise():
+    return
 
-
-def test_Lorenz96():
+def test_Lorenz96_impulsive():
     config = dict({'K': 40, 'F': 6.0, 'dt_step': 0.001, 'dt_save': 0.05})
+    config['forcing'] = dict({
+        'type': 'impulsive',
+        'impulsive': dict({
+            'wavenumbers': [1,4],
+            'wavenumber_magnitudes': [0.1,0.1],
+            'sites': [20,30],
+            'site_magnitudes': [0.5, 0.5],
+            }),
+        'white': dict({
+            'wavenumbers': [1,4],
+            'wavenumber_magnitudes': [0.1,0.1],
+            'sites': [20,30],
+            'site_magnitudes': [0.5, 0.5],
+            }),
+        })
     ode = Lorenz96(config)
     tu = ode.dt_save
 
@@ -174,7 +219,7 @@ def test_Lorenz96():
     rng0 = default_rng(8888)
     init_cond = 0.001*rng0.normal(size=(config['K'],))
     init_time_phys = -4.0
-    fin_time_phys = 15.0
+    fin_time_phys = 30.0
     method = 'rk4'
     t_save_0,x_save_0 = ode.run_trajectory_unperturbed(init_cond, init_time_phys/tu, fin_time_phys/tu, method)
 
@@ -193,7 +238,7 @@ def test_Lorenz96():
     # now make a perturbation
     rng1 = default_rng(1928)
     impulse_times = [init_time_phys/tu,5.0/tu]
-    impulses = [np.zeros(2),0.1*rng1.normal(size=(2,))]
+    impulses = [np.zeros(ode.impulse_dim),0.1*rng1.normal(size=(ode.impulse_dim,))]
     f = forcing.ImpulsiveForcing(impulse_times, impulses, (fin_time_phys+3)/tu)
     t_save_1,x_save_1 = ode.run_trajectory(init_cond, f, None, method)
     fig,axes = plt.subplots(nrows=2,figsize=(10,10), sharex=True, constrained_layout=True)
@@ -211,8 +256,8 @@ def test_Lorenz96():
 
     # now make a perturbation
     rng2 = default_rng(1928)
-    impulse_times = [init_time_phys/tu,5.0/tu,10.0/tu]
-    impulses = [np.zeros(2),0.1*rng2.normal(size=(2,)),0.2*rng2.normal(size=(2,))]
+    impulse_times = [init_time_phys/tu,5.0/tu,20.0/tu]
+    impulses = [np.zeros(ode.impulse_dim),0.1*rng2.normal(size=(ode.impulse_dim,)),0.2*rng2.normal(size=(ode.impulse_dim,))]
     f = forcing.ImpulsiveForcing(impulse_times, impulses, (fin_time_phys+3)/tu)
     t_save_2,x_save_2 = ode.run_trajectory(init_cond, f, None, method)
     fig,axes = plt.subplots(nrows=2,figsize=(10,10), sharex=True, constrained_layout=True)
@@ -229,10 +274,12 @@ def test_Lorenz96():
     fig.savefig('L96_x2', **pltkwargs)
     plt.close(fig)
 
+    # TODO add some asserts to verify the trajectories are equal exactly where they're supposed to be
+
     return
 
 if __name__ == "__main__":
-    test_Lorenz96()
+    test_Lorenz96_impulsive()
 
 
 
