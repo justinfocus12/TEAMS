@@ -14,9 +14,8 @@ class ImpulsiveForcing(Forcing):
         return
 
 class WhiteNoiseForcing(Forcing):
-    def __init__(self, init_time, fin_time, reseed_times, seeds):
-        super().__init__(init_time, fin_time)
-        assert reseed_times[0] == init_time
+    def __init__(self, reseed_times, seeds, fin_time):
+        super().__init__(reseed_times[0], fin_time)
         self.reseed_times = reseed_times
         self.seeds = seeds
         return

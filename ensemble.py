@@ -11,8 +11,8 @@ class Ensemble(ABC):
         self.memgraph = nx.DiGraph() 
         self.traj_metadata = [] 
         return
-    def branch_or_plant(self, forcing, parent=None):
-        metadata,observables = self.dynsys.run_trajectory(forcing)
+    def branch_or_plant(self, icandf, obs_fun, saveinfo, parent=None):
+        metadata,observables = self.dynsys.run_trajectory(icandf, obs_fun, saveinfo)
         self.traj_metadata.append(metadata)
         newmem = self.memgraph.number_of_nodes()
         self.memgraph.add_node(newmem)

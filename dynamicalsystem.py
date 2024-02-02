@@ -14,15 +14,23 @@ pltkwargs = dict(bbox_inches="tight",pad_inches=0.2)
 class DynamicalSystem(ABC):
     def __init__(self):
         return
-    #@abstractmethod
-    #def run_trajectory(self, f, observables):
-    #    # return some metadata sufficient to reconstruct the output, for example (1) a filename, (2) full numpy array of the output of an ODE solver. 
-    #    # Optionally, return some observables passed as a dictionary of function handles
-    #    pass 
+    @abstractmethod
+    def run_trajectory(self, icandf, obs_fun, saveinfo):
+        # return some metadata sufficient to reconstruct the output, for example (1) a filename, (2) full numpy array of the output of an ODE solver. 
+        # Optionally, return some observables passed as a dictionary of function handles
+        # icandf stands for "initial conditions and forcing." It: could be e.g. 
+        # 1. (a full state vector, a few impulses) (for a small ODESystem) 
+        # 2. (a full state vector, a few reseeds) (for a small stochastic ODESystem) 
+        # 3. (A filename containing a full state vector, a namelist) (for a big PDE system)
+        pass 
+    @abstractmethod
+    def assemble_metadata(self):
+        pass
 
 
 
 class ODESystem(DynamicalSystem):
+    # This is only SMALL systems --- small enough to fit a full-state trajectory in memory, avoiding the need for restart files. 
     def __init__(self, state_dim, config, *args, **kwargs):
         self.state_dim = state_dim
         self.config = config
@@ -55,10 +63,67 @@ class ODESystem(DynamicalSystem):
         return t+dt, xnew
     @staticmethod
     def timestep_euler_maruyama(t, x, dt, drift, diffusion, rng): # physical time units
-        k1 = dt * tendency(t,x)
-        sdw = np.sqrt(dt) * diffusion(t,x) @ rng.normal(size=(self.white_noise_dim,))
+        k1 = dt * drift(t,x)
+        sigma = diffusion(t,x)
+        sdw = np.sqrt(dt) * sigma @ rng.normal(size=(sigma.shape[1],))
         xnew = x + k1 + sdw
         return t+dt, xnew
+    def assemble_metadata(self, init_cond, f, method):
+        md = dict({
+            'init_cond': init_cond, 
+            'forcing': f, 
+            'method': method,
+            })
+        return md
+    def run_trajectory(self, icandf, obs_fun, saveinfo):
+        #assert(isinstance(f.init_time,int) * isinstance(f.fin_time,int))
+        init_cond_nopert,f = icandf['init_cond'],icandf['forcing']
+        t = np.arange(int(np.ceil(f.init_time)), int(np.floor(f.fin_time))+1)
+        print(f'{t = }')
+        Nt = len(t)
+        x = np.zeros((Nt, self.state_dim))
+        # Need to set up three things: init_time, init_cond, fin_time
+        init_time_temp = f.init_time
+        if isinstance(f, forcing.ImpulsiveForcing):
+            method = 'rk4'
+            # run one segment at a time, undisturbed, from one impulse to the next
+            init_cond_temp = init_cond_nopert.copy()
+            i_save = 0
+            nimp = len(f.impulse_times)
+            for i_imp in range(nimp):
+                init_cond_temp = self.apply_impulse(init_time_temp, init_cond_temp, f.impulses[i_imp])
+                if i_imp+1 < len(f.impulse_times):
+                    fin_time_temp = f.impulse_times[i_imp+1]
+                else:
+                    fin_time_temp = f.fin_time
+                print(f'{init_time_temp = }; {fin_time_temp = }')
+                t_temp,x_temp = self.run_trajectory_unperturbed(init_cond_temp, init_time_temp, fin_time_temp, method)
+                x[i_save:i_save+len(t_temp)] = x_temp
+                init_time_temp = fin_time_temp
+                init_cond_temp = x_temp[-1]
+                i_save += len(t_temp) - 1
+        elif isinstance(f, forcing.WhiteNoiseForcing):
+            method = 'euler_maruyama'
+            init_cond_temp = init_cond_nopert.copy()
+            i_save = 0
+            for i_seed in range(len(f.reseed_times)):
+                if i_seed+1 < len(f.reseed_times):
+                    fin_time_temp = f.reseed_times[i_seed+1]
+                else:
+                    fin_time_temp = f.fin_time
+                rng = default_rng(f.seeds[i_seed])
+                t_temp,x_temp = self.run_trajectory_unperturbed(init_cond_temp, init_time_temp, fin_time_temp, method, rng)
+                x[i_save:i_save+len(t_temp)] = x_temp
+                init_time_temp = fin_time_temp
+                init_cond_temp = x_temp[-1]
+                i_save += len(t_temp) - 1
+
+        # Return metadata and observables
+        metadata = self.assemble_metadata(init_cond_nopert, f, method)
+        observables = obs_fun(t,x)
+        # save full state out to saveinfo
+        np.savez(saveinfo['filename'], t=t, x=x)
+        return metadata,observables
     def run_trajectory_unperturbed(self, init_cond, init_time, fin_time, method, rng=None):
         t_save = np.arange(int(np.ceil(init_time)), int(np.floor(fin_time))+1, 1) # unitless
         tp_save = t_save * self.dt_save # physical (unitful)
@@ -88,6 +153,7 @@ class ODESystem(DynamicalSystem):
             tpnew,xnew = timestep_fun(tp, x, self.dt_step, self.tendency, *args)
             if tpnew > tp_save_next:
                 new_weight = (tp_save_next - tp)/self.dt_step 
+                # TODO: save out an observable instead of the full state? Depends on a specified frequency
                 x_save[i_save] = (1-new_weight)*x + new_weight*xnew 
                 i_save += 1
                 if i_save < Nt_save:
@@ -95,191 +161,7 @@ class ODESystem(DynamicalSystem):
             x = xnew
             tp = tpnew
         return t_save,x_save
-    def run_trajectory(self, init_cond_nopert, f, observables, method):
-        #assert(isinstance(f.init_time,int) * isinstance(f.fin_time,int))
-        t = np.arange(int(np.ceil(f.init_time)), int(np.floor(f.fin_time))+1)
-        print(f'{t = }')
-        Nt = len(t)
-        x = np.zeros((Nt, self.state_dim))
-        # Need to set up three things: init_time, init_cond, fin_time
-        init_time_temp = f.init_time
-        if isinstance(f, forcing.ImpulsiveForcing):
-            # run one segment at a time, undisturbed, from one impulse to the next
-            init_cond_temp = init_cond_nopert.copy()
-            i_save = 0
-            nimp = len(f.impulse_times)
-            for i_imp in range(nimp):
-                init_cond_temp = self.apply_impulse(init_time_temp, init_cond_temp, f.impulses[i_imp])
-                if i_imp+1 < len(f.impulse_times):
-                    fin_time_temp = f.impulse_times[i_imp+1]
-                else:
-                    fin_time_temp = f.fin_time
-                print(f'{init_time_temp = }; {fin_time_temp = }')
-                t_temp,x_temp = self.run_trajectory_unperturbed(init_cond_temp, init_time_temp, fin_time_temp, method)
-                x[i_save:i_save+len(t_temp)] = x_temp
-                init_time_temp = fin_time_temp
-                init_cond_temp = x_temp[-1]
-                i_save += len(t_temp) - 1
-        elif isinstance(f, forcing.WhiteNoiseForcing):
-            init_cond = init_cond_nopert.copy()
-            i_save = 0
-            for i_seed in range(len(f.reseed_times)):
-                assert init_time_temp == f.reseed_times[i_seed]
-                if i_seed+1 < len(f.reseed_times):
-                    fin_time_temp = f.reseed_times[i_seed+1]
-                else:
-                    fin_time_temp = f.fin_time
-                rng = default_rng(f.seeds[i_seed])
-                t_temp,x_temp = self.run_trajectory_unperturbed(init_cond_temp, init_time_temp, fin_time_temp, method, rng)
-                x[i_save:i_save+len(t_temp)] = x_temp
-                i_save += len(t_temp)
-                init_time_temp = fin_time_temp
-                init_cond_temp = x_temp[-1]
 
-        return t,x
-
-
-
-
-class Lorenz96(ODESystem):
-    def __init__(self, config):
-        state_dim = config['K']
-        super().__init__(state_dim, config)
-    def derive_parameters(self, config):
-        self.K = config['K']
-        self.F = config['F']
-        self.dt_step = config['dt_step']
-        self.dt_save = config['dt_save'] 
-        if config['forcing']['type'] == 'white':
-            fpar = config['forcing']['white']
-            self.white_noise_dim = 2*len(fpar['wavenumbers']) + len(fpar['sites'])
-            diffmat = np.zeros((self.K, self.white_noise_dim))
-            i_noise = 0
-            for i_wn,wn in enumerate(fpar['wavenumbers']):
-                diffmat[:,i_noise] = fpar['wavenumber_magnitudes'][i_wn] * np.cos(2*np.pi*wn*np.arange(self.K)/self.K)
-                i_noise += 1
-                diffmat[:,i_noise] = fpar['wavenumber_magnitudes'][i_wn] * np.sin(2*np.pi*wn*np.arange(self.K)/self.K)
-                i_noise += 1
-            for i_site,site in enumerate(fpar['sites']):
-                diffmat[site,i_noise] = fpar['site_magnitudes'][i_site]
-                i_noise += 1
-            self.diffusion_matrix = sps.csr_matrix(diffmat)
-        elif config['forcing']['type'] == 'impulsive':
-            fpar = config['forcing']['impulsive']
-            self.impulse_dim = 2*len(fpar['wavenumbers']) + len(fpar['sites'])
-            impmat = np.zeros((self.K, self.impulse_dim))
-            i_noise = 0
-            for i_wn,wn in enumerate(fpar['wavenumbers']):
-                impmat[:,i_noise] = fpar['wavenumber_magnitudes'][i_wn] * np.cos(2*np.pi*wn*np.arange(self.K)/self.K)
-                i_noise += 1
-                impmat[:,i_noise] = fpar['wavenumber_magnitudes'][i_wn] * np.sin(2*np.pi*wn*np.arange(self.K)/self.K)
-                i_noise += 1
-            for i_site,site in enumerate(fpar['sites']):
-                impmat[site,i_noise] = fpar['site_magnitudes'][i_site]
-                i_noise += 1
-            self.impulse_matrix = sps.csr_matrix(impmat)
-        return
-    def tendency(self, t, x):
-        return np.roll(x,1) * (np.roll(x, -1) - np.roll(x,2)) - x + self.F
-    def apply_impulse(self, t, x, imp):
-        print(f'{imp = }')
-        return x + self.impulse_matrix @ imp #imp[0]*np.cos(2*np.pi*4*np.arange(self.K)/self.K) + imp[1]*np.sin(2*np.pi*4*np.arange(self.K)/self.K)
-    
-def test_Lorenz96_whitenoise():
-    return
-
-def test_Lorenz96_impulsive():
-    config = dict({'K': 40, 'F': 6.0, 'dt_step': 0.001, 'dt_save': 0.05})
-    config['forcing'] = dict({
-        'type': 'impulsive',
-        'impulsive': dict({
-            'wavenumbers': [1,4],
-            'wavenumber_magnitudes': [0.1,0.1],
-            'sites': [20,30],
-            'site_magnitudes': [0.5, 0.5],
-            }),
-        'white': dict({
-            'wavenumbers': [1,4],
-            'wavenumber_magnitudes': [0.1,0.1],
-            'sites': [20,30],
-            'site_magnitudes': [0.5, 0.5],
-            }),
-        })
-    ode = Lorenz96(config)
-    tu = ode.dt_save
-
-    # Make a small set of simulations with branching perturbations
-    # 0 ---------------------
-    #        |
-    # 1      o----x--------------
-    #                      | 
-    # 2                    x--------------
-    # 
-    # (In the above, 1 has to replicate trajectory of 0 from the beginning, since the state is not available at the time of splitting. Later, the Ensemble object will have methods for building this in)
-    rng0 = default_rng(8888)
-    init_cond = 0.001*rng0.normal(size=(config['K'],))
-    init_time_phys = -4.0
-    fin_time_phys = 30.0
-    method = 'rk4'
-    t_save_0,x_save_0 = ode.run_trajectory_unperturbed(init_cond, init_time_phys/tu, fin_time_phys/tu, method)
-
-    fig,axes = plt.subplots(nrows=2,figsize=(10,10), sharex=True, constrained_layout=True)
-    ax = axes[0]
-    ax.plot(t_save_0*tu, x_save_0[:,0])
-    ax.set_xlabel('time')
-    ax.set_ylabel('x0')
-    ax = axes[1]
-    im = ax.pcolormesh(t_save_0*tu, np.arange(ode.K)[::-1], x_save_0.T, shading='nearest', cmap='BrBG')
-    ax.set_xlabel('time')
-    ax.set_ylabel('Longitude $k$')
-    fig.savefig('L96_x0', **pltkwargs)
-    plt.close(fig)
-
-    # now make a perturbation
-    rng1 = default_rng(1928)
-    impulse_times = [init_time_phys/tu,5.0/tu]
-    impulses = [np.zeros(ode.impulse_dim),0.1*rng1.normal(size=(ode.impulse_dim,))]
-    f = forcing.ImpulsiveForcing(impulse_times, impulses, (fin_time_phys+3)/tu)
-    t_save_1,x_save_1 = ode.run_trajectory(init_cond, f, None, method)
-    fig,axes = plt.subplots(nrows=2,figsize=(10,10), sharex=True, constrained_layout=True)
-    ax = axes[0]
-    ax.plot(t_save_0*tu, x_save_0[:,0], color='black',linestyle='--')
-    ax.plot(t_save_1*tu, x_save_1[:,0], color='red',linestyle='-')
-    ax.set_xlabel('time')
-    ax.set_ylabel('x0')
-    ax = axes[1]
-    im = ax.pcolormesh(t_save_1*tu, np.arange(ode.K)[::-1], x_save_1.T, shading='nearest', cmap='BrBG')
-    ax.set_xlabel('time')
-    ax.set_ylabel('Longitude $k$')
-    fig.savefig('L96_x1', **pltkwargs)
-    plt.close(fig)
-
-    # now make a perturbation
-    rng2 = default_rng(1928)
-    impulse_times = [init_time_phys/tu,5.0/tu,20.0/tu]
-    impulses = [np.zeros(ode.impulse_dim),0.1*rng2.normal(size=(ode.impulse_dim,)),0.2*rng2.normal(size=(ode.impulse_dim,))]
-    f = forcing.ImpulsiveForcing(impulse_times, impulses, (fin_time_phys+3)/tu)
-    t_save_2,x_save_2 = ode.run_trajectory(init_cond, f, None, method)
-    fig,axes = plt.subplots(nrows=2,figsize=(10,10), sharex=True, constrained_layout=True)
-    ax = axes[0]
-    ax.plot(t_save_0*tu, x_save_0[:,0], color='black',linestyle='--')
-    ax.plot(t_save_1*tu, x_save_1[:,0], color='red',linestyle='-')
-    ax.plot(t_save_2*tu, x_save_2[:,0], color='dodgerblue',linestyle='-')
-    ax.set_xlabel('time')
-    ax.set_ylabel('x2')
-    ax = axes[1]
-    im = ax.pcolormesh(t_save_1*tu, np.arange(ode.K)[::-1], x_save_1.T, shading='nearest', cmap='BrBG')
-    ax.set_xlabel('time')
-    ax.set_ylabel('Longitude $k$')
-    fig.savefig('L96_x2', **pltkwargs)
-    plt.close(fig)
-
-    # TODO add some asserts to verify the trajectories are equal exactly where they're supposed to be
-
-    return
-
-if __name__ == "__main__":
-    test_Lorenz96_impulsive()
 
 
 
