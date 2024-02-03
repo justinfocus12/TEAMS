@@ -16,6 +16,7 @@ class Ensemble(ABC):
         self.traj_metadata = [] 
         return
     def branch_or_plant(self, icandf, obs_fun, saveinfo, parent=None):
+        # TODO in case icandf has no explicit initial condition, pull the state from the corresponding parent at the initial time given in f
         metadata,observables = self.dynsys.run_trajectory(icandf, obs_fun, saveinfo)
         self.traj_metadata.append(metadata)
         newmem = self.memgraph.number_of_nodes()
