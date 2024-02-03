@@ -2,7 +2,8 @@ from abc import ABC, abstractmethod
 import numpy as np
 from numpy.random import default_rng
 from scipy import sparse as sps
-import forcing
+from os.path import join, exists
+from os import makedirs
 import matplotlib
 import matplotlib.pyplot as plt
 matplotlib.rcParams.update({
@@ -10,8 +11,9 @@ matplotlib.rcParams.update({
     "font.size": 15
 })
 pltkwargs = dict(bbox_inches="tight",pad_inches=0.2)
-from dynamicalsystems import ODESystem
+from dynamicalsystem import ODESystem
 from ensemble import Ensemble
+import forcing
 
 class Lorenz96(ODESystem):
     def __init__(self, config):
@@ -79,7 +81,7 @@ class Lorenz96(ODESystem):
         return fig,ax,h
 
 def test_Lorenz96_white():
-    config = dict({'K': 40, 'F': 6.0, 'dt_step': 0.001, 'dt_save': 0.05})
+    config = dict({'K': 40, 'F': 8.0, 'dt_step': 0.001, 'dt_save': 0.05})
     config['forcing'] = dict({
         'type': 'white',
         'impulsive': dict({
@@ -90,7 +92,7 @@ def test_Lorenz96_white():
             }),
         'white': dict({
             'wavenumbers': [1,4],
-            'wavenumber_magnitudes': [3.0,3.0],
+            'wavenumber_magnitudes': [0.25,0.25],
             'sites': [20,30],
             'site_magnitudes': [0.01, 0.01],
             }),
@@ -105,82 +107,86 @@ def test_Lorenz96_white():
 
     ens = Ensemble(ensdir, ode)
 
-    # Make a small set of simulations with branching perturbations
-    # 0 ---------------------
-    #        |
-    # 1      o----x--------------
-    #                      | 
-    # 2                    x--------------
-    # 
-    # (In the above, 1 has to replicate trajectory of 0 from the beginning, since the state is not available at the time of splitting. Later, the Ensemble object will have methods for building this in)
-    rng_init = default_rng(8888)
-    init_cond = 0.001*rng_init.normal(size=(config['K'],))
     init_time_phys = -4.0
     fin_time_phys = 30.0
-    method = 'euler_maruyama'
-    obs_fun = lambda t,x: t,x
+    #obs_fun = lambda t,x: (t,x[:,0]**2,np.sum(x**2, axis=1)) # local and global energy
+    obs_fun = lambda t,x: (t,x)
 
-    # TODO break tests into unit and non-unit tests
 
     # 0
     reseed_times = [init_time_phys/tu]
     seeds = [8765]
-    rng0 = default_rng(seeds[0])
-    icandf = dict({'init_cond': 0.001*np.sin(2*np.pi*np.arange(config['K'])/config['K'])})
-    metadata,observables = ode.run_trajectory_unperturbed(icandf, init_time_phys/tu, fin_time_phys/tu, method, rng=rng0)
+    f = forcing.WhiteNoiseForcing(reseed_times, seeds, fin_time_phys/tu)
+    icandf = dict({'init_cond': 0.001*np.sin(2*np.pi*np.arange(config['K'])/config['K']), 'forcing': f})
+    saveinfo = dict(filename = join(ensdir, 'mem0.npz'))
+    observables = ens.branch_or_plant(icandf, obs_fun, saveinfo)
+    t,x = observables
+
+    fig,axes = plt.subplots(figsize=(10,10),nrows=2)
+    ode.plot_hovmoller(t, x, fig=fig, ax=axes[0])
+    ode.plot_site_timeseries(t, x, k=0, color='tomato', fig=fig, ax=axes[1])
+    ode.plot_site_timeseries(t, x, k=1, color='cyan', fig=fig, ax=axes[1])
+    fig.suptitle("Member 0")
+    fig.savefig(join(ensdir,'plot_hov_mem0'),**pltkwargs)
+    plt.close(fig)
+
+
+
     # 1
-    reseed_times.append(5.0/tu)
-    seeds.append(9853)
-    f = forcing.WhiteNoiseForcing(reseed_times, seeds, (fin_time_phys+3)/tu)
-    t_save_1,x_save_1 = ode.run_trajectory(init_cond, f, None, method)
-    # 2
-    reseed_times.append(20.0/tu)
-    seeds.append(2124)
-    f = forcing.WhiteNoiseForcing(reseed_times, seeds, (fin_time_phys+3)/tu)
-    t_save_2,x_save_2 = ode.run_trajectory(init_cond, f, None, method)
+    if False:
+        # 1
+        reseed_times.append(5.0/tu)
+        seeds.append(9853)
+        f = forcing.WhiteNoiseForcing(reseed_times, seeds, (fin_time_phys+3)/tu)
+        t_save_1,x_save_1 = ode.run_trajectory(init_cond, f, None, method)
+        # 2
+        reseed_times.append(20.0/tu)
+        seeds.append(2124)
+        f = forcing.WhiteNoiseForcing(reseed_times, seeds, (fin_time_phys+3)/tu)
+        t_save_2,x_save_2 = ode.run_trajectory(init_cond, f, None, method)
 
-    # Plot them all 
-    fig,axes = plt.subplots(nrows=2,figsize=(10,10), sharex=True, constrained_layout=True)
+        # Plot them all 
+        fig,axes = plt.subplots(nrows=2,figsize=(10,10), sharex=True, constrained_layout=True)
 
-    fig,axes = plt.subplots(nrows=2,figsize=(10,10), sharex=True, constrained_layout=True)
-    ax = axes[0]
-    handles = []
-    for (k,color) in zip([0,1,2],['tomato','cyan','black']):
-        _,_,h = ode.plot_site_timeseries(t_save_0, x_save_0, k=k, color=color, fig=fig, ax=ax)
-        handles.append[h]
-    ax.legend(handles=handles)
-    ax = axes[1]
-    _,_,im = ode.plot_hovmoller(t_save_0, x_save_0, fig=fig, ax=ax)
-    fig.savefig('L96_white_x0', **pltkwargs)
-    plt.close(fig)
+        fig,axes = plt.subplots(nrows=2,figsize=(10,10), sharex=True, constrained_layout=True)
+        ax = axes[0]
+        handles = []
+        for (k,color) in zip([0,1,2],['tomato','cyan','black']):
+            _,_,h = ode.plot_site_timeseries(t_save_0, x_save_0, k=k, color=color, fig=fig, ax=ax)
+            handles.append[h]
+        ax.legend(handles=handles)
+        ax = axes[1]
+        _,_,im = ode.plot_hovmoller(t_save_0, x_save_0, fig=fig, ax=ax)
+        fig.savefig('L96_white_x0', **pltkwargs)
+        plt.close(fig)
 
-    fig,axes = plt.subplots(nrows=2,figsize=(10,10), sharex=True, constrained_layout=True)
-    ax = axes[0]
-    ax.plot(t_save_0*tu, x_save_0[:,0], color='black',linestyle='--')
-    ax.plot(t_save_1*tu, x_save_1[:,0], color='red',linestyle='-')
-    ax.set_xlabel('time')
-    ax.set_ylabel('x0')
-    ax = axes[1]
-    im = ax.pcolormesh(t_save_1*tu, np.arange(ode.K), x_save_1.T, shading='nearest', cmap='BrBG')
-    ax.set_xlabel('time')
-    ax.set_ylabel('Longitude $k$')
-    fig.savefig('L96_white_x1', **pltkwargs)
-    plt.close(fig)
+        fig,axes = plt.subplots(nrows=2,figsize=(10,10), sharex=True, constrained_layout=True)
+        ax = axes[0]
+        ax.plot(t_save_0*tu, x_save_0[:,0], color='black',linestyle='--')
+        ax.plot(t_save_1*tu, x_save_1[:,0], color='red',linestyle='-')
+        ax.set_xlabel('time')
+        ax.set_ylabel('x0')
+        ax = axes[1]
+        im = ax.pcolormesh(t_save_1*tu, np.arange(ode.K), x_save_1.T, shading='nearest', cmap='BrBG')
+        ax.set_xlabel('time')
+        ax.set_ylabel('Longitude $k$')
+        fig.savefig('L96_white_x1', **pltkwargs)
+        plt.close(fig)
 
-    ax = axes[0]
-    ax.plot(t_save_0*tu, x_save_0[:,0], color='black',linestyle='--')
-    ax.plot(t_save_1*tu, x_save_1[:,0], color='red',linestyle='-')
-    ax.plot(t_save_2*tu, x_save_2[:,0], color='dodgerblue',linestyle='-')
-    ax.set_xlabel('time')
-    ax.set_ylabel('x2')
-    ax = axes[1]
-    im = ax.pcolormesh(t_save_1*tu, np.arange(ode.K), x_save_1.T, shading='nearest', cmap='BrBG')
-    ax.set_xlabel('time')
-    ax.set_ylabel('Longitude $k$')
-    fig.savefig('L96_white_x2', **pltkwargs)
-    plt.close(fig)
+        ax = axes[0]
+        ax.plot(t_save_0*tu, x_save_0[:,0], color='black',linestyle='--')
+        ax.plot(t_save_1*tu, x_save_1[:,0], color='red',linestyle='-')
+        ax.plot(t_save_2*tu, x_save_2[:,0], color='dodgerblue',linestyle='-')
+        ax.set_xlabel('time')
+        ax.set_ylabel('x2')
+        ax = axes[1]
+        im = ax.pcolormesh(t_save_1*tu, np.arange(ode.K), x_save_1.T, shading='nearest', cmap='BrBG')
+        ax.set_xlabel('time')
+        ax.set_ylabel('Longitude $k$')
+        fig.savefig('L96_white_x2', **pltkwargs)
+        plt.close(fig)
 
-    # TODO add some asserts to verify the trajectories are equal exactly where they're supposed to be
+        # TODO add some asserts to verify the trajectories are equal exactly where they're supposed to be
 
     return
 def test_Lorenz96_impulsive():
@@ -274,7 +280,7 @@ def test_Lorenz96_impulsive():
     return
 
 if __name__ == "__main__":
-    test_Lorenz96_impulsive()
+    test_Lorenz96_white()
 
 
 

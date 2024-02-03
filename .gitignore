@@ -1,1 +1,6 @@
 .*.swp
+*.png
+__pycache__/
+*.npy
+*.nc
+*.npz
