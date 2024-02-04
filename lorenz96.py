@@ -17,13 +17,48 @@ class Lorenz96(ODESystem):
     def __init__(self, config):
         state_dim = config['K']
         super().__init__(state_dim, config)
+    @staticmethod
+    def label_from_config(config):
+        abbrv_kf = f"K{config['K']:g}F{config['F']:g}".replace(".","p")
+        label_kf = r"$K=%g,\ F=%g$"%(config['K'],config['F'])
+        if config['frc']['type'] == 'white':
+            w = config['frc']['white']
+            abbrv_noise = "white_"
+            label_noise = "White noise: "
+            if len(w['wavenumbers']) > 0:
+                abbrv_noise += "-".join([f"{wn:g}" for wn in w['wavenumbers']])
+                abbrv_noise += "-".join([f"{mag:g}" for mag in w['wavenumber_magnitudes']])
+                label_noise += ", ".join(["$F_{%g}=%g"%(wn,mag) for (wn,mag) in zip(w['wavenumbers'],w['wavenumber_magnitudes'])])
+            if len(w['sites']) > 0:
+                abbrv_noise += "-".join([f"{site:g}" for site in w['sites']])
+                abbrv_noise += "-".join([f"{mag:g}" for mag in w['site_magnitudes']])
+                label_noise += ", ".join(["$\mathcal{F}_{%g}=%g"%(site,mag) for (site,mag) in zip(w['sites'],w['site_magnitudes'])])
+        elif config['frc']['type'] == 'impulsive':
+            label_noise = "Impulsive noise: "
+            w = config['frc']['impulsive']
+            abbrv_noise = "impulsive_"
+            if len(w['wavenumbers']) > 0:
+                abbrv_noise += "-".join([f"{wn:g}" for wn in w['wavenumbers']])
+                abbrv_noise += "-".join([f"{mag:g}" for mag in w['wavenumber_magnitudes']])
+                label_noise += ", ".join(["$\mathcal{F}_{%g}=%g"%(wn,mag) for (wn,mag) in zip(w['wavenumbers'],w['wavenumber_magnitudes'])])
+            if len(w['sites']) > 0:
+                abbrv_noise += "-".join([f"{site:g}" for site in w['sites']])
+                abbrv_noise += "-".join([f"{mag:g}" for mag in w['site_magnitudes']])
+                label_noise += ", ".join(["$\mathcal{F}_{%g}=%g"%(site,mag) for (site,mag) in zip(w['sites'],w['site_magnitudes'])])
+        abbrv = "_".join([abbrv_kf,abbrv_noise])
+        label = "\n".join([label_kf,label_noise])
+
+        return abbrv,label
+
+        
+                
     def derive_parameters(self, config):
         self.K = config['K']
         self.F = config['F']
         self.dt_step = config['dt_step']
         self.dt_save = config['dt_save'] 
-        if config['forcing']['type'] == 'white':
-            fpar = config['forcing']['white']
+        if config['frc']['type'] == 'white':
+            fpar = config['frc']['white']
             self.white_noise_dim = 2*len(fpar['wavenumbers']) + len(fpar['sites'])
             diffmat = np.zeros((self.K, self.white_noise_dim))
             i_noise = 0
@@ -36,8 +71,8 @@ class Lorenz96(ODESystem):
                 diffmat[site,i_noise] = fpar['site_magnitudes'][i_site]
                 i_noise += 1
             self.diffusion_matrix = sps.csr_matrix(diffmat)
-        elif config['forcing']['type'] == 'impulsive':
-            fpar = config['forcing']['impulsive']
+        elif config['frc']['type'] == 'impulsive':
+            fpar = config['frc']['impulsive']
             self.impulse_dim = 2*len(fpar['wavenumbers']) + len(fpar['sites'])
             impmat = np.zeros((self.K, self.impulse_dim))
             i_noise = 0

@@ -4,6 +4,13 @@ import networkx as nx
 import pickle
 from os.path import join, exists
 from os import makedirs
+import matplotlib
+import matplotlib.pyplot as plt
+matplotlib.rcParams.update({
+    "font.family": "monospace",
+    "font.size": 15
+})
+pltkwargs = dict(bbox_inches="tight",pad_inches=0.2)
 
 
 class Ensemble(ABC): 
@@ -28,3 +35,24 @@ class Ensemble(ABC):
     def save_state(self):
         pickle.dump(self, open(join(self.savedir, 'ens.pickle'),'wb'))
         return
+    # --------------- Plotting methods ---------------
+    def plot_observables(self, mems, ts, obsvals):
+        # TODO also make an alternative method to compute observable functions
+        tu = self.dynsys.dt_save
+        colors = plt.cm.rainbow(np.arange(len(mems))/max(1,len(mems)-1))
+        fig,ax = plt.subplots(figsize=(12,5))
+        handles = []
+        for i_mem,mem in enumerate(mems):
+            t = ts[i_mem]
+            obs = obsvals[i_mem]
+            h, = ax.plot(t*tu, obs, label=f"Member {i_mem}", color=colors[i_mem])
+            handles.append(h)
+            # Plot origin time
+            ax.scatter(t[0]*tu, obs[0], marker='o', color=colors[i_mem])
+            # plot forcing times
+            tf = np.array(self.traj_metadata[mem]['frc'].get_forcing_times())
+            i_tf = tf - t[0]
+            ax.scatter(tf*tu, obs[i_tf], marker='x', color=colors[i_mem])
+            ax.set_xlabel("Time")
+        ax.legend(handles=handles, loc=(1,0))
+        return fig,ax

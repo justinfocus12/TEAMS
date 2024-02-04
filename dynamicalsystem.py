@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 import numpy as np
 from numpy.random import default_rng
 from scipy import sparse as sps
-import Forcing
+import forcing
 import matplotlib
 import matplotlib.pyplot as plt
 matplotlib.rcParams.update({
@@ -26,6 +26,9 @@ class DynamicalSystem(ABC):
     @abstractmethod
     def assemble_metadata(self):
         pass
+    @abstractmethod
+    def load_trajectory(self, metadata):
+        pass
 
 
 
@@ -36,6 +39,10 @@ class ODESystem(DynamicalSystem):
         self.config = config
         self.derive_parameters(config) # This includes both physical and simulation parameters
         return
+    @staticmethod
+    @abstractmethod
+    def label_from_config(self, config):
+        pass
     @abstractmethod
     def derive_parameters(self, config):
         # convert raw configuration into class attributes for efficient integration of dynamics
@@ -71,20 +78,20 @@ class ODESystem(DynamicalSystem):
     def assemble_metadata(self, init_cond, f, method, filename):
         md = dict({
             'init_cond': init_cond, 
-            'forcing': f, 
+            'frc': f, 
             'method': method,
             'filename': filename,
             })
         return md
     def run_trajectory(self, icandf, obs_fun, saveinfo):
-        init_cond_nopert,f = icandf['init_cond'],icandf['forcing']
+        init_cond_nopert,f = icandf['init_cond'],icandf['frc']
         assert(isinstance(f.init_time,int) and isinstance(f.fin_time,int))
         t = np.arange(f.init_time, f.fin_time+1)
         Nt = len(t)
         x = np.zeros((Nt, self.state_dim))
         # Need to set up three things: init_time, init_cond, fin_time
         init_time_temp = f.init_time
-        if isinstance(f, Forcing.ImpulsiveForcing):
+        if isinstance(f, forcing.ImpulsiveForcing):
             method = 'rk4'
             # run one segment at a time, undisturbed, from one impulse to the next
             init_cond_temp = init_cond_nopert.copy()
@@ -102,7 +109,7 @@ class ODESystem(DynamicalSystem):
                 init_time_temp = fin_time_temp
                 init_cond_temp = x_temp[-1]
                 i_save += len(t_temp) - 1
-        elif isinstance(f, Forcing.WhiteNoiseForcing):
+        elif isinstance(f, forcing.WhiteNoiseForcing):
             method = 'euler_maruyama'
             init_cond_temp = init_cond_nopert.copy()
             i_save = 0
@@ -124,9 +131,14 @@ class ODESystem(DynamicalSystem):
         # save full state out to saveinfo
         np.savez(saveinfo['filename'], t=t, x=x)
         return metadata,observables
-    def load_trajectory(self, metadata):
+    def load_trajectory(self, metadata, tspan=None):
         # TODO optionally specify a single time , or write a new method for time slice
-        traj = np.load(metadata['filename'])
+        traj = dict(np.load(metadata['filename']))
+        if tspan is not None:
+            idx0 = np.where(traj['t'] == tspan[0])[0][0]
+            idx1 = np.where(traj['t'] == tspan[1])[0][0]
+            traj['t'] = traj['t'][idx0:idx1+1]
+            traj['x'] = traj['x'][idx0:idx1+1]
         return traj['t'],traj['x']
     def run_trajectory_unperturbed(self, init_cond, init_time, fin_time, method, rng=None):
         assert(isinstance(init_time,int) and isinstance(fin_time,int))
