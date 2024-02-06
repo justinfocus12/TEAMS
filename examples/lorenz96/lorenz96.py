@@ -1,9 +1,9 @@
-from abc import ABC, abstractmethod
 import numpy as np
 from numpy.random import default_rng
 from scipy import sparse as sps
 from os.path import join, exists
 from os import makedirs
+import sys
 import matplotlib
 import matplotlib.pyplot as plt
 matplotlib.rcParams.update({
@@ -11,6 +11,7 @@ matplotlib.rcParams.update({
     "font.size": 15
 })
 pltkwargs = dict(bbox_inches="tight",pad_inches=0.2)
+sys.path.append("../..")
 from dynamicalsystem import ODESystem
 
 class Lorenz96(ODESystem):
@@ -22,31 +23,28 @@ class Lorenz96(ODESystem):
         abbrv_kf = f"K{config['K']:g}F{config['F']:g}".replace(".","p")
         label_kf = r"$K=%g,\ F=%g$"%(config['K'],config['F'])
         if config['frc']['type'] == 'white':
-            w = config['frc']['white']
-            abbrv_noise = "white_"
+            abbrv_noise = "whitenoise"
             label_noise = "White noise: "
-            if len(w['wavenumbers']) > 0:
-                abbrv_noise += "-".join([f"{wn:g}" for wn in w['wavenumbers']])
-                abbrv_noise += "-".join([f"{mag:g}" for mag in w['wavenumber_magnitudes']])
-                label_noise += ", ".join(["$F_{%g}=%g"%(wn,mag) for (wn,mag) in zip(w['wavenumbers'],w['wavenumber_magnitudes'])])
-            if len(w['sites']) > 0:
-                abbrv_noise += "-".join([f"{site:g}" for site in w['sites']])
-                abbrv_noise += "-".join([f"{mag:g}" for mag in w['site_magnitudes']])
-                label_noise += ", ".join(["$\mathcal{F}_{%g}=%g"%(site,mag) for (site,mag) in zip(w['sites'],w['site_magnitudes'])])
         elif config['frc']['type'] == 'impulsive':
+            abbrv_noise = "impnoise_"
             label_noise = "Impulsive noise: "
-            w = config['frc']['impulsive']
-            abbrv_noise = "impulsive_"
-            if len(w['wavenumbers']) > 0:
-                abbrv_noise += "-".join([f"{wn:g}" for wn in w['wavenumbers']])
-                abbrv_noise += "-".join([f"{mag:g}" for mag in w['wavenumber_magnitudes']])
-                label_noise += ", ".join(["$\mathcal{F}_{%g}=%g"%(wn,mag) for (wn,mag) in zip(w['wavenumbers'],w['wavenumber_magnitudes'])])
-            if len(w['sites']) > 0:
-                abbrv_noise += "-".join([f"{site:g}" for site in w['sites']])
-                abbrv_noise += "-".join([f"{mag:g}" for mag in w['site_magnitudes']])
-                label_noise += ", ".join(["$\mathcal{F}_{%g}=%g"%(site,mag) for (site,mag) in zip(w['sites'],w['site_magnitudes'])])
-        abbrv = "_".join([abbrv_kf,abbrv_noise])
-        label = "\n".join([label_kf,label_noise])
+        w = config['frc'][config['frc']['type']]
+        abbrv_noise_wave = ""
+        label_noise_wave = ""
+        abbrv_noise_site = ""
+        label_noise_site = ""
+        if len(w['wavenumbers']) > 0:
+            abbrv_noise_wave = "wvnum"
+            abbrv_noise_wave += "-".join([f"{wn:g}" for wn in w['wavenumbers']]) + "_"
+            abbrv_noise_wave += "-".join([f"{mag:g}" for mag in w['wavenumber_magnitudes']])
+            label_noise_wave = ", ".join(["$F_{%g}=%g"%(wn,mag) for (wn,mag) in zip(w['wavenumbers'],w['wavenumber_magnitudes'])])
+        if len(w['sites']) > 0:
+            abbrv_noise_site = "site"
+            abbrv_noise_site += "-".join([f"{site:g}" for site in w['sites']]) + "_"
+            abbrv_noise_site += "-".join([f"{mag:g}" for mag in w['site_magnitudes']])
+            label_noise_site += ", ".join(["$\mathcal{F}_{%g}=%g"%(site,mag) for (site,mag) in zip(w['sites'],w['site_magnitudes'])])
+        abbrv = "_".join([abbrv_kf,abbrv_noise_wave,abbrv_noise_site]).replace('.','p')
+        label = "\n".join([label_kf,label_noise_wave,label_noise_site])
 
         return abbrv,label
 
@@ -93,6 +91,25 @@ class Lorenz96(ODESystem):
     def apply_impulse(self, t, x, imp):
         print(f'{imp = }')
         return x + self.impulse_matrix @ imp #imp[0]*np.cos(2*np.pi*4*np.arange(self.K)/self.K) + imp[1]*np.sin(2*np.pi*4*np.arange(self.K)/self.K)
+    # --------------- Common observable functions --------
+    def observable(self, t, x, obs_name):
+        if obs_name == 't':
+            return t
+        name2func = dict({
+            'x0': self.observable_x0,
+            'E0': self.observable_E0,
+            'E': self.observable_E,
+            'Emax': self.observable_Emax,
+            })
+        return name2func[obs_name](t,x)
+    def observable_x0(self, t, x):
+        return x[:,0]
+    def observable_E0(self, t, x):
+        return x[:,0]**2/2
+    def observable_E(self, t, x):
+        return np.sum(x**2, axis=1)/2
+    def observable_Emax(self, t, x):
+        return np.max(x**2, axis=1)/2
     # --------------- plotting functions -----------------
     def check_fig_ax(self, fig=None, ax=None):
         if fig is None:

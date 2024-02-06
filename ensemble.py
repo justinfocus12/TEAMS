@@ -15,7 +15,7 @@ pltkwargs = dict(bbox_inches="tight",pad_inches=0.2)
 
 class Ensemble(ABC): 
     # TODO decide how to handle trajectory reloading, etc. Should this be implemented in inherited Ensemble objects, or in Manager objects?
-    def __init__(self, savedir, dynsys, *args, **kwargs):
+    def __init__(self, savedir, dynsys):
         self.savedir = savedir # This is for ensemble-level metadata only; trajectory-level data may have to go elsewhere.
         self.dynsys = dynsys
         makedirs(self.savedir, exist_ok=True)
@@ -45,13 +45,18 @@ class Ensemble(ABC):
         for i_mem,mem in enumerate(mems):
             t = ts[i_mem]
             obs = obsvals[i_mem]
+            print(f"{t.shape = }")
+            print(f"{obs.shape = }")
             h, = ax.plot(t*tu, obs, label=f"Member {i_mem}", color=colors[i_mem])
             handles.append(h)
             # Plot origin time
             ax.scatter(t[0]*tu, obs[0], marker='o', color=colors[i_mem])
             # plot forcing times
             tf = np.array(self.traj_metadata[mem]['frc'].get_forcing_times())
+            print(f'{tf = }')
             i_tf = tf - t[0]
+            print(f'{i_tf = }')
+            print(f'{obs[i_tf] = }')
             ax.scatter(tf*tu, obs[i_tf], marker='x', color=colors[i_mem])
             ax.set_xlabel("Time")
         ax.legend(handles=handles, loc=(1,0))

@@ -41,7 +41,7 @@ class ODESystem(DynamicalSystem):
         return
     @staticmethod
     @abstractmethod
-    def label_from_config(self, config):
+    def label_from_config(config):
         pass
     @abstractmethod
     def derive_parameters(self, config):
