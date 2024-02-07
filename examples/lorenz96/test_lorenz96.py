@@ -26,7 +26,8 @@ def test_Lorenz96(frc_type):
         'plot_ensemble':         1,
         })
 
-    config = dict({'K': 40, 'F': 6.0, 'dt_step': 0.001, 'dt_save': 0.05})
+    config = dict({'K': 40, 'F': 6.0, 'dt_step': 0.001, 'dt_save': 0.05,})
+    config['burnin'] = int(10/config['dt_save'])
     config['frc'] = dict({
         'type': frc_type,
         'impulsive': dict({

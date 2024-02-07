@@ -15,6 +15,9 @@ class DynamicalSystem(ABC):
     def __init__(self):
         return
     @abstractmethod
+    def default_icandf(self):
+        pass
+    @abstractmethod
     def run_trajectory(self, icandf, obs_fun, saveinfo):
         # return some metadata sufficient to reconstruct the output, for example (1) a filename, (2) full numpy array of the output of an ODE solver. 
         # Optionally, return some observables passed as a dictionary of function handles

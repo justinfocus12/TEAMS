@@ -55,6 +55,7 @@ class Lorenz96(ODESystem):
         self.F = config['F']
         self.dt_step = config['dt_step']
         self.dt_save = config['dt_save'] 
+        self.t_burnin = config['burnin']
         if config['frc']['type'] == 'white':
             fpar = config['frc']['white']
             self.white_noise_dim = 2*len(fpar['wavenumbers']) + len(fpar['sites'])

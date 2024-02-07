@@ -20,17 +20,18 @@ import forcing
 
 
 class EnsembleAlgorithm(ABC):
-    def __init__(self, savedir, config):
-        self.savedir = savedir
-        makedirs(self.savedir, exist_ok=True)
+    def __init__(self, config):
         self.derive_parameters(config)
         return
     @abstractmethod
     def derive_parameters(self, config):
         pass
     @abstractmethod
+    def take_first_step(self, ens):
+        pass
+    @abstractmethod
     def take_next_step(self, ens):
-        # Based on the current state of the ensemble, update its state by planting, branching, or terminating
+        # Based on the current state of the ensemble, provide the arguments (icandf, obs_fun, parent) to give to ens.branch_or_plant. Don't modify ens right here.
         pass
 
 # TODO make a global acquisition algorithm and a local acquisition algorithm, for some higher-level algorithm to manage in tandem
@@ -48,9 +49,18 @@ class PertGrowthMeasuringAlgorithm(EnsembleAlgorithm):
             self.frc_dim = config['frc']['impulse']['impulse_dim']
             self.frc_type = 'float64'
         # Determine branching number
-        self.branches = config['branches']
-        self.branch_interval = config['branch_interval']
-        self.branch_duration = config['branch_duration']
+        self.branch_number = config['branch_number'] # How many different members to spawn from the same initial condition
+        self.branch_interval = config['branch_interval'] # How long to wait between consecutive splits
+        self.branch_duration = config['branch_duration'] # How long to run each branch
         return
+    def take_first_step(self, ens):
+        # The ensemble should be empty
+        assert ens.memgraph.number_of_nodes() == 0
+        obs_fun = lambda t,x: None
+        if icandf is None:
+            icandf = ens.dynsys.default_icandf()
+        
+        ens.branch_or_plant(icandf, obs_fun, saveinfo, parent=None)
+
     
 
