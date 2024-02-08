@@ -12,9 +12,10 @@ matplotlib.rcParams.update({
 })
 pltkwargs = dict(bbox_inches="tight",pad_inches=0.2)
 sys.path.append("../..")
-from dynamicalsystem import ODESystem
+from dynamicalsystem import DESystem,ODESystem,SDESystem
+import forcing
 
-class Lorenz96(ODESystem):
+class Lorenz96ODE(ODESystem): # TODO make a superclass Lorenz96, and a sibling subclass Lorenz96SDE
     def __init__(self, config):
         state_dim = config['K']
         super().__init__(state_dim, config)
@@ -47,30 +48,14 @@ class Lorenz96(ODESystem):
         label = "\n".join([label_kf,label_noise_wave,label_noise_site])
 
         return abbrv,label
-
-        
                 
     def derive_parameters(self, config):
         self.K = config['K']
         self.F = config['F']
         self.dt_step = config['dt_step']
         self.dt_save = config['dt_save'] 
-        self.t_burnin = config['burnin']
-        if config['frc']['type'] == 'white':
-            fpar = config['frc']['white']
-            self.white_noise_dim = 2*len(fpar['wavenumbers']) + len(fpar['sites'])
-            diffmat = np.zeros((self.K, self.white_noise_dim))
-            i_noise = 0
-            for i_wn,wn in enumerate(fpar['wavenumbers']):
-                diffmat[:,i_noise] = fpar['wavenumber_magnitudes'][i_wn] * np.cos(2*np.pi*wn*np.arange(self.K)/self.K)
-                i_noise += 1
-                diffmat[:,i_noise] = fpar['wavenumber_magnitudes'][i_wn] * np.sin(2*np.pi*wn*np.arange(self.K)/self.K)
-                i_noise += 1
-            for i_site,site in enumerate(fpar['sites']):
-                diffmat[site,i_noise] = fpar['site_magnitudes'][i_site]
-                i_noise += 1
-            self.diffusion_matrix = sps.csr_matrix(diffmat)
-        elif config['frc']['type'] == 'impulsive':
+        self.t_burnin = config['t_burnin']
+        elif self.frc_type == 'impulsive':
             fpar = config['frc']['impulsive']
             self.impulse_dim = 2*len(fpar['wavenumbers']) + len(fpar['sites'])
             impmat = np.zeros((self.K, self.impulse_dim))
@@ -85,13 +70,18 @@ class Lorenz96(ODESystem):
                 i_noise += 1
             self.impulse_matrix = sps.csr_matrix(impmat)
         return
+    def get_forcing_type_dim(self):
+        if self.frc_type == 'white':
+            ftype = 'uint64'
+            fdim = 1
+        if self.frc_type == 'impulsive':
+            ftype = 'float64'
+            fdim = self.impulse_dim
+        return ftype,fdim
     def tendency(self, t, x):
         return np.roll(x,1) * (np.roll(x, -1) - np.roll(x,2)) - x + self.F
     def diffusion(self, t, x):
         return self.diffusion_matrix
-    def apply_impulse(self, t, x, imp):
-        print(f'{imp = }')
-        return x + self.impulse_matrix @ imp #imp[0]*np.cos(2*np.pi*4*np.arange(self.K)/self.K) + imp[1]*np.sin(2*np.pi*4*np.arange(self.K)/self.K)
     # --------------- Common observable functions --------
     def observable(self, t, x, obs_name):
         if obs_name == 't':

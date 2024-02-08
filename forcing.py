@@ -20,6 +20,8 @@ class ImpulsiveForcing(Forcing):
     def get_forcing_times(self):
         return self.impulse_times
 
+
+
 class WhiteNoiseForcing(Forcing):
     def __init__(self, reseed_times, seeds, fin_time):
         super().__init__(reseed_times[0], fin_time)

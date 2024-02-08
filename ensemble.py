@@ -15,10 +15,8 @@ pltkwargs = dict(bbox_inches="tight",pad_inches=0.2)
 
 class Ensemble(ABC): 
     # TODO decide how to handle trajectory reloading, etc. Should this be implemented in inherited Ensemble objects, or in Manager objects?
-    def __init__(self, savedir, dynsys):
-        self.savedir = savedir # This is for ensemble-level metadata only; trajectory-level data may have to go elsewhere.
+    def __init__(self, dynsys):
         self.dynsys = dynsys
-        makedirs(self.savedir, exist_ok=True)
         self.memgraph = nx.DiGraph() 
         self.traj_metadata = [] 
         return
@@ -30,11 +28,7 @@ class Ensemble(ABC):
         self.memgraph.add_node(newmem)
         if parent is not None:
             self.memgraph.add_edge(parent, newmem)
-        self.save_state()
         return observables
-    def save_state(self):
-        pickle.dump(self, open(join(self.savedir, 'ens.pickle'),'wb'))
-        return
     # --------------- Plotting methods ---------------
     def plot_observables(self, mems, ts, obsvals):
         # TODO also make an alternative method to compute observable functions

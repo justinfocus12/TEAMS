@@ -20,17 +20,19 @@ import forcing
 
 
 class EnsembleAlgorithm(ABC):
-    def __init__(self, config):
+    def __init__(self, config, ens, seed):
+        self.ens = ens
+        self.rng = default_rng(seed) # In case ANY randomness is involved
         self.derive_parameters(config)
         return
     @abstractmethod
     def derive_parameters(self, config):
         pass
     @abstractmethod
-    def take_first_step(self, ens):
+    def take_first_step(self):
         pass
     @abstractmethod
-    def take_next_step(self, ens):
+    def take_next_step(self):
         # Based on the current state of the ensemble, provide the arguments (icandf, obs_fun, parent) to give to ens.branch_or_plant. Don't modify ens right here.
         pass
 
@@ -40,27 +42,33 @@ class PertGrowthMeasuringAlgorithm(EnsembleAlgorithm):
     # Algorithm to split off from initial condition 
     def derive_parameters(self, config):
         # Determine the random input space
-        frc_type = config['frc']['type']
-        if frc_type == 'white':
-            self.frc_dim = 1
-            self.frc_dtype = 'uint64'
-        elif frc_type == 'impulsive': 
-            # input dimension must match that of ens.dynsys
-            self.frc_dim = config['frc']['impulse']['impulse_dim']
-            self.frc_type = 'float64'
+        self.frc_type,self.frc_dim = self.ens.dynsys.get_forcing_type_dim()
+        self.seed_min,self.seed_max = config['seed_min'],config['seed_max']
         # Determine branching number
-        self.branch_number = config['branch_number'] # How many different members to spawn from the same initial condition
+        self.branches_per_point = config['branches_per_point'] # How many different members to spawn from the same initial condition
         self.branch_interval = config['branch_interval'] # How long to wait between consecutive splits
         self.branch_duration = config['branch_duration'] # How long to run each branch
+        self.num_branch_points = config['num_branch_points'] # but include the possibility for extension
+        self.trunk_duration = self.ens.dynsys.t_burnin + self.branch_interval * self.num_branch_points
         return
-    def take_first_step(self, ens):
+    def take_first_step(self, saveinfo):
         # The ensemble should be empty
-        assert ens.memgraph.number_of_nodes() == 0
+        assert self.ens.memgraph.number_of_nodes() == 0
         obs_fun = lambda t,x: None
-        if icandf is None:
-            icandf = ens.dynsys.default_icandf()
-        
+        icandf = self.ens.dynsys.generate_default_forcing_sequence(self.trunk_duration)
         ens.branch_or_plant(icandf, obs_fun, saveinfo, parent=None)
+        # Increment the tracker for the current branch etc
+        self.next_branch_point = 0
+        self.next_branch = 0 # The local index within the bunch
+        self.next_branch_time = self.ens.dynsys.t_burnin
+        self.terminable = False
+        return
+    def take_next_step(self, saveinfo):
+        if self.next_branch_point >= self.num_branch_points:
+            self.terminable = True
+            return
+        if self.next_branch >= self.branches_per_point:
+
 
     
 

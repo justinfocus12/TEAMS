@@ -27,7 +27,7 @@ def test_Lorenz96(frc_type):
         })
 
     config = dict({'K': 40, 'F': 6.0, 'dt_step': 0.001, 'dt_save': 0.05,})
-    config['burnin'] = int(10/config['dt_save'])
+    config['t_burnin'] = int(10/config['dt_save'])
     config['frc'] = dict({
         'type': frc_type,
         'impulsive': dict({
@@ -117,6 +117,7 @@ def test_Lorenz96(frc_type):
 
         # Save the observables; this will be the 'save_state' for future managers
         pickle.dump(obs_dict,open(join(ensdir,'obs_dict.pickle'),'wb'))
+        pickle.dump(ens, open(join(ensdir,'ens.pickle'),'wb')
         
 
     
