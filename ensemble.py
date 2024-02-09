@@ -39,18 +39,13 @@ class Ensemble(ABC):
         for i_mem,mem in enumerate(mems):
             t = ts[i_mem]
             obs = obsvals[i_mem]
-            print(f"{t.shape = }")
-            print(f"{obs.shape = }")
             h, = ax.plot(t*tu, obs, label=f"Member {i_mem}", color=colors[i_mem])
             handles.append(h)
             # Plot origin time
             ax.scatter(t[0]*tu, obs[0], marker='o', color=colors[i_mem])
             # plot forcing times
-            tf = np.array(self.traj_metadata[mem]['frc'].get_forcing_times())
-            print(f'{tf = }')
+            tf = np.array(self.traj_metadata[mem]['icandf']['frc'].get_forcing_times())
             i_tf = tf - t[0]
-            print(f'{i_tf = }')
-            print(f'{obs[i_tf] = }')
             ax.scatter(tf*tu, obs[i_tf], marker='x', color=colors[i_mem])
             ax.set_xlabel("Time")
         ax.legend(handles=handles, loc=(1,0))

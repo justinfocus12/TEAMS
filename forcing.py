@@ -1,4 +1,6 @@
 from abc import ABC, abstractmethod
+from functools import reduce
+import numpy as np
 
 # TODO add plotting methods for each kind of forcing, e.g., overlay the impulse times atop a trajectory timeseries
 
@@ -32,6 +34,23 @@ class WhiteNoiseForcing(Forcing):
         return
     def get_forcing_times(self):
         return self.reseed_times
+
+class SuperposedForcing(Forcing):
+    def __init__(self, frc_list):
+        self.frc_list = frc_list
+        init_time = min([f.init_time for f in frc_list])
+        fin_time = max([f.fin_time for f in frc_list])
+        num_frc_comps = len(frc_list)
+        self.frc_times = reduce(np.union1d, [f.get_forcing_times() for f in frc_list])
+        super().__init__(init_time, fin_time)
+        self.frc_comps = []
+        for ft in self.frc_times:
+            self.frc_comps.append([i for i in range(len(frc_list)) if ft in frc_list[i].get_forcing_times()])
+        return
+    def get_forcing_times(self):
+        return self.frc_times
+
+
 
 #class AdditiveTendencyForcing(Forcing):
 #    def __init__(self, init_time, fin_time, params):
