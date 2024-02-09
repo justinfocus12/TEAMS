@@ -11,6 +11,8 @@ class Forcing(ABC):
     def get_forcing_times(self):
         pass
 
+# Need a composite forcing, a summation of a white noise and impulsive term
+
 class ImpulsiveForcing(Forcing):
     def __init__(self, impulse_times, impulses, fin_time):
         super().__init__(impulse_times[0], fin_time)

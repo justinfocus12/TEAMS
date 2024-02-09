@@ -14,6 +14,8 @@ pltkwargs = dict(bbox_inches="tight",pad_inches=0.2)
 class DynamicalSystem(ABC):
     def __init__(self):
         return
+    def list_required_instance_variables(self):
+        return []
     @abstractmethod
     def generate_default_icandf(self): # for spinup
         pass
@@ -29,24 +31,17 @@ class DynamicalSystem(ABC):
     @abstractmethod
     def assemble_metadata(self):
         pass
-    @abstractmethod
-    def load_trajectory(self, metadata):
-        pass
 
 
 # TODO make subclasses for ODESystem and SDESystem, each of which will have their own way to incorporate perturbations (apply_impulse vs run with white noise) and have their own way to generate a random sequence of standard inputs. 
 
-class DESystem(DynamicalSystem):
+class ODESystem(DynamicalSystem):
     # This is only SMALL systems --- small enough to fit a full-state trajectory in memory, avoiding the need for restart files. 
     def __init__(self, state_dim, config):
         self.state_dim = state_dim
         self.config = config
         self.derive_parameters(config) # This includes both physical and simulation parameters
         return
-    @staticmethod
-    def list_required_instance_variables():
-        varreq = ['dt_step','dt_save']
-        return varreq
     @staticmethod
     @abstractmethod
     def label_from_config(config):
@@ -55,12 +50,29 @@ class DESystem(DynamicalSystem):
     def derive_parameters(self, config):
         # convert raw configuration into class attributes for efficient integration of dynamics
         pass
+    @staticmethod
+    def list_required_instance_variables():
+        varreq = super().list_required_instance_variables()
+        varreq += ['dt_step','dt_save','impulse_matrix','impulse_dim']
+        return varreq
     @abstractmethod
-    def generate_default_init_cond(self): # for spinup
+    def tendency(self, t, x): # aka 'drift' for an SDE
         pass
+    @staticmethod
+    def apply_impulse(t, x, imp):
+        # apply the impulse perturbation from imp to the instantaneous state x, to get a perturbed state xpert
+        return x + self.impulse_matrix @ imp
     @abstractmethod
-    def generate_default_forcing_sequence(self): # either with zero forcing (for ODE) or some specific default seed (for SDE)
-        pass 
+    def generate_default_init_cond(self,init_time): # for spinup
+        pass
+    def generate_default_forcing_sequence(self,init_time,fin_time): 
+        f = forcing.ImpulsiveForcing([init_time], np.zeros((1,self.impulse_dim)), fin_time)
+        return f
+    def generate_default_icandf(self,init_time,fin_time):
+        init_cond = self.generate_default_init_cond(init_time)
+        f = self.generate_default_init_cond(init_time)
+        icandf = dict({'init_cond': init_cond, 'frc': f})
+        return icandf
     def assemble_metadata(self, init_cond, f, method, filename):
         md = dict({
             'init_cond': init_cond, 
@@ -79,60 +91,7 @@ class DESystem(DynamicalSystem):
             traj['t'] = traj['t'][idx0:idx1+1]
             traj['x'] = traj['x'][idx0:idx1+1]
         return traj['t'],traj['x']
-    def run_trajectory_unperturbed(self, init_cond, init_time, fin_time, method, rng=None):
-        assert(isinstance(init_time,int) and isinstance(fin_time,int))
-        t_save = np.arange(init_time, fin_time+1, 1) # unitless
-        tp_save = t_save * self.dt_save # physical (unitful)
-        Nt_save = len(t_save)
-        # Initialize the solution array
-        x_save = np.zeros((Nt_save, self.state_dim))
-        # special cases: endpoints
-        if init_time % 1 == 0:
-            x_save[0] = init_cond
-            i_save = 1
-        else:
-            i_save = 0
-        tp_save_next = tp_save[i_save]
-        x = init_cond
-        tp = init_time * self.dt_save # physical units
-        if method == 'rk4':
-            timestep_fun = self.timestep_rk4
-            args = ()
-        elif method == 'euler':
-            timestep_fun = self.timestep_euler
-            args = ()
-        elif method == 'euler_maruyama':
-            assert rng is not None
-            timestep_fun = self.timestep_euler_maruyama
-            args = (self.diffusion,rng,)
-        while tp < tp_save[-1]:
-            tpnew,xnew = timestep_fun(tp, x, self.dt_step, self.tendency, *args)
-            if tpnew > tp_save_next:
-                new_weight = (tp_save_next - tp)/self.dt_step 
-                # TODO: save out an observable instead of the full state? Depends on a specified frequency
-                x_save[i_save] = (1-new_weight)*x + new_weight*xnew 
-                i_save += 1
-                if i_save < Nt_save:
-                    tp_save_next = tp_save[i_save]
-            x = xnew
-            tp = tpnew
-        return t_save,x_save
-
-class ODESystem(DESystem):
-    @staticmethod
-    def list_required_instance_variables():
-        varreq = super().list_required_instance_variables()
-        varreq_other = ['impulse_matrix','impulse_dim']
-        varreq.append(varreq_other)
-        return varreq
     # These are driven by impulses only
-    @staticmethod
-    def apply_impulse(t, x, imp):
-        # apply the impulse perturbation from imp to the instantaneous state x, to get a perturbed state xpert
-        return x + self.impulse_matrix @ imp
-    @abstractmethod
-    def tendency(self, t, x): # aka 'drift' for an SDE
-        pass
     def timestep_rk4(t, x): # physical time units
         k1 = self.dt_step * self.tendency(t,x)
         k2 = self.dt_step * self.tendency(t+self.dt_step/2, x+k1/2)
@@ -205,46 +164,82 @@ class ODESystem(DESystem):
         # save full state out to saveinfo
         np.savez(saveinfo['filename'], t=t, x=x)
         return metadata,observables
-    def generate_default_forcing_sequence(self):
-        f = forcing.ImpulsiveForcing([0], np.zeros((1,self.impulse_dim)), self.t_burnin)
-        return f
 
 class SDESystem(DESystem):
+    def __init__(self, config, ode):
+        self.ode = ode
+        super().__init__(self.ode.state_dim, config)
+        return
+
     @staticmethod
     def list_required_instance_variables():
         varreq = super().list_required_instance_variables()
-        varreq_other = ['sqrt_dt_step','seed_min','seed_max','white_noise_dim']
-        varreq.append(varreq_other)
+        varreq += self.ode.list_required_instance_variables()
+        varreq += ['sqrt_dt_step','seed_min','seed_max','white_noise_dim']
         return varreq
-    @abstractmethod
-    def drift(self, t, x):
-        pass
     @abstractmethod
     def diffusion(self, t, x):
         pass
     def timestep_euler_maruyama(t, x, rng): # physical time units
-        k1 = self.dt_step * self.drift(t,x)
-        sigma = self.diffusion(t,x)
-        sdw = self.sqrt_dt_step * sigma @ rng.normal(size=(self.white_noise_dim,))
-        xnew = x + k1 + sdw
-        return t+self.dt_step, xnew
+        k1 = self.dt_step * self.ode.tendency(t,x)
+        sdw = self.sqrt_dt_step * self.diffusion(t,x) @ rng.normal(size=(self.white_noise_dim,))
+        return t+self.dt_step, x+k1+sdw
+    def run_trajectory_unperturbed(self, init_cond, init_time, fin_time, method, rng):
+        assert(isinstance(init_time,int) and isinstance(fin_time,int))
+        t_save = np.arange(init_time, fin_time+1, 1) # unitless
+        tp_save = t_save * self.dt_save # physical (unitful)
+        Nt_save = len(t_save)
+        # Initialize the solution array
+        x_save = np.zeros((Nt_save, self.state_dim))
+        # special cases: endpoints
+        if init_time % 1 == 0:
+            x_save[0] = init_cond
+            i_save = 1
+        else:
+            i_save = 0
+        tp_save_next = tp_save[i_save]
+        x = init_cond
+        tp = init_time * self.dt_save # physical units
+        if method == 'euler_maruyama':
+            timestep_fun = self.timestep_euler_maruyama
+        while tp < tp_save[-1]:
+            tpnew,xnew = timestep_fun(tp, x, rng)
+            if tpnew > tp_save_next:
+                new_weight = (tp_save_next - tp)/self.dt_step 
+                # TODO: save out an observable instead of the full state? Depends on a specified frequency
+                x_save[i_save] = (1-new_weight)*x + new_weight*xnew 
+                i_save += 1
+                if i_save < Nt_save:
+                    tp_save_next = tp_save[i_save]
+            x = xnew
+            tp = tpnew
+        return t_save,x_save
     def run_trajectory(self, icandf, obs_fun, saveinfo):
-        init_cond_nopert,f = icandf['init_cond'],icandf['frc']
-        assert(isinstance(f.init_time,int) and isinstance(f.fin_time,int))
-        t = np.arange(f.init_time, f.fin_time+1)
+        init_cond_nopert,f_white,f_imp = icandf['init_cond'],icandf['frc_white'],icandf['frc_impulsive']
+        assert(np.all([isinstance(tinst,int) for tinst in [f_white.init_time,f_imp.init_time, f_white.fin_time, f_imp.fin_time]]))
+        assert((f_white.init_time == f_imp.init_time) and (f_white.fin_time == f_imp.fin_time))
+        t = np.arange(f_imp.init_time, f_imp.fin_time+1)
         Nt = len(t)
         x = np.zeros((Nt, self.state_dim))
         # Need to set up three things: init_time, init_cond, fin_time
-        init_time_temp = f.init_time
+        init_time_temp = f_imp.init_time
         method = 'euler_maruyama'
         init_cond_temp = init_cond_nopert.copy()
         i_save = 0
-        for i_seed in range(len(f.reseed_times)):
-            if i_seed+1 < len(f.reseed_times):
-                fin_time_temp = f.reseed_times[i_seed+1]
+        frc_change_times = np.sort(np.union1d(f_imp.impulse_times, f_white.reseed_times))
+        i_imp = 0
+        i_seed = 0
+        for i_df in range(len(frc_change_times)):
+            if i_df+1 < len(frc_change_times):
+                fin_time_temp = frc_change_times[i_df+1]
             else:
-                fin_time_temp = f.fin_time
-            rng = default_rng(f.seeds[i_seed])
+                fin_time_temp = f_imp.fin_time
+            if frc_change_times[i_df] in f_imp.impulse_times:
+                init_cond_temp = self.apply_impulse(init_time_temp, init_cond_temp, f_imp.impulses[i_imp])
+                i_imp += 1
+            if frc_change_times[i_df] in f_white.seed_times:
+                rng = default_rng(f_white.seeds[i_seed])
+                i_seed += 1
             t_temp,x_temp = self.run_trajectory_unperturbed(init_cond_temp, init_time_temp, fin_time_temp, method, rng)
             x[i_save:i_save+len(t_temp)] = x_temp
             init_time_temp = fin_time_temp
@@ -255,9 +250,14 @@ class SDESystem(DESystem):
         # save full state out to saveinfo
         np.savez(saveinfo['filename'], t=t, x=x)
         return metadata,observables
-    def generate_default_forcing_sequence(self):
-        f = forcing.WhiteNoiseForcing([0], [self.seed_min], self.t_burnin)
+    def generate_default_forcing_sequence(self,init_time,fin_time):
+        f = forcing.WhiteNoiseForcing([init_time], [self.seed_min], fin_time)
         return f
+    def generate_default_icandf(self,init_time,fin_time):
+        f_white = self.generate_default_forcing_sequence(init_time, fin_time)
+        icandf_imp = self.ode.generate_default_icandf(init_time,fin_time)
+        icandf = dict({'init_cond': icandf_imp['init_cond'], 'frc_white': f_white, 'frc_impulsive': icandf_imp['frc']})
+        return icandf
 
 
 
