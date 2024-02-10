@@ -134,8 +134,8 @@ class Lorenz96SDE(SDESystem):
             abbrv_noise_site += "-".join([f"{site:g}" for site in w['sites']]) + "_"
             abbrv_noise_site += "-".join([f"{mag:g}" for mag in w['site_magnitudes']])
             label_noise_site += ", ".join(["$\mathcal{F}_{%g}=%g"%(site,mag) for (site,mag) in zip(w['sites'],w['site_magnitudes'])])
-        abbrv_sde = "_".join([abbrv_kf,abbrv_noise_wave,abbrv_noise_site]).replace('.','p')
-        label_sde = "\n".join([label_kf,label_noise_wave,label_noise_site])
+        abbrv_sde = "_".join([abbrv_noise_wave,abbrv_noise_site]).replace('.','p')
+        label_sde = "\n".join([label_noise_wave,label_noise_site])
 
         abbrv = f'{abbrv_ode}_{abbrv_sde}'
         label = f'{label_ode}\n{label_sde}'

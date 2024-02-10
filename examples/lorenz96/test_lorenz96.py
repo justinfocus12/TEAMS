@@ -160,7 +160,7 @@ def test_Lorenz96_sde():
 
     # Configure the ODE firt
     config_ode = dict({'K': 40, 'F': 6.0, 'dt_step': 0.001, 'dt_save': 0.05,})
-    config_ode['t_burnin'] = int(10/config['dt_save'])
+    config_ode['t_burnin'] = int(10/config_ode['dt_save'])
     config_ode['frc'] = dict({
         'type': 'impulsive',
         'impulsive': dict({
@@ -192,17 +192,18 @@ def test_Lorenz96_sde():
     makedirs(ensdir, exist_ok=True)
 
     if tododict['run_ensemble']: 
-        ode = Lorenz96ODE(config)
-        tu = ode.dt_save
+        ode = Lorenz96ODE(config_ode)
+        sde = Lorenz96SDE(ode, config_sde)
+        tu = sde.ode.dt_save
 
-        ens = Ensemble(ode)
+        ens = Ensemble(sde)
 
         # Decide which observables to track 
         obs_names = ['t','x0','E0','E','Emax']
         obs_dict = dict({name: [] for name in obs_names})
 
         def obs_fun(t,x):
-            obs = dict({name: ode.observable(t,x,name) for name in obs_names})
+            obs = dict({name: sde.ode.observable(t,x,name) for name in obs_names})
             return obs
 
         def append_obs_dict(od, odnew):
@@ -234,10 +235,9 @@ def test_Lorenz96_sde():
         parent = 0
         md_parent = ens.traj_metadata[parent]
         icandf = copylib.deepcopy(md_parent['icandf'])
-        icandf['frc'].impulse_times.append(split_times[0])
-        icandf['frc'].impulses.append(rng.normal(size=ode.impulse_dim))
+        icandf['frc'].frc_list[1].reseed_times.append(split_times[0])
+        icandf['frc'].frc_list[1].seeds.append(rng.integers(low=sde.seed_min,high=sde.seed_max))
         saveinfo = dict(filename = join(ensdir, 'mem1.npz'))
-        print(f'For mem 1, {icandf = }\n{icandf["frc"].impulse_times = }')
         obs_val_new = ens.branch_or_plant(icandf, obs_fun, saveinfo, parent=parent)
         append_obs_dict(obs_dict, obs_val_new)
 
@@ -245,10 +245,9 @@ def test_Lorenz96_sde():
         parent = 1
         md_parent = ens.traj_metadata[parent]
         icandf = copylib.deepcopy(md_parent['icandf'])
-        icandf['frc'].impulse_times.append(split_times[1])
-        icandf['frc'].impulses.append(rng.normal(size=ode.impulse_dim))
+        icandf['frc'].frc_list[1].reseed_times.append(split_times[1])
+        icandf['frc'].frc_list[1].seeds.append(rng.integers(low=sde.seed_min,high=sde.seed_max))
         saveinfo = dict(filename = join(ensdir, 'mem2.npz'))
-        print(f'For mem 2, {icandf = }\n{icandf["frc"].impulse_times = }')
         obs_val_new = ens.branch_or_plant(icandf, obs_fun, saveinfo, parent=parent)
         append_obs_dict(obs_dict, obs_val_new)
 
@@ -260,14 +259,14 @@ def test_Lorenz96_sde():
     
     ens = pickle.load(open(join(ensdir, 'ens.pickle'), 'rb'))
     obs_dict = pickle.load(open(join(ensdir, 'obs_dict.pickle'),'rb'))
-    ode = ens.dynsys
-    tu = ode.dt_save
+    sde = ens.dynsys
+    tu = sde.ode.dt_save
 
     if tododict['check_overlap']:
         # Do all three trajectories match? 
-        t0,x0 = ode.load_trajectory(ens.traj_metadata[0])
-        t1,x1 = ode.load_trajectory(ens.traj_metadata[1])
-        t2,x2 = ode.load_trajectory(ens.traj_metadata[2])
+        t0,x0 = sde.load_trajectory(ens.traj_metadata[0])
+        t1,x1 = sde.load_trajectory(ens.traj_metadata[1])
+        t2,x2 = sde.load_trajectory(ens.traj_metadata[2])
 
         x0_neq_x1 = np.where(np.any(x0 != x1, axis=1))[0]
         if len(x0_neq_x1) > 0:
