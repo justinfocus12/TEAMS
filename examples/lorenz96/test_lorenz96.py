@@ -4,6 +4,7 @@ import pickle
 from scipy import sparse as sps
 from os.path import join, exists
 from os import makedirs
+import sys
 import copy as copylib
 import matplotlib
 import matplotlib.pyplot as plt
@@ -36,7 +37,7 @@ def test_Lorenz96_ode():
             }),
         })
     scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/lorenz96"
-    date_str = "2024-02-09"
+    date_str = "2024-02-10"
     sub_date_str = "0"
     param_abbrv,param_label = Lorenz96ODE.label_from_config(config)
     ensdir = join(scratch_dir, date_str, sub_date_str, param_abbrv)
@@ -170,7 +171,7 @@ def test_Lorenz96_sde():
             'site_magnitudes': [0.5, 0.5],
             }),
         })
-    # Configure the SDE on top
+    # Configure the SDE
     config_sde = dict({
         'seed_min': 1000,
         'seed_max': 100000,
@@ -185,7 +186,7 @@ def test_Lorenz96_sde():
             }),
         })
     scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/lorenz96"
-    date_str = "2024-02-09"
+    date_str = "2024-02-10"
     sub_date_str = "0"
     param_abbrv,param_label = Lorenz96SDE.label_from_config(config_ode,config_sde)
     ensdir = join(scratch_dir, date_str, sub_date_str, param_abbrv)
@@ -299,4 +300,6 @@ def test_Lorenz96_sde():
     return
 
 if __name__ == "__main__":
-    test_Lorenz96_sde()
+    sysarg2test = dict({'0': test_Lorenz96_sde, '1': test_Lorenz96_ode, })
+    for arg in sys.argv[1:]:
+        sysarg2test[arg]()

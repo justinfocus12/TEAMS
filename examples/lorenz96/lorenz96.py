@@ -32,15 +32,19 @@ class Lorenz96ODE(ODESystem): # TODO make a superclass Lorenz96, and a sibling s
         abbrv_noise_site = ""
         label_noise_site = ""
         if len(w['wavenumbers']) > 0:
-            abbrv_noise_wave = "wvnum"
+            abbrv_noise_wave = "wv"
             abbrv_noise_wave += "-".join([f"{wn:g}" for wn in w['wavenumbers']]) + "_"
             abbrv_noise_wave += "-".join([f"{mag:g}" for mag in w['wavenumber_magnitudes']])
             label_noise_wave = ", ".join(["$F_{%g}=%g"%(wn,mag) for (wn,mag) in zip(w['wavenumbers'],w['wavenumber_magnitudes'])])
+        else:
+            abbrv_noise_wave = "wvnil"
         if len(w['sites']) > 0:
             abbrv_noise_site = "site"
             abbrv_noise_site += "-".join([f"{site:g}" for site in w['sites']]) + "_"
             abbrv_noise_site += "-".join([f"{mag:g}" for mag in w['site_magnitudes']])
             label_noise_site += ", ".join(["$\mathcal{F}_{%g}=%g"%(site,mag) for (site,mag) in zip(w['sites'],w['site_magnitudes'])])
+        else:
+            abbrv_noise_site = "sitenil"
         abbrv = "_".join([abbrv_kf,abbrv_noise_wave,abbrv_noise_site]).replace('.','p')
         label = "\n".join([label_kf,label_noise_wave,label_noise_site])
 
@@ -125,15 +129,19 @@ class Lorenz96SDE(SDESystem):
         abbrv_noise_site = ""
         label_noise_site = ""
         if len(w['wavenumbers']) > 0:
-            abbrv_noise_wave = "wvnum"
+            abbrv_noise_wave = "wv"
             abbrv_noise_wave += "-".join([f"{wn:g}" for wn in w['wavenumbers']]) + "_"
             abbrv_noise_wave += "-".join([f"{mag:g}" for mag in w['wavenumber_magnitudes']])
             label_noise_wave = ", ".join(["$F_{%g}=%g"%(wn,mag) for (wn,mag) in zip(w['wavenumbers'],w['wavenumber_magnitudes'])])
+        else:
+            abbrv_noise_wave = "wvnil"
         if len(w['sites']) > 0:
             abbrv_noise_site = "site"
             abbrv_noise_site += "-".join([f"{site:g}" for site in w['sites']]) + "_"
             abbrv_noise_site += "-".join([f"{mag:g}" for mag in w['site_magnitudes']])
             label_noise_site += ", ".join(["$\mathcal{F}_{%g}=%g"%(site,mag) for (site,mag) in zip(w['sites'],w['site_magnitudes'])])
+        else:
+            abbrv_noise_site = "sitenil"
         abbrv_sde = "_".join([abbrv_noise_wave,abbrv_noise_site]).replace('.','p')
         label_sde = "\n".join([label_noise_wave,label_noise_site])
 

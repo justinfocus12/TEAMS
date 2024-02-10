@@ -17,7 +17,7 @@ class DynamicalSystem(ABC):
     def list_required_instance_variables(self):
         return []
     @abstractmethod
-    def generate_default_icandf(self): # for spinup
+    def generate_default_icandf(self,init_time,fin_time): # for spinup
         pass
     @abstractmethod
     def run_trajectory(self, icandf, obs_fun, saveinfo):
@@ -111,7 +111,7 @@ class ODESystem(DynamicalSystem):
         else:
             i_save = 0
         tp_save_next = tp_save[i_save]
-        x = init_cond
+        x = init_cond.copy()
         tp = init_time * self.dt_save # physical units
         timestep_fun_dict = {'rk4': self.timestep_rk4, 'euler': self.timestep_euler}
         timestep_fun = timestep_fun_dict[method]
@@ -159,10 +159,13 @@ class ODESystem(DynamicalSystem):
         np.savez(saveinfo['filename'], t=t, x=x)
         return metadata,observables
 
+
 class SDESystem(DynamicalSystem):
-    def __init__(self, config, ode):
+    def __init__(self, ode, config_sde):
         self.ode = ode
-        self.derive_parameters(config)
+        self.dt_save = ode.dt_save
+        self.config = config_sde
+        self.derive_parameters(config_sde) # This includes both physical and simulation parameters
         return
 
     @staticmethod
@@ -176,17 +179,18 @@ class SDESystem(DynamicalSystem):
     @abstractmethod
     def diffusion(self, t, x):
         pass
-    def timestep_euler_maruyama(t, x, rng): # physical time units
+    def timestep_euler_maruyama(self, t, x, rng): # physical time units
         k1 = self.ode.dt_step * self.ode.tendency(t,x)
         sdw = self.sqrt_dt_step * self.diffusion(t,x) @ rng.normal(size=(self.white_noise_dim,))
-        return t+self.dt_step, x+k1+sdw
+        return t+self.ode.dt_step, x+k1+sdw
     def run_trajectory_unperturbed(self, init_cond, init_time, fin_time, method, rng):
-        assert(isinstance(init_time,int) and isinstance(fin_time,int))
+        print(f'{init_time = }, {fin_time = }')
+        #assert(isinstance(init_time,int) and isinstance(fin_time,int))
         t_save = np.arange(init_time, fin_time+1, 1) # unitless
-        tp_save = t_save * self.dt_save # physical (unitful)
+        tp_save = t_save * self.ode.dt_save # physical (unitful)
         Nt_save = len(t_save)
         # Initialize the solution array
-        x_save = np.zeros((Nt_save, self.state_dim))
+        x_save = np.zeros((Nt_save, self.ode.state_dim))
         # special cases: endpoints
         if init_time % 1 == 0:
             x_save[0] = init_cond
@@ -194,14 +198,14 @@ class SDESystem(DynamicalSystem):
         else:
             i_save = 0
         tp_save_next = tp_save[i_save]
-        x = init_cond
-        tp = init_time * self.dt_save # physical units
+        x = init_cond.copy()
+        tp = init_time * self.ode.dt_save # physical units
         if method == 'euler_maruyama':
             timestep_fun = self.timestep_euler_maruyama
         while tp < tp_save[-1]:
             tpnew,xnew = timestep_fun(tp, x, rng)
             if tpnew > tp_save_next:
-                new_weight = (tp_save_next - tp)/self.dt_step 
+                new_weight = (tp_save_next - tp)/self.ode.dt_step 
                 # TODO: save out an observable instead of the full state? Depends on a specified frequency
                 x_save[i_save] = (1-new_weight)*x + new_weight*xnew 
                 i_save += 1
@@ -211,36 +215,37 @@ class SDESystem(DynamicalSystem):
             tp = tpnew
         return t_save,x_save
     def run_trajectory(self, icandf, obs_fun, saveinfo):
-        init_cond_nopert,f = icandf['init_cond'],icandf['frc'],icandf['frc']
+        init_cond_nopert,f = icandf['init_cond'],icandf['frc']
         t = np.arange(f.init_time, f.fin_time+1)
         Nt = len(t)
-        x = np.zeros((Nt, self.state_dim))
+        x = np.zeros((Nt, self.ode.state_dim))
         # Need to set up three things: init_time, init_cond, fin_time
         init_time_temp = f.init_time
         method = 'euler_maruyama'
         init_cond_temp = init_cond_nopert.copy()
         i_save = 0
         frc_change_times = f.get_forcing_times()
+        i_df_bytype = np.zeros(len(f.frc_list), dtype=int)
         for i_df in range(len(frc_change_times)):
             if i_df+1 < len(frc_change_times):
                 fin_time_temp = frc_change_times[i_df+1]
             else:
                 fin_time_temp = f.fin_time
-            for i_frc_comp in f.frc_comps[i_df]:
-                fcomp = f.frc_list[i_frc_comp]
-                if isinstance(fcomp, forcing.ImpulsiveForcing):
-                    init_cond_temp = self.apply_impulse(init_time_temp, init_cond_temp, fcomp.impulses[i_imp])
-                    # TODO finish
-                    i_imp += 1
-                if frc_change_times[i_df] in f_white.seed_times:
-                    rng = default_rng(f_white.seeds[i_seed])
-                    i_seed += 1
+            for i_comp in range(len(f.frc_list)):
+                fcomp = f.frc_list[i_comp]
+                if frc_change_times[i_df] in fcomp.get_forcing_times():
+                    if isinstance(fcomp, forcing.ImpulsiveForcing):
+                        init_cond_temp = self.ode.apply_impulse(init_time_temp, init_cond_temp, fcomp.impulses[i_df_bytype[i_comp]])
+                    elif isinstance(fcomp, forcing.WhiteNoiseForcing):
+                        rng = default_rng(fcomp.seeds[i_df_bytype[i_comp]])
+                    i_df_bytype[i_comp] += 1
+            print(f'{init_time_temp = }, {fin_time_temp = }')
             t_temp,x_temp = self.run_trajectory_unperturbed(init_cond_temp, init_time_temp, fin_time_temp, method, rng)
             x[i_save:i_save+len(t_temp)] = x_temp
             init_time_temp = fin_time_temp
             init_cond_temp = x_temp[-1]
             i_save += len(t_temp) - 1
-        metadata = self.assemble_metadata(init_cond_nopert, f, method, saveinfo['filename'])
+        metadata = self.assemble_metadata(icandf, method, saveinfo)
         observables = obs_fun(t,x)
         # save full state out to saveinfo
         np.savez(saveinfo['filename'], t=t, x=x)
@@ -254,7 +259,7 @@ class SDESystem(DynamicalSystem):
         icandf = dict({
             'init_cond': icandf_imp['init_cond'], 
 
-            'frc': forcing.SuperposedForcing([f_white, icandf_imp['frc']]),
+            'frc': forcing.SuperposedForcing([icandf_imp['frc'],f_white]),
             })
         return icandf
     def assemble_metadata(self, icandf, method, saveinfo):
@@ -264,6 +269,127 @@ class SDESystem(DynamicalSystem):
             'filename': saveinfo['filename'],
             })
         return md
+    def load_trajectory(self, metadata, tspan=None):
+        return self.ode.load_trajectory(metadata, tspan)
 
-
+class CoupledSystem(DynamicalSystem):
+    # drive an ODE x with an SDE y (meaning an Ito diffusion)
+    def __init__(self, ode, sde, config_coupling):
+        self.ode = ode # X variables 
+        self.sde = sde # Y variables
+        # TODO: what if ode and sde have different save-out times? 
+        assert(self.ode.dt_save == self.sde.dt_save)
+        self.dt_save = ode.dt_save
+        self.derive_parameters(config_coupling)
+        return
+    @abstractmethod
+    def perturbed_tendency(self, t, x, xdot, y):
+        # This should only depend on the current state variable, y. 
+        pass
+    def timestep_euler_maruyama(self, t, x, y, rng):
+        dx = self.ode.dt_step * self.perturbed_tendency(
+                t, x, self.ode.tendency(t, x), y)
+        dy_drift = self.ode.dt_step * self.sde.ode.tendency(t, y) # TODO replace with self.sde.run_trajectory_unperturbed (need to generalize time units first to deal with fast-slow systems, for example)
+        sdw += self.sde.sqrt_dt_step * self.sde.diffusion(t, y) @ rng.normal(size=(self.sde.white_noise_dim,))
+        return t+self.ode.dt_step, x+dx, y+dy_drift+sdw
+    def run_trajectory_unperturbed(self, init_cond_x, init_cond_y, init_time, fin_time, method, rng):
+        print(f'{init_time = }, {fin_time = }')
+        #assert(isinstance(init_time,int) and isinstance(fin_time,int))
+        t_save = np.arange(init_time, fin_time+1, 1) # unitless
+        tp_save = t_save * self.ode.dt_save # physical (unitful)
+        Nt_save = len(t_save)
+        # Initialize the solution array
+        x_save = np.zeros((Nt_save, self.ode.state_dim))
+        y_save = np.zeros((Nt_save, self.sde.state_dim))
+        # special cases: endpoints
+        if init_time % 1 == 0:
+            x_save[0] = init_cond_x
+            y_save[0] = init_cond_y
+            i_save = 1
+        else:
+            i_save = 0
+        tp_save_next = tp_save[i_save]
+        x = init_cond_x.copy()
+        y = init_cond_y.copy()
+        tp = init_time * self.ode.dt_save # physical units
+        if method == 'euler_maruyama':
+            timestep_fun = self.timestep_euler_maruyama
+        while tp < tp_save[-1]:
+            tpnew,xnew,ynew = timestep_fun(tp, x, y, rng)
+            if tpnew > tp_save_next:
+                new_weight = (tp_save_next - tp)/self.ode.dt_step 
+                # TODO: save out an observable instead of the full state? Depends on a specified frequency
+                x_save[i_save] = (1-new_weight)*x + new_weight*xnew 
+                y_save[i_save] = (1-new_weight)*y + new_weight*ynew 
+                i_save += 1
+                if i_save < Nt_save:
+                    tp_save_next = tp_save[i_save]
+            x = xnew
+            y = ynew
+            tp = tpnew
+        return t_save,x_save,y_save
+    def run_trajectory(self, icandf, obs_fun, saveinfo):
+        init_cond_nopert_x,f_x = icandf['x']['init_cond'],icandf['x']['frc']
+        init_cond_nopert_y,f_y = icandf['y']['init_cond'],icandf['y']['frc']
+        t = np.arange(f_x.init_time, f_x.fin_time+1)
+        Nt = len(t)
+        x = np.zeros((Nt, self.ode.state_dim))
+        y = np.zeros((Nt, self.sde.state_dim))
+        # Need to set up three things: init_time, init_cond, fin_time
+        init_time_temp = f_x.init_time
+        method = 'euler_maruyama'
+        init_cond_temp_x = init_cond_nopert_x.copy()
+        init_cond_temp_y = init_cond_nopert_y.copy()
+        i_save = 0
+        frc_change_times_x = f_x.get_forcing_times()
+        frc_change_times_y = f_y.get_forcing_times()
+        i_df_x = np.zeros(len(f_x.frc_list), dtype=int)
+        i_df_bytype_y = np.zeros(len(f_y.frc_list), dtype=int)
+        frc_change_times = np.union1d(frc_change_times_x, frc_change_times_y)
+        for i_df in range(len(frc_change_times)):
+            if i_df+1 < len(frc_change_times):
+                fin_time_temp = frc_change_times[i_df+1]
+            else:
+                fin_time_temp = f.fin_time
+            # Forces on x can only be impulsive 
+            if frc_change_times[i_df] in f_x.get_forcing_times():
+                init_cond_temp_x = self.ode.apply_impulse(init_time_temp, init_cond_temp_x, f_x.impulses[i_df_x])
+                i_df_x += 1
+            if frc_change_times[i_dg] in f_y.get_forcing_times():
+                for i_comp in range(len(f_y.frc_list)):
+                    fcomp = f_y.frc_list[i_comp]
+                    if frc_change_times[i_df] in fcomp.get_forcing_times():
+                        if isinstance(fcomp, forcing.ImpulsiveForcing):
+                            init_cond_temp_y = self.sde.ode.apply_impulse(init_time_temp, init_cond_temp_y, fcomp.impulses[i_df_bytype_y[i_comp]])
+                        elif isinstance(fcomp, forcing.WhiteNoiseForcing):
+                            rng = default_rng(fcomp.seeds[i_df_bytype_y[i_comp]])
+                        i_df_bytype_y[i_comp] += 1
+                print(f'{init_time_temp = }, {fin_time_temp = }')
+            t_temp,x_temp,y_temp = self.run_trajectory_unperturbed(init_cond_temp_x, init_cond_temp_y, init_time_temp, fin_time_temp, method, rng)
+            x[i_save:i_save+len(t_temp)] = x_temp
+            y[i_save:i_save+len(t_temp)] = y_temp
+            init_time_temp = fin_time_temp
+            init_cond_temp = x_temp[-1]
+            i_save += len(t_temp) - 1
+        metadata = self.assemble_metadata(icandf, method, saveinfo)
+        observables = obs_fun(t,x,y)
+        # save full state out to saveinfo
+        np.savez(saveinfo['filename'], t=t, x=x, y=y)
+        return metadata,observables
+    def assemble_metadata(self, icandf, method, saveinfo):
+        md = dict({
+            'icandf': icandf,
+            'method': method,
+            'filename': saveinfo['filename'],
+            })
+        return md
+    def load_trajectory(self, metadata, tspan=None):
+        traj = dict(np.load(metadata['filename']))
+        if tspan is not None:
+            idx0 = np.where(traj['t'] == tspan[0])[0][0]
+            idx1 = np.where(traj['t'] == tspan[1])[0][0]
+            traj['t'] = traj['t'][idx0:idx1+1]
+            traj['x'] = traj['x'][idx0:idx1+1]
+            traj['y'] = traj['y'][idx0:idx1+1]
+        return traj['t'],traj['x'],traj['y']
 

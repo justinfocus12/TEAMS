@@ -24,9 +24,17 @@ class ImpulsiveForcing(Forcing):
     def get_forcing_times(self):
         return self.impulse_times
 
-
-
 class WhiteNoiseForcing(Forcing):
+    def __init__(self, reseed_times, seeds, fin_time):
+        super().__init__(reseed_times[0], fin_time)
+        self.reseed_times = reseed_times
+        self.seeds = seeds
+        return
+    def get_forcing_times(self):
+        return self.reseed_times
+
+class MultiplicativeTendencyForcing(Forcing):
+    # Multiply an ODE tendency by a number between 0 and 1
     def __init__(self, reseed_times, seeds, fin_time):
         super().__init__(reseed_times[0], fin_time)
         self.reseed_times = reseed_times
@@ -40,15 +48,10 @@ class SuperposedForcing(Forcing):
         self.frc_list = frc_list
         init_time = min([f.init_time for f in frc_list])
         fin_time = max([f.fin_time for f in frc_list])
-        num_frc_comps = len(frc_list)
-        self.frc_times = reduce(np.union1d, [f.get_forcing_times() for f in frc_list])
         super().__init__(init_time, fin_time)
-        self.frc_comps = []
-        for ft in self.frc_times:
-            self.frc_comps.append([i for i in range(len(frc_list)) if ft in frc_list[i].get_forcing_times()])
         return
     def get_forcing_times(self):
-        return self.frc_times
+        return reduce(np.union1d, [f.get_forcing_times() for f in self.frc_list])
 
 
 

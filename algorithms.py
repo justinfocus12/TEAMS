@@ -38,24 +38,33 @@ class EnsembleAlgorithm(ABC):
 
 # TODO make a global acquisition algorithm and a local acquisition algorithm, for some higher-level algorithm to manage in tandem
 
-class PertGrowthMeasuringAlgorithm(EnsembleAlgorithm):
+class InitCondPertAlgo(EnsembleAlgorithm):
     # Algorithm to split off from initial condition 
+    # Only for ODE system...or maybe make this more general and have a class hierarchy mirroring that of DynamicalSystem...
     def derive_parameters(self, config):
         # Determine the random input space
-        self.frc_type,self.frc_dim = self.ens.dynsys.get_forcing_type_dim()
         self.seed_min,self.seed_max = config['seed_min'],config['seed_max']
         # Determine branching number
         self.branches_per_point = config['branches_per_point'] # How many different members to spawn from the same initial condition
-        self.branch_interval = config['branch_interval'] # How long to wait between consecutive splits
+        self.interbranch_interval = config['interbranch_interval'] # How long to wait between consecutive splits
         self.branch_duration = config['branch_duration'] # How long to run each branch
         self.num_branch_points = config['num_branch_points'] # but include the possibility for extension
         self.trunk_duration = self.ens.dynsys.t_burnin + self.branch_interval * self.num_branch_points
+        # Most likely all subclasses will derive from this 
         return
+    @abstractmethod
+    def obs_fun(self, t, x):
+        # We'll want to save out various observable functions of interest for post-analysis
+        # TODO start out with some mandatory observables, like time horizons, for easy metadata analysis
+        return
+    @abstractmethod
+    def generate_next_perturbation(self):
+        # This depends on the kind of ODE and the type of sampling we want to do 
+        pass
     def take_first_step(self, saveinfo):
         # The ensemble should be empty
         assert self.ens.memgraph.number_of_nodes() == 0
-        obs_fun = lambda t,x: None
-        icandf = self.ens.dynsys.generate_default_forcing_sequence(self.trunk_duration)
+        icandf = self.ens.dynsys.generate_default_icandf(0,self.trunk_duration)
         ens.branch_or_plant(icandf, obs_fun, saveinfo, parent=None)
         # Increment the tracker for the current branch etc
         self.next_branch_point = 0
