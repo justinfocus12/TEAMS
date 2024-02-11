@@ -20,6 +20,20 @@ class Lorenz96ODE(ODESystem): # TODO make a superclass Lorenz96, and a sibling s
         state_dim = config['K']
         super().__init__(state_dim, config)
     @staticmethod
+    def default_config():
+        config = dict({'K': 40, 'F': 6.0, 'dt_step': 0.001, 'dt_save': 0.05,})
+        config['t_burnin'] = int(10/config['dt_save'])
+        config['frc'] = dict({
+            'type': 'impulsive',
+            'impulsive': dict({
+                'wavenumbers': [],
+                'wavenumber_magnitudes': [],
+                'sites': [20],
+                'site_magnitudes': [0.01],
+                }),
+            })
+        return config
+    @staticmethod
     def label_from_config(config):
         abbrv_kf = f"K{config['K']:g}F{config['F']:g}".replace(".","p")
         label_kf = r"$K=%g,\ F=%g$"%(config['K'],config['F'])
@@ -94,6 +108,14 @@ class Lorenz96ODE(ODESystem): # TODO make a superclass Lorenz96, and a sibling s
         return np.sum(x**2, axis=1)/2
     def observable_Emax(self, t, x):
         return np.max(x**2, axis=1)/2
+    # -------------- Distance functions --------------
+    def distance(self, t0, x0, t1, x1, dist_name):
+        name2func = dict({
+            'euclidean': self.distance_euclidean,
+            })
+        return name2func[dist_name](t0,x0,t1,x1)
+    def distance_euclidean(self, t0, x0, t1, x1):
+        return np.sqrt(np.sum((x0 - x1)**2, axis=1))
     # --------------- plotting functions -----------------
     def check_fig_ax(self, fig=None, ax=None):
         if fig is None:
@@ -116,6 +138,20 @@ class Lorenz96ODE(ODESystem): # TODO make a superclass Lorenz96, and a sibling s
 
 
 class Lorenz96SDE(SDESystem):
+    @staticmethod
+    def default_config():
+        config = dict({'K': 40, 'F': 6.0, 'dt_step': 0.001, 'dt_save': 0.05,})
+        config['t_burnin'] = int(10/config['dt_save'])
+        config['frc'] = dict({
+            'type': 'white',
+            'white': dict({
+                'wavenumbers': [4],
+                'wavenumber_magnitudes': [0.5],
+                'sites': [],
+                'site_magnitudes': [],
+                }),
+            })
+        return config
     @staticmethod
     def label_from_config(config_ode, config):
         abbrv_ode,label_ode = Lorenz96ODE.label_from_config(config_ode)
