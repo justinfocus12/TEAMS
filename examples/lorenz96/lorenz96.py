@@ -35,11 +35,11 @@ class Lorenz96ODE(ODESystem): # TODO make a superclass Lorenz96, and a sibling s
         return config
     @staticmethod
     def label_from_config(config):
-        abbrv_kf = f"K{config['K']:g}F{config['F']:g}".replace(".","p")
+        abbrv_kf = f"L96_K{config['K']:g}F{config['F']:g}".replace(".","p")
         label_kf = r"$K=%g,\ F=%g$"%(config['K'],config['F'])
         if config['frc']['type'] == 'impulsive':
-            abbrv_noise = "impnoise_"
-            label_noise = "Impulsive noise: "
+            abbrv_noise_type = "impnoise"
+            label_noise_type = "Impulsive noise: "
         w = config['frc'][config['frc']['type']]
         abbrv_noise_wave = ""
         label_noise_wave = ""
@@ -59,8 +59,8 @@ class Lorenz96ODE(ODESystem): # TODO make a superclass Lorenz96, and a sibling s
             label_noise_site += ", ".join(["$\mathcal{F}_{%g}=%g"%(site,mag) for (site,mag) in zip(w['sites'],w['site_magnitudes'])])
         else:
             abbrv_noise_site = "sitenil"
-        abbrv = "_".join([abbrv_kf,abbrv_noise_wave,abbrv_noise_site]).replace('.','p')
-        label = "\n".join([label_kf,label_noise_wave,label_noise_site])
+        abbrv = "_".join([abbrv_kf,abbrv_noise_type,abbrv_noise_wave,abbrv_noise_site]).replace('.','p')
+        label = "\n".join([label_kf,label_noise_type,label_noise_wave,label_noise_site])
 
         return abbrv,label
                 
@@ -140,26 +140,28 @@ class Lorenz96ODE(ODESystem): # TODO make a superclass Lorenz96, and a sibling s
 class Lorenz96SDE(SDESystem):
     @staticmethod
     def default_config():
-        config = dict({'K': 40, 'F': 6.0, 'dt_step': 0.001, 'dt_save': 0.05,})
-        config['t_burnin'] = int(10/config['dt_save'])
+        config = dict({'ode': Lorenz96ODE.default_config()})
+        config['seed_min'] = 1000
+        config['seed_max'] = 100000
         config['frc'] = dict({
             'type': 'white',
             'white': dict({
                 'wavenumbers': [4],
-                'wavenumber_magnitudes': [0.5],
+                'wavenumber_magnitudes': [0.25],
                 'sites': [],
                 'site_magnitudes': [],
                 }),
             })
         return config
     @staticmethod
-    def label_from_config(config_ode, config):
+    def label_from_config(config_ode, config_sde):
+        # config needs a separate sub-config dictionary pertaining to the ODE
         abbrv_ode,label_ode = Lorenz96ODE.label_from_config(config_ode)
         # Now append any new things
-        if config['frc']['type'] == 'white':
-            abbrv_noise = "whitenoise_"
-            label_noise = "White noise: "
-        w = config['frc'][config['frc']['type']]
+        if config_sde['frc']['type'] == 'white':
+            abbrv_noise_type = "whitenoise"
+            label_noise_type = "White noise: "
+        w = config_sde['frc'][config_sde['frc']['type']]
         abbrv_noise_wave = ""
         label_noise_wave = ""
         abbrv_noise_site = ""
@@ -178,8 +180,8 @@ class Lorenz96SDE(SDESystem):
             label_noise_site += ", ".join(["$\mathcal{F}_{%g}=%g"%(site,mag) for (site,mag) in zip(w['sites'],w['site_magnitudes'])])
         else:
             abbrv_noise_site = "sitenil"
-        abbrv_sde = "_".join([abbrv_noise_wave,abbrv_noise_site]).replace('.','p')
-        label_sde = "\n".join([label_noise_wave,label_noise_site])
+        abbrv_sde = "_".join([abbrv_noise_type,abbrv_noise_wave,abbrv_noise_site]).replace('.','p')
+        label_sde = "\n".join([label_noise_type,label_noise_wave,label_noise_site])
 
         abbrv = f'{abbrv_ode}_{abbrv_sde}'
         label = f'{label_ode}\n{label_sde}'
@@ -188,9 +190,11 @@ class Lorenz96SDE(SDESystem):
 
     def derive_parameters(self, config):
         # These config parameters are specific to the SDE 
+        self.config = config
         self.sqrt_dt_step = np.sqrt(self.ode.dt_step)
         self.seed_min = config['seed_min']
         self.seed_max = config['seed_max']
+        self.t_burnin = self.ode.t_burnin
         # White noie forcing
         fpar = config['frc']['white']
         self.white_noise_dim = 2*len(fpar['wavenumbers']) + len(fpar['sites'])
@@ -208,6 +212,10 @@ class Lorenz96SDE(SDESystem):
         return
     def diffusion(self, t, x):
         return self.diffusion_matrix
+    def observable(self, t, x, name):
+        return self.ode.observable(t, x, name)
+    def distance(self, t0, x0, t1, x1, name):
+        return self.ode.distance(t0, x0, t1, x1, name)
 
 
 

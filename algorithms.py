@@ -62,10 +62,10 @@ class PeriodicBranching(EnsembleAlgorithm):
                     )
                 ).replace(".","p")
         abbrv = '_'.join([
-            'OTMB',
+            'PeBr',
             abbrv_population,
             ])
-        label = '1 trunk, many branches'
+        label = 'Periodic branching'
         return abbrv,label
     @abstractmethod
     def obs_dict_names(self):
@@ -80,6 +80,18 @@ class PeriodicBranching(EnsembleAlgorithm):
         for name in self.obs_dict_names():
             self.obs_dict[name].append(obs_dict_new[name])
         return 
+    def plot_obs_spaghetti(self, obs_name, branch_point_subset=None):
+        if branch_point_subset is None:
+            branch_point_subset = np.arange(self.next_branch_point) # TODO include the branch point of each child as an observable function
+        tu = self.ens.dynsys.dt_save
+        fig,ax = plt.subplots(figsize=(12,5))
+        for bp in branch_point_subset:
+            child_subset = 1 + np.arange(bp * self.branches_per_point, (bp+1) * self.branches_per_point)
+            for child in child_subset:
+
+        return
+
+
     @abstractmethod
     def generate_next_icandf(self):
         # This depends on the kind of ODE and the type of sampling we want to do 
@@ -108,7 +120,7 @@ class PeriodicBranching(EnsembleAlgorithm):
         self.append_obs_dict(obs_dict_new)
         return
         
-class PeriodicBranchingODE(PeriodicBranching):
+class ODEPeriodicBranching(PeriodicBranching):
     # where the system of interest is an ODE
     def generate_next_icandf(self):
         # Determine the initial time
@@ -123,8 +135,8 @@ class PeriodicBranchingODE(PeriodicBranching):
             })
         return icandf
 
-class PeriodicBranchingSDE(PeriodicBranching):
-    # where the system of interest is an ODE
+class SDEPeriodicBranching(PeriodicBranching):
+    # where the system of interest is an SDE driven by white noise
     def generate_next_icandf(self):
         # Determine the initial time
         parent = 0
@@ -132,11 +144,15 @@ class PeriodicBranchingSDE(PeriodicBranching):
         parent_t,parent_x = self.ens.dynsys.load_trajectory(self.ens.traj_metadata[parent], tspan=[init_time]*2)
         print(f"{parent_t = }, {parent_x = }")
         seed = self.rng.integers(low=self.seed_min,high=self.seed_max)
+        frc_imp = forcing.ImpulsiveForcing([init_time], [np.zeros(self.ens.dynsys.ode.impulse_dim)], init_time+self.branch_duration-1)
+        frc_white = forcing.WhiteNoiseForcing([init_time], [seed], init_time+self.branch_duration-1)
         icandf = dict({
             'init_cond': parent_x[0],
-            'frc': forcing.WhiteNoiseForcing([init_time], [seed], init_time+self.branch_duration-1)
+            'frc': forcing.SuperposedForcing([frc_imp,frc_white]),
             })
         return icandf
+
+# TODO analysis of spreading rates
 
 
     

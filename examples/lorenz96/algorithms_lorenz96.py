@@ -18,7 +18,7 @@ from ensemble import Ensemble
 import forcing
 import algorithms
 
-class Lorenz96ODEInitCondPertAlgo(algorithms.ODEInitCondPertAlgo):
+class Lorenz96ODEPeriodicBranching(algorithms.ODEPeriodicBranching):
     def obs_dict_names(self):
         return ['x0','E0','E','Emax']
     def obs_fun(self, t, x):
@@ -28,7 +28,7 @@ class Lorenz96ODEInitCondPertAlgo(algorithms.ODEInitCondPertAlgo):
             })
         return obs_dict
 
-class Lorenz96SDEInitCondPertAlgo(algorithms.SDEInitCondPertAlgo):
+class Lorenz96SDEPeriodicBranching(algorithms.SDEPeriodicBranching):
     def obs_dict_names(self):
         return ['x0','E0','E','Emax']
     def obs_fun(self, t, x):
@@ -38,7 +38,7 @@ class Lorenz96SDEInitCondPertAlgo(algorithms.SDEInitCondPertAlgo):
             })
         return obs_dict
 
-def main(frc_type):
+def periodic_branching_impulsive():
     tododict = dict({
         'run_pert':                1,
         'plot_divergence':         1,
@@ -46,22 +46,20 @@ def main(frc_type):
     config_ode = Lorenz96ODE.default_config()
     tu = config_ode['dt_save'],
     scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/lorenz96"
-    date_str = "2024-02-10"
+    date_str = "2024-02-11"
     sub_date_str = "1"
-    param_abbrv_model,param_label_model = Lorenz96ODE.label_from_config(config_ode)
+    param_abbrv_ode,param_label_ode = Lorenz96ODE.label_from_config(config_ode)
     config_algo = dict({
         'seed_min': 1000,
         'seed_max': 100000,
-        'branches_per_point': 16, 
-        'interbranch_interval_phys': 6.0,
-        'branch_duration_phys': 15.0,
+        'branches_per_point': 8, 
+        'interbranch_interval_phys': 12.0,
+        'branch_duration_phys': 10.0,
         'num_branch_points': 5,
         })
     seed = 849582 # TODO make this a command-line argument
-    frc2algo = dict({'impulsive': algorithms.Lorenz96ODEInitCondPertAlgo, 'white': algorithms.PeriodicBranchingSDE,}) 
-    Alg = frc2algo[frc_type]
-    param_abbrv_algo,param_label_algo = Alg.label_from_config(config_algo)
-    algdir = join(scratch_dir, date_str, sub_date_str, param_abbrv_model, param_abbrv_algo)
+    param_abbrv_algo,param_label_algo = Lorenz96ODEPeriodicBranching.label_from_config(config_algo)
+    algdir = join(scratch_dir, date_str, sub_date_str, param_abbrv_ode, param_abbrv_algo)
     makedirs(algdir, exist_ok=True)
     alg_filename = join(algdir,'alg.pickle')
 
@@ -71,7 +69,7 @@ def main(frc_type):
         else:
             ode = Lorenz96ODE(config_ode)
             ens = Ensemble(ode)
-            alg = Alg(config_algo, ens, seed)
+            alg = Lorenz96ODEPeriodicBranching(config_algo, ens, seed)
 
         while not alg.terminate:
             mem = alg.ens.memgraph.number_of_nodes()
@@ -82,6 +80,7 @@ def main(frc_type):
 
     if tododict['plot_divergence']:
         alg = pickle.load(open(alg_filename, 'rb'))
+        tu = alg.ens.dynsys.dt_save
         fig,ax = plt.subplots(figsize=(12,5))
         parent = 0
         t_parent,x_parent = alg.ens.dynsys.load_trajectory(alg.ens.traj_metadata[parent])
@@ -92,20 +91,79 @@ def main(frc_type):
             tic,tfc = tmin-t_child[0], tmax-t_child[0]
             tip,tfp = tmin-t_parent[0], tmax-t_parent[0]
             dist = alg.ens.dynsys.distance(t_parent[tip:tfp+1], x_parent[tip:tfp+1], t_child[tic:tfc+1], x_child[tic:tfc+1], 'euclidean')
-            ax.plot(t_parent[tip:tfp+1], dist)
+            ax.plot(t_parent[tip:tfp+1]*tu, dist)
         ax.set_yscale('log')
         ax.set_xlabel('Time')
         ax.set_ylabel('Distance from parent')
         fig.savefig(join(algdir, 'divergence.png'), **pltkwargs)
         plt.close(fig)
 
+def periodic_branching_white():
+    tododict = dict({
+        'run_pert':                1,
+        'plot_divergence':         1,
+        })
+    config_ode = Lorenz96ODE.default_config()
+    for key in ['wavenumbers','wavenumber_magnitudes','sites','site_magnitudes']:
+        config_ode['frc']['impulsive'][key] = []
+    config_sde = Lorenz96SDE.default_config()
+    tu = config_ode['dt_save'],
+    scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/lorenz96"
+    date_str = "2024-02-11"
+    sub_date_str = "1"
+    param_abbrv_sde,param_label_sde = Lorenz96SDE.label_from_config(config_ode,config_sde)
+    config_algo = dict({
+        'seed_min': 1000,
+        'seed_max': 100000,
+        'branches_per_point': 8, 
+        'interbranch_interval_phys': 12.0,
+        'branch_duration_phys': 10.0,
+        'num_branch_points': 5,
+        })
+    seed = 849582 # TODO make this a command-line argument
+    param_abbrv_algo,param_label_algo = Lorenz96SDEPeriodicBranching.label_from_config(config_algo)
+    algdir = join(scratch_dir, date_str, sub_date_str, param_abbrv_sde, param_abbrv_algo)
+    makedirs(algdir, exist_ok=True)
+    alg_filename = join(algdir,'alg.pickle')
 
-            
+    if tododict['run_pert']:
+        if exists(alg_filename):
+            print(f'Alg is continuing')
+            alg = pickle.load(open(alg_filename, 'rb'))
+        else:
+            print(f'Alg is starting up')
+            ode = Lorenz96ODE(config_ode)
+            sde = Lorenz96SDE(ode,config_sde)
+            ens = Ensemble(sde)
+            alg = Lorenz96SDEPeriodicBranching(config_algo, ens, seed)
 
+        while not alg.terminate:
+            mem = alg.ens.memgraph.number_of_nodes()
+            print(f'----------- Starting member {mem} ----------------')
+            saveinfo = dict(filename=join(algdir,f'mem{mem}.npz'))
+            alg.take_next_step(saveinfo)
+            pickle.dump(alg, open(alg_filename, 'wb'))
+        print(f'{alg.terminate = }')
 
-
-
-
+    if tododict['plot_divergence']:
+        alg = pickle.load(open(alg_filename, 'rb'))
+        tu = alg.ens.dynsys.dt_save
+        fig,ax = plt.subplots(figsize=(12,5))
+        parent = 0
+        t_parent,x_parent = alg.ens.dynsys.load_trajectory(alg.ens.traj_metadata[parent])
+        for child in range(1,alg.ens.memgraph.number_of_nodes()):
+            t_child,x_child = alg.ens.dynsys.load_trajectory(alg.ens.traj_metadata[child])
+            # Get the overlap time indices
+            tmin,tmax = max(t_parent[0],t_child[0]),min(t_parent[-1],t_child[-1])
+            tic,tfc = tmin-t_child[0], tmax-t_child[0]
+            tip,tfp = tmin-t_parent[0], tmax-t_parent[0]
+            dist = alg.ens.dynsys.distance(t_parent[tip:tfp+1], x_parent[tip:tfp+1], t_child[tic:tfc+1], x_child[tic:tfc+1], 'euclidean')
+            ax.plot(t_parent[tip:tfp+1]*tu, dist)
+        #ax.set_yscale('log')
+        ax.set_xlabel('Time')
+        ax.set_ylabel('Distance from parent')
+        fig.savefig(join(algdir, 'divergence.png'), **pltkwargs)
+        plt.close(fig)
 
 if __name__ == "__main__":
-    main()
+    periodic_branching_impulsive()

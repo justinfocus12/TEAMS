@@ -236,8 +236,7 @@ class SDESystem(DynamicalSystem):
                 fin_time_temp = frc_change_times[i_df+1]
             else:
                 fin_time_temp = f.fin_time
-            for i_comp in range(len(f.frc_list)):
-                fcomp = f.frc_list[i_comp]
+            for i_comp,fcomp in enumerate(f.frc_list):
                 if frc_change_times[i_df] in fcomp.get_forcing_times():
                     if isinstance(fcomp, forcing.ImpulsiveForcing):
                         init_cond_temp = self.ode.apply_impulse(init_time_temp, init_cond_temp, fcomp.impulses[i_df_bytype[i_comp]])
