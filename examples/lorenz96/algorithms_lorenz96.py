@@ -46,8 +46,8 @@ def periodic_branching_impulsive():
     config_ode = Lorenz96ODE.default_config()
     tu = config_ode['dt_save'],
     scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/lorenz96"
-    date_str = "2024-02-11"
-    sub_date_str = "1"
+    date_str = "2024-02-13"
+    sub_date_str = "0"
     param_abbrv_ode,param_label_ode = Lorenz96ODE.label_from_config(config_ode)
     config_algo = dict({
         'seed_min': 1000,

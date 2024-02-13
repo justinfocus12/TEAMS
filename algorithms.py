@@ -21,7 +21,8 @@ import forcing
 class EnsembleAlgorithm(ABC):
     def __init__(self, config, ens, seed):
         self.ens = ens
-        self.rng = default_rng(seed) # In case ANY randomness is involved
+        self.seed_init = seed
+        self.rng = default_rng(self.seed_init) 
         self.terminate = False
         self.derive_parameters(config)
         return
@@ -88,6 +89,7 @@ class PeriodicBranching(EnsembleAlgorithm):
         for bp in branch_point_subset:
             child_subset = 1 + np.arange(bp * self.branches_per_point, (bp+1) * self.branches_per_point)
             for child in child_subset:
+                pass
 
         return
 
@@ -114,6 +116,7 @@ class PeriodicBranching(EnsembleAlgorithm):
                 self.next_branch_point += 1
                 self.next_branch_time += self.interbranch_interval
                 self.next_branch = 0
+                self.rng = default_rng(self.seed_init) # Every new branch point will receive the same sequence of random numbers
             else:
                 self.terminate = True
         obs_dict_new = self.ens.branch_or_plant(icandf, self.obs_fun, saveinfo, parent=parent)
