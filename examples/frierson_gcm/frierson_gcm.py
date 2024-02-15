@@ -54,11 +54,39 @@ class FriersonGCM(DynamicalSystem):
     def __init__(self, config):
 
 
-        fms_version = "jf_conv_gray_smooth"
-        platform = "gnu"
         
         self.derive_parameters(config)
+        #self.configure_os_environment()
+        #self.compile_mppnccombine()
+        #self.compile_model()
+
         return
+
+    def generate_default_icandf(self, init_time, fin_time):
+        nml = self.nml_const.copy()
+        nml['main_nml'] = dict({
+            'days': fin_time - init_time + 1,
+            'hours': 0,
+            'dt_atmos': 600,
+            })
+        nml['spectral_init_cond_nml'] = dict({
+            'initial_temperature': 280.0,
+            })
+        nml['spectral_dynamics_nml'].update(dict({
+            'do_perturbation': True,
+            'num_perturbations_actual': 0,
+            # TODO: can I actually have empty lists within the namelist?
+            'days_to_perturb': [],
+            'seed_values': [],
+            'perturbation_fraction': [],
+            }))
+        icandf = dict({
+            'restart_file': None,
+            'namelist': nml,
+            'init_time': init_time, 
+            'fin_time': fin_time,
+            })
+        return icandf
     @staticmethod
     def configure_os_environment():
         # OS stuff
@@ -71,142 +99,14 @@ class FriersonGCM(DynamicalSystem):
         return label, display
     @classmethod
     def default_config(cls):
-        platform = 'gnu'
         config = dict({
             'resolution': 'T21',
-            'abs': 1.0,
+            'abs': 1.0, # atmospheric absorption coefficient (larger means more greenhouse) 
             'nml_patches_misc': dict(),
-            'dirs': dict({
-                'source': 'src',
-                'exec': 'exec_spectral.{platform}',
-                }),
+            'base_dir': '/home/ju26596/jf_conv_gray_smooth',
+            'platform': 'gnu',
             })
         return config
-    @staticmethod
-    def setup_directories(base_dir, work_dir, output_dir):
-        # Prepare directories for a single ensemble member
-        makedirs(output_dir, exist_ok=True)
-        makedirs(join(output_dir,'history'),exist_ok=True)
-        makedirs(join(output_dir,'out_err_files'),exist_ok=True)
-        print(f"Just set up the output directory {output_dir}")
-        makedirs(work_dir, exist_ok=False)
-        makedirs(join(work_dir,'INPUT'),exist_ok=True)
-        makedirs(join(work_dir,'RESTART'),exist_ok=True)
-        print(f"Just set up the output directory {work_dir}")
-        return
-    @staticmethod
-    def cleanup_directories(base_dir, work_dir, output_dir, aggregate_output=False):
-        print(f"About to clean up")
-        shutil.rmtree(work_dir)
-        shutil.rmtree(join(output_dir,'out_err_files'))
-        logfiles = glob.glob(join(output_dir,'*.out'))
-        for f in logfiles:
-            os.remove(f)
-        print("About to aggregate")
-        if aggregate_output:
-            self.aggregate_output(load_immediately=True)
-        print("Finished aggregating")
-
-        # Remove the temporary and log files 
-        shutil.rmtree(self.dirs["work"])
-        shutil.rmtree(join(self.dirs["output"],"out_err_files"))
-        logfiles = glob.glob(join(self.dirs["output"], "*.out"))
-        for f in logfiles:
-            os.remove(f)
-
-        print(f"About to aggregate")
-        if self.aggregate_output_flag:
-            self.aggregate_output(load_immediately=True)
-        print(f"Finished aggregating")
-        return
-
-    def aggregate_output(self, dt_chunk=None, overwrite=False, load_immediately=True):
-        # TODO account for cases where the data size is too big
-        # Merge the distributed netcdf files into a single one; downsample to daily 
-        hist = self.load_history_selfmade_distributed(load_immediately=load_immediately)
-        hist_agg = dict()
-        # Downsample the 4xday fields to daily
-        freqs = ["4xday","1xday"]
-        for freq in freqs:
-            hist_agg[freq] = transformations.resample_to_daily(hist[freq])
-        # Combine into a single dataset
-        hist_agg = xr.merge([hist_agg[freq] for freq in freqs], compat="override")
-        # Split into chunks if necessary
-        dt = hist_agg["time"][:2].diff("time").item() 
-        Nt = hist_agg["time"].size
-        if dt_chunk is None:
-            dt_chunk = hist_agg["time"][-1].item() - hist_agg["time"][0].item() + 1.5*dt 
-        t0 = hist_agg["time"][0].item()
-        chunk_size = int(round(dt_chunk/dt))
-        i0 = 0
-        while i0 < Nt:
-            i1 = min(i0 + chunk_size, Nt)
-            print(f"i0 = {i0}, i1 = {i1}")
-            hist_chunk = hist_agg.isel(time=slice(i0,i1))
-            chunk_string = f"days{int(hist_chunk['time'][0].item()):04}-{int(hist_chunk['time'][-1].item()):04}"
-            print(f"chunk {chunk_string}")
-            filename = join(
-                    self.dirs["output"], "history",
-                    f"history_{chunk_string}.nc"
-                    )
-            print(f"filename = {filename}")
-            print(f"Does the filename exist? {exists(filename)}")
-            print(f"overwrite = {overwrite}")
-            if (not exists(filename)) or overwrite:
-                print(f"Starting to_netcdf...",end="")
-                #hist_chunk.to_netcdf("/home/ju26596/rare_event_simulation/splitting/examples/frierson_gcm/test_hist.nc")
-                hist_chunk.to_netcdf(filename, format="NETCDF3_64BIT")
-                print(f"Done")
-            i0 += chunk_size
-
-        # Now delete the old chunk directories
-        for freq in freqs:
-            hist[freq].close()
-        
-        chunk_dirs = glob.glob(join(self.dirs["output"],"history","days*h00/"))
-        for chd in chunk_dirs:
-            shutil.rmtree(chd)
-        return
-
-    def derive_parameters(self, config):
-        nml = self.default_namelist() # actually a dictionary
-
-        # Apply two patches: nmlpd with parameters derived from config, and then nml_misc (also from config) with explicit declarations for each extra variable.
-        nmlpd = dict() # nml patch derived
-
-        # Climate forcing parameters
-        nmlpd['radiation_nml'] = dict({
-            'ir_tau_pole': 1.8*config['abs'],
-            'ir_tau_eq': 7.2*config['abs'],
-            })
-
-        # Resolution parameters
-        resolution2gridspecs = dict({
-            'T21': dict({
-                'lon_max': 64,
-                'lat_max': 32,
-                'num_fourier': 21,
-                'num_spherical': 22,
-                }),
-            'T42': dict({
-                'lon_max': 128,
-                'lat_max': 64,
-                'num_fourier': 42,
-                'num_spherical': 43,
-                }),
-            })
-        nmlpd['spectral_dynamics_nml'] = resolution2gridspecs[config['resolution']]
-
-        for section in nml.keys():
-            for nmlpatch in [nmlpd,config['nml_patches_misc']]:
-                if section in nmlpatch.keys():
-                    nml[section].update(nmlpatch[section])
-
-        self.nml = nml # Because this namelist only includes physical parameters, not duration and timestep as will 
-
-        # Directories
-        return
-        
     @classmethod
     def default_namelist(cls):
         # TODO integrate this namelist more flexibly with the default namelist
@@ -274,6 +174,155 @@ class FriersonGCM(DynamicalSystem):
                 ),
             })
         return nml
+    def compile_model(self):
+        # Step 1: make the Makefile via mkmf
+        mkmf = join(self.base_dir,"bin","mkmf")
+        template = join(self.base_dir,'bin','mkmf')
+        source = join(self.base_dir,'src')
+        os.chdir(join(self.base_dir,f'exec_spectral.{self.platform}'))
+        pathnames = join(self.base_dir,'input','jf_spectral_pathnames')
+        mkmf_output = subprocess.run(f'{mkmf} -p fms.x -t {template} -c "-Duse_libMPI -Duse_netCDF"  -a {source} {pathnames}', executable="/bin/csh", shell=True, capture_output=True)
+        print(f"mkmf_output: \n{print_comp_proc(mkmf_output)}")
+
+        # Step 2: compile the source code using the mkmf-generated Makefile
+        make_output = subprocess.run(f"make -f Makefile", executable="/bin/csh", shell=True, capture_output=True)
+        print(f"make_output: \n{print_comp_proc(make_output)}")
+    @staticmethod
+    def setup_directories(work_dir, output_dir): # To be called by an Ensemble object 
+        # Prepare directories for a single ensemble member
+        makedirs(output_dir, exist_ok=True)
+        makedirs(join(output_dir,'history'),exist_ok=True)
+        makedirs(join(output_dir,'out_err_files'),exist_ok=True)
+        print(f"Just set up the output directory {output_dir}")
+        makedirs(work_dir, exist_ok=False)
+        makedirs(join(work_dir,'INPUT'),exist_ok=True)
+        makedirs(join(work_dir,'RESTART'),exist_ok=True)
+        print(f"Just set up the output directory {work_dir}")
+        # Copy the necessary code over
+        shutil.copy2(join(self.base_dir,'input','jf_diag_table_precip'), join(work_dir, 'diag_table'))
+        shutil.copy2(join(self.base_dir,'input','jf_spectral_field_table'), join(work_dir, 'field_table'))
+        shutil.copy2(join(self.base_dir,f'exec_spectral.{self.platform}', 'fms.x'), join(work_dir,'fms.x'))
+
+
+        return
+
+    @staticmethod
+    def cleanup_directories(base_dir, work_dir, output_dir, aggregate_output_flag=False):
+        print(f"About to clean up")
+        shutil.rmtree(work_dir)
+        shutil.rmtree(join(output_dir,'out_err_files'))
+        logfiles = glob.glob(join(output_dir,'*.out'))
+        for f in logfiles:
+            os.remove(f)
+        print("About to aggregate")
+        if aggregate_output:
+            self.aggregate_output(load_immediately=True)
+        print("Finished aggregating")
+
+        # Remove the temporary and log files 
+        shutil.rmtree(self.dirs["work"])
+        shutil.rmtree(join(self.dirs["output"],"out_err_files"))
+        logfiles = glob.glob(join(self.dirs["output"], "*.out"))
+        for f in logfiles:
+            os.remove(f)
+
+        print(f"About to aggregate")
+        if aggregate_output_flag:
+            self.aggregate_output(load_immediately=True)
+        print(f"Finished aggregating")
+        return
+
+    def aggregate_output(self, dt_chunk=None, overwrite=False, load_immediately=True):
+        # TODO account for cases where the data size is too big
+        # Merge the distributed netcdf files into a single one; downsample to daily 
+        hist = self.load_history_selfmade_distributed(load_immediately=load_immediately)
+        hist_agg = dict()
+        # Downsample the 4xday fields to daily
+        freqs = ["4xday","1xday"]
+        for freq in freqs:
+            hist_agg[freq] = transformations.resample_to_daily(hist[freq])
+        # Combine into a single dataset
+        hist_agg = xr.merge([hist_agg[freq] for freq in freqs], compat="override")
+        # Split into chunks if necessary
+        dt = hist_agg["time"][:2].diff("time").item() 
+        Nt = hist_agg["time"].size
+        if dt_chunk is None:
+            dt_chunk = hist_agg["time"][-1].item() - hist_agg["time"][0].item() + 1.5*dt 
+        t0 = hist_agg["time"][0].item()
+        chunk_size = int(round(dt_chunk/dt))
+        i0 = 0
+        while i0 < Nt:
+            i1 = min(i0 + chunk_size, Nt)
+            print(f"i0 = {i0}, i1 = {i1}")
+            hist_chunk = hist_agg.isel(time=slice(i0,i1))
+            chunk_string = f"days{int(hist_chunk['time'][0].item()):04}-{int(hist_chunk['time'][-1].item()):04}"
+            print(f"chunk {chunk_string}")
+            filename = join(
+                    self.dirs["output"], "history",
+                    f"history_{chunk_string}.nc"
+                    )
+            print(f"filename = {filename}")
+            print(f"Does the filename exist? {exists(filename)}")
+            print(f"overwrite = {overwrite}")
+            if (not exists(filename)) or overwrite:
+                print(f"Starting to_netcdf...",end="")
+                #hist_chunk.to_netcdf("/home/ju26596/rare_event_simulation/splitting/examples/frierson_gcm/test_hist.nc")
+                hist_chunk.to_netcdf(filename, format="NETCDF3_64BIT")
+                print(f"Done")
+            i0 += chunk_size
+
+        # Now delete the old chunk directories
+        for freq in freqs:
+            hist[freq].close()
+        
+        chunk_dirs = glob.glob(join(self.dirs["output"],"history","days*h00/"))
+        for chd in chunk_dirs:
+            shutil.rmtree(chd)
+        return
+
+    def derive_parameters(self, config):
+
+        # Directories containing source code and binaries
+        self.base_dir = config['base_dir']
+        self.platform = config['platform'] # probably gnu
+
+        nml = self.default_namelist() # actually a dictionary
+
+        # Apply two patches: nmlpd with parameters derived from config, and then nml_misc (also from config) with explicit declarations for each extra variable.
+        nmlpd = dict() # nml patch derived
+
+        # Climate forcing parameters
+        nmlpd['radiation_nml'] = dict({
+            'ir_tau_pole': 1.8*config['abs'],
+            'ir_tau_eq': 7.2*config['abs'],
+            })
+
+        # Resolution parameters
+        resolution2gridspecs = dict({
+            'T21': dict({
+                'lon_max': 64,
+                'lat_max': 32,
+                'num_fourier': 21,
+                'num_spherical': 22,
+                }),
+            'T42': dict({
+                'lon_max': 128,
+                'lat_max': 64,
+                'num_fourier': 42,
+                'num_spherical': 43,
+                }),
+            })
+        nmlpd['spectral_dynamics_nml'] = resolution2gridspecs[config['resolution']]
+
+        for section in nml.keys():
+            for nmlpatch in [nmlpd,config['nml_patches_misc']]:
+                if section in nmlpatch.keys():
+                    nml[section].update(nmlpatch[section])
+
+        self.nml_const = nml # Because this namelist only includes physical parameters, not duration and timestep as will 
+
+        return
+        
     @classmethod
     def default_init(cls, base_paths, perturbation_specs, days_per_chunk, ensemble_size_limit, aggregate_output_flag=True, vbl_nml=None):
         resource.setrlimit(resource.RLIMIT_STACK, (-1,-1))
@@ -377,20 +426,6 @@ class FriersonGCM(DynamicalSystem):
         else:
             print(f"No need to compile mppnccombine")
         return
-    def compile_model(self):
-
-        # This will modify files in the base directory
-
-        # Step 1: make the Makefile via mkmf
-        mkmf = os.path.join(self.dirs["base"],"bin","mkmf")
-        os.chdir(self.dirs["exec"])
-        mkmf_output = subprocess.run(f'{self.precall} {mkmf} -p fms.x -t {self.infiles["template"]} -c "-Duse_libMPI -Duse_netCDF"  -a {self.dirs["source"]} {self.infiles["pathnames"]}', executable="/bin/csh", shell=True, capture_output=True)
-        print(f"mkmf_output: \n{print_comp_proc(mkmf_output)}")
-
-        # Step 2: compile the source code using the mkmf-generated Makefile
-        make_output = subprocess.run(f"{self.precall} make -f Makefile", executable="/bin/csh", shell=True, capture_output=True)
-        print(f"make_output: \n{print_comp_proc(make_output)}")
-
         return
 
     def load_member_ancestry(self, i_mem_leaf):
@@ -440,6 +475,23 @@ class FriersonGCM(DynamicalSystem):
         target_files = transformations.precompute_features(ds, fields2comp, savefolder, overwrite=False)
         self.target_files = target_files
         return 
+    def run_trajectory(self, icandf, obs_fun, saveinfo, nproc=1):
+        os.chdir(saveinfo['work_dir'])
+        if icandf['restart_file'] is not None:
+            shutil.copy2(icandf['restart_file'],os.path.basename(icandf['restart_file']))
+            subprocess.run(f'cpio -iv < {os.path.basename(icandf["restart_file"])}', executable="/bin/csh", shell=True)
+        # Modify the namelist for running time and random seeds
+        f90nml.Namelist.namelist(icandf['nml'],default_start_index=1).write('input.nml')
+        mpirun_output = subprocess.run(f'/home/software/gcc/6.2.0/pkg/openmpi/4.0.4/bin/mpirun -np {nproc} {self.dirs["work"]}/fms.x', shell=True, executable='/bin/csh', capture_output=True)
+
+        # Move output files to output directory with informative names
+        date_name = f'days{icandf["init_time"]}-{icandf["fin_time"]}hour{icandf["nml"]["main_nml"]["hours"]}'
+
+
+
+
+
+
 
 
 
