@@ -9,7 +9,7 @@ import f90nml
 from netCDF4 import Dataset
 import matplotlib.pyplot as plt
 import os
-from os.path import join, exists
+from os.path import join, exists, basename
 from os import mkdir, makedirs
 import sys
 import shutil
@@ -98,12 +98,12 @@ class FriersonGCM(DynamicalSystem):
         display = r"%g, $A=%g$"%(config['resolution'],config['abs'])
         return label, display
     @classmethod
-    def default_config(cls):
+    def default_config(cls, base_dir):
         config = dict({
             'resolution': 'T21',
             'abs': 1.0, # atmospheric absorption coefficient (larger means more greenhouse) 
             'nml_patches_misc': dict(),
-            'base_dir': '/home/ju26596/jf_conv_gray_smooth',
+            'base_dir': base_dir,
             'platform': 'gnu',
             })
         return config
@@ -475,17 +475,51 @@ class FriersonGCM(DynamicalSystem):
         target_files = transformations.precompute_features(ds, fields2comp, savefolder, overwrite=False)
         self.target_files = target_files
         return 
+
     def run_trajectory(self, icandf, obs_fun, saveinfo, nproc=1):
-        os.chdir(saveinfo['work_dir'])
         if icandf['restart_file'] is not None:
-            shutil.copy2(icandf['restart_file'],os.path.basename(icandf['restart_file']))
-            subprocess.run(f'cpio -iv < {os.path.basename(icandf["restart_file"])}', executable="/bin/csh", shell=True)
+            shutil.copy2(icandf['restart_file'],join(saveinfo['work_dir'],'INPUT',basename(icandf['restart_file'])))
+            subprocess.run(f'cd {join(saveinfo["work_dir"],"INPUT")}; cpio -iv < {basename(icandf["restart_file"])}', executable="/bin/csh", shell=True)
         # Modify the namelist for running time and random seeds
-        f90nml.Namelist.namelist(icandf['nml'],default_start_index=1).write('input.nml')
-        mpirun_output = subprocess.run(f'/home/software/gcc/6.2.0/pkg/openmpi/4.0.4/bin/mpirun -np {nproc} {self.dirs["work"]}/fms.x', shell=True, executable='/bin/csh', capture_output=True)
+        f90nml.namelist.Namelist(icandf['nml'],default_start_index=1).write(join(saveinfo['work_dir'],'input.nml'))
+        mpirun_output = subprocess.run(f'cd {join(saveinfo["work_dir"]); /home/software/gcc/6.2.0/pkg/openmpi/4.0.4/bin/mpirun -np {nproc} {self.dirs["work"]}/fms.x', shell=True, executable='/bin/csh', capture_output=True)
 
         # Move output files to output directory with informative names
         date_name = f'days{icandf["init_time"]}-{icandf["fin_time"]}hour{icandf["nml"]["main_nml"]["hours"]}'
+        mkdir(join(saveinfo['output_dir'],'history',date_name))
+        ncfiles = glob.glob('*.nc*', root_dir=saveinfo['output_dir'])
+        for ncf in ncfiles:
+            shutil.move(ncf, join(saveinfo['output_dir'], 'history', date_name, f'{date_name}.{ncf}'))
+        # Move restart files to the output directory
+        resdir_work = join(saveinfo['work_dir'],'RESTART')
+        restart_files = glob.glob('*.res*', root_dir=resdir_work)
+        if len(restart_files) > 0:
+            print(f'There are some restart files: \n{restart_files = }')
+            filestr = " ".join([restart_files,'input.nml','diag_table'])
+            compressed_restart_tail = f'{date_name}.cpio'
+            subprocess.run('cd {resdir_work}; /bin/ls {filestr} | cpio -ocv > {compressed_restart_tail}', executable='/bin/csh', shell=True)
+            # Now move to a new restart directory
+            resdir_out = join(saveinfo['output_dir'], 'restart')
+            makedirs(resdir_out, exist_ok=True)
+            shutil.move(join(resdir_work,compressed_restart_tail), join(resdir_out, compressed_restart_tail))
+        else:
+            raise Exception('There are no restart files in {resdir_work}')
+
+        # TODO allow later possibility of running in multiple chunks, but for now just stick to one chunk per member. When doing that, keep the loop contained inside this same function here. 
+        
+        # TODO evaluate observable functions ...
+        metadata = dict({
+            'icandf': icandf, 
+            'output_dir': saveinfo['output_dir'],
+            })
+        observables = dict()
+        return metadata, observables
+
+def dns_short():
+    base_dir = '/home/ju26596/jf_conv_gray_smooth'
+    config = FriersonGCM.default_config(base_dir)
+
+
 
 
 
@@ -777,7 +811,7 @@ class FriersonGCMEnsembleMember(EnsembleMember):
 
 
 # ----------- Below are some standard test methods ------------
-def dns():
+def old_dns():
     # Run a long integration from warmstart
     ensemble_size_limit = 1
     algo_params = dict({
