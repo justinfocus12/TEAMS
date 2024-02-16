@@ -22,6 +22,7 @@ import copy as copylib
 import sys
 sys.path.append("../..")
 from ensemble import Ensemble
+from dynamicalsystem import DynamicalSystem
 sys.path.append("/home/ju26596/jf_conv_gray_smooth/fms_analysis")
 import transformations
 
@@ -52,14 +53,10 @@ def print_comp_proc(compproc):
 
 class FriersonGCM(DynamicalSystem):
     def __init__(self, config):
-
-
-        
         self.derive_parameters(config)
-        #self.configure_os_environment()
-        #self.compile_mppnccombine()
-        #self.compile_model()
-
+        self.configure_os_environment()
+        self.compile_mppnccombine()
+        self.compile_model()
         return
 
     def generate_default_icandf(self, init_time, fin_time):
@@ -74,11 +71,11 @@ class FriersonGCM(DynamicalSystem):
             })
         nml['spectral_dynamics_nml'].update(dict({
             'do_perturbation': True,
-            'num_perturbations_actual': 0,
+            'num_perturbations_actual': 1,
             # TODO: can I actually have empty lists within the namelist?
-            'days_to_perturb': [],
-            'seed_values': [],
-            'perturbation_fraction': [],
+            'days_to_perturb': [0],
+            'seed_values': [84730],
+            'perturbation_fraction': [1.0e-3],
             }))
         icandf = dict({
             'restart_file': None,
@@ -110,6 +107,7 @@ class FriersonGCM(DynamicalSystem):
     @classmethod
     def default_namelist(cls):
         # TODO integrate this namelist more flexibly with the default namelist
+        # This goes on top of the base namelist
         nml = dict({
             "spectral_dynamics_nml": dict({
                 "do_perturbation": True,
@@ -176,19 +174,23 @@ class FriersonGCM(DynamicalSystem):
         return nml
     def compile_model(self):
         # Step 1: make the Makefile via mkmf
+        print('About to mkmf')
         mkmf = join(self.base_dir,"bin","mkmf")
-        template = join(self.base_dir,'bin','mkmf')
+        template = join(self.base_dir,'bin','mkmf.template.{self.platform}')
         source = join(self.base_dir,'src')
-        os.chdir(join(self.base_dir,f'exec_spectral.{self.platform}'))
+        execdir = join(self.base_dir, f'exec_spectral.{self.platform}')
+        print(f'{os.listdir(execdir) = }')
         pathnames = join(self.base_dir,'input','jf_spectral_pathnames')
-        mkmf_output = subprocess.run(f'{mkmf} -p fms.x -t {template} -c "-Duse_libMPI -Duse_netCDF"  -a {source} {pathnames}', executable="/bin/csh", shell=True, capture_output=True)
+        mkmf_output = subprocess.run(f'cd {execdir}; {mkmf} -p fms.x -t {template} -c "-Duse_libMPI -Duse_netCDF"  -a {source} {pathnames}', executable="/bin/csh", shell=True, capture_output=True)
         print(f"mkmf_output: \n{print_comp_proc(mkmf_output)}")
 
         # Step 2: compile the source code using the mkmf-generated Makefile
-        make_output = subprocess.run(f"make -f Makefile", executable="/bin/csh", shell=True, capture_output=True)
+        print(f'About to compile source code')
+        precall = f"set nproc = 4; set fms_version = jf_conv_gray_smooth; unset noclobber; set echo;  "
+        make_output = subprocess.run(f"cd {execdir}; make -f Makefile", executable="/bin/csh", shell=True, capture_output=True)
         print(f"make_output: \n{print_comp_proc(make_output)}")
-    @staticmethod
-    def setup_directories(work_dir, output_dir): # To be called by an Ensemble object 
+        return
+    def setup_directories(self, work_dir, output_dir): # To be called by an Ensemble object 
         # Prepare directories for a single ensemble member
         makedirs(output_dir, exist_ok=True)
         makedirs(join(output_dir,'history'),exist_ok=True)
@@ -286,7 +288,12 @@ class FriersonGCM(DynamicalSystem):
         self.base_dir = config['base_dir']
         self.platform = config['platform'] # probably gnu
 
-        nml = self.default_namelist() # actually a dictionary
+        nml = f90nml.read(join(self.base_dir, 'input', 'jf_spectral_namelist')).todict()
+        nml_default = self.default_namelist() # actually a dictionary
+        for key in nml_default.keys():
+            if not (key in nml.keys()):
+                nml[key] = dict()
+            nml[key].update(nml_default[key])
 
         # Apply two patches: nmlpd with parameters derived from config, and then nml_misc (also from config) with explicit declarations for each extra variable.
         nmlpd = dict() # nml patch derived
@@ -411,9 +418,10 @@ class FriersonGCM(DynamicalSystem):
 
     def compile_mppnccombine(self):
         # Compile mppnccombine
-        if not exists(self.infiles['mppnccombine']):
+        mppnccombine_file = join(self.base_dir,'bin','mppnccombine.{self.platform}')
+        if not exists(mppnccombine_file):
             mppnccombine_output = subprocess.run(
-                    f"{self.precall} /home/software/gcc/6.2.0/bin/gcc -O -o {self.infiles['mppnccombine']}"
+                    f"/home/software/gcc/6.2.0/bin/gcc -O -o {mppnccombine_file}"
                     f" -I/home/software/gcc/6.2.0/pkg/netcdf/4.6.3-c/include/"
                     #f" -I/usr/include"
                     f" -L/home/software/gcc/6.2.0/pkg/netcdf/4.6.3-c/lib/ -lnetcdf -lnetcdff"
@@ -421,7 +429,7 @@ class FriersonGCM(DynamicalSystem):
                     f" -L/home/software/hdf5/1.10.5-parallel/lib" 
                     f" -Wl,-rpath /home/software/hdf5/1.10.5-parallel/lib" 
                     f" -I/home/software/hdf5/1.10.5-parallel/include" 
-                    f" {self.dirs['base']}/postprocessing/mppnccombine.c", shell=True, executable="/bin/csh", capture_output=True)
+                    f" {self.base_dir}/postprocessing/mppnccombine.c", shell=True, executable="/bin/csh", capture_output=True)
             print(f"mppnccombine output: \n{print_comp_proc(mppnccombine_output)}")
         else:
             print(f"No need to compile mppnccombine")
@@ -481,29 +489,35 @@ class FriersonGCM(DynamicalSystem):
             shutil.copy2(icandf['restart_file'],join(saveinfo['work_dir'],'INPUT',basename(icandf['restart_file'])))
             subprocess.run(f'cd {join(saveinfo["work_dir"],"INPUT")}; cpio -iv < {basename(icandf["restart_file"])}', executable="/bin/csh", shell=True)
         # Modify the namelist for running time and random seeds
-        f90nml.namelist.Namelist(icandf['nml'],default_start_index=1).write(join(saveinfo['work_dir'],'input.nml'))
-        mpirun_output = subprocess.run(f'cd {join(saveinfo["work_dir"]); /home/software/gcc/6.2.0/pkg/openmpi/4.0.4/bin/mpirun -np {nproc} {self.dirs["work"]}/fms.x', shell=True, executable='/bin/csh', capture_output=True)
+        f90nml.namelist.Namelist(icandf['namelist'],default_start_index=1).write(join(saveinfo['work_dir'],'input.nml'))
+        mpirun_output = subprocess.run(f'cd {join(saveinfo["work_dir"])}; /home/software/gcc/6.2.0/pkg/openmpi/4.0.4/bin/mpirun -np {nproc} fms.x', shell=True, executable='/bin/csh', capture_output=True)
 
         # Move output files to output directory with informative names
-        date_name = f'days{icandf["init_time"]}-{icandf["fin_time"]}hour{icandf["nml"]["main_nml"]["hours"]}'
+        date_name = f'days{icandf["init_time"]}-{icandf["fin_time"]}hour{icandf["namelist"]["main_nml"]["hours"]}'
         mkdir(join(saveinfo['output_dir'],'history',date_name))
-        ncfiles = glob.glob('*.nc*', root_dir=saveinfo['output_dir'])
-        for ncf in ncfiles:
-            shutil.move(ncf, join(saveinfo['output_dir'], 'history', date_name, f'{date_name}.{ncf}'))
-        # Move restart files to the output directory
-        resdir_work = join(saveinfo['work_dir'],'RESTART')
-        restart_files = glob.glob('*.res*', root_dir=resdir_work)
+        # netcdf files
+        nc_files = glob.glob('*.nc*', root_dir=saveinfo['work_dir'])
+        for ncf in nc_files:
+            shutil.move(join(saveinfo['work_dir'],ncf), join(saveinfo['output_dir'], 'history', date_name, f'{date_name}.{ncf}'))
+        # ascii files
+        ascii_files = glob.glob('*.out', root_dir=saveinfo['work_dir'])
+        for ascf in ascii_files:
+            shutil.move(join(saveinfo['work_dir'],ascf), join(saveinfo['output_dir'],f'{date_name}.{ascf}'))
+        # namelists, diagnostics
+        for f in ['input.nml','diag_table']:
+            shutil.copy2(join(saveinfo['work_dir'],f),join(saveinfo['work_dir'],'RESTART',f))
+        restart_files = glob.glob('*.res*', root_dir=join(saveinfo['work_dir'],'RESTART'))
+        files2compress_str = " ".join(['input.nml','diag_table'] + restart_files)
         if len(restart_files) > 0:
             print(f'There are some restart files: \n{restart_files = }')
-            filestr = " ".join([restart_files,'input.nml','diag_table'])
             compressed_restart_tail = f'{date_name}.cpio'
-            subprocess.run('cd {resdir_work}; /bin/ls {filestr} | cpio -ocv > {compressed_restart_tail}', executable='/bin/csh', shell=True)
+            subprocess.run(f'cd {saveinfo["work_dir"]}/RESTART; /bin/ls {files2compress_str} | cpio -ocv > {compressed_restart_tail}', executable='/bin/csh', shell=True)
             # Now move to a new restart directory
             resdir_out = join(saveinfo['output_dir'], 'restart')
             makedirs(resdir_out, exist_ok=True)
-            shutil.move(join(resdir_work,compressed_restart_tail), join(resdir_out, compressed_restart_tail))
+            shutil.move(join(saveinfo['work_dir'],'RESTART',compressed_restart_tail), join(resdir_out,compressed_restart_tail)) 
         else:
-            raise Exception('There are no restart files in {resdir_work}')
+            raise Exception(f'There are no restart files in {resdir_work}')
 
         # TODO allow later possibility of running in multiple chunks, but for now just stick to one chunk per member. When doing that, keep the loop contained inside this same function here. 
         
@@ -515,9 +529,26 @@ class FriersonGCM(DynamicalSystem):
         observables = dict()
         return metadata, observables
 
-def dns_short():
+def dns_short(nproc):
     base_dir = '/home/ju26596/jf_conv_gray_smooth'
+    scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/frierson_gcm"
+    date_str = "2024-02-15"
+    sub_date_str = "0"
     config = FriersonGCM.default_config(base_dir)
+    gcm = FriersonGCM(config)
+
+    work_dir = join(scratch_dir,date_str,sub_date_str,'work')
+    output_dir = join(scratch_dir,date_str,sub_date_str,'output')
+    gcm.setup_directories(work_dir, output_dir)
+    init_time = 0
+    fin_time = 8 
+    icandf = gcm.generate_default_icandf(init_time, fin_time)
+    saveinfo = dict({
+        'work_dir': work_dir,
+        'output_dir': output_dir,
+        })
+    obs_fun = None
+    metadata,observable = gcm.run_trajectory(icandf, obs_fun, saveinfo, nproc=nproc)
 
 
 
@@ -532,7 +563,7 @@ def dns_short():
 
 
 
-class FriersonGCMEnsembleMember(EnsembleMember):
+class FriersonGCMEnsembleMember: #(EnsembleMember):
     def setup_directories(self):
 
         # Output directory
@@ -991,4 +1022,6 @@ def score_fun_instantaneous(ds):
     return score 
 
 if __name__ == "__main__":
-    test_fortran_split()
+    nproc = int(sys.argv[1])
+    dns_short(nproc)
+    #test_fortran_split()
