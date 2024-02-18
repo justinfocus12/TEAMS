@@ -29,8 +29,8 @@ import sys
 sys.path.append("../..")
 from ensemble import Ensemble
 from dynamicalsystem import DynamicalSystem
-sys.path.append("/home/ju26596/jf_conv_gray_smooth/fms_analysis")
 import forcing
+import frierson_observables as frobs
 
 def boolstr(b):
     if b:
@@ -288,6 +288,9 @@ class FriersonGCM(DynamicalSystem):
         return
 
     def derive_parameters(self, config):
+
+        # Basic dynamical systems attributes
+        self.dt_save = 1.0 # days are the fundamental time unit
 
         # Directories containing source code and binaries
         self.base_dir = config['base_dir']
@@ -629,6 +632,88 @@ def dns_short_chain(nproc):
         init_time = fin_time 
     return
 
+
+def dns_moderate(nproc):
+    tododict = dict({
+        'run':            0,
+        'plot':           1,
+        })
+    # Create a small ensemble
+    # Run three trajectories, each one picking up where the previous one left off
+    base_dir = '/home/ju26596/jf_conv_gray_smooth'
+    scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/frierson_gcm"
+    date_str = "2024-02-18"
+    sub_date_str = "1"
+    print(f'About to generate default config')
+    config = FriersonGCM.default_config(base_dir)
+    label,display = FriersonGCM.label_from_config(config)
+    expt_dir = join(scratch_dir,date_str,sub_date_str,label)
+    gcm = FriersonGCM(config)
+
+    if tododict['run']:
+        makedirs(expt_dir,exist_ok=True)
+        obs_fun = lambda t,x: None
+
+        ens = Ensemble(gcm)
+        days_per_chunk = 50
+
+        # Parent member: run for 8 days
+        init_time = 0
+        init_cond = None
+        parent = None
+        for mem in range(20):
+            fin_time = init_time + days_per_chunk
+            icandf = gcm.generate_default_icandf(init_time,fin_time)
+            icandf['init_cond'] = init_cond
+            saveinfo = dict({
+                # Temporary folder
+                'temp_dir': join(expt_dir,f'mem{mem}'),
+                # Ultimate resulting filenames
+                'filename_traj': join(expt_dir,f'mem{mem}.nc'),
+                'filename_restart': join(expt_dir,f'restart_mem{mem}.cpio'),
+                })
+            _ = ens.branch_or_plant(icandf, obs_fun, saveinfo, parent=parent)
+            init_time = fin_time
+            parent = mem
+            init_cond = ens.traj_metadata[parent]['filename_restart']
+            pickle.dump(ens, open(join(expt_dir,'ens.pickle'),'wb'))
+    if tododict['plot']:
+        plot_dir = join(expt_dir,'plots')
+        makedirs(plot_dir,exist_ok=True)
+
+        obslib = frobs.observable_library() 
+        ens = pickle.load(open(join(expt_dir,'ens.pickle'),'rb'))
+        obs2plot = ['temperature','total_rain','surface_pressure'][1:2]
+        lat = 45.0
+        lon = 180.0
+        pfull = 1000.0
+
+        # Plot full fields
+        for mem in np.arange(ens.memgraph.number_of_nodes())[-1:]:
+            dsmem = xr.open_mfdataset(ens.traj_metadata[mem]['filename_traj'], decode_times=False)
+            i_pfull = np.argmin(np.abs(dsmem.pfull.values - pfull))
+            for obs in obs2plot:
+                memobs = obslib[obs]['fun'](dsmem)
+                if 'pfull' in memobs.dims:
+                    memobs = memobs.isel(pfull=i_pfull)
+                memobs = memobs.compute()
+                for day in memobs.time.to_numpy().astype(int):
+                    fig,axes = plt.subplots(figsize=(12,5),ncols=2,sharey=True)
+                    ax = axes[0]
+                    xr.plot.pcolormesh(memobs.sel(time=day), x='lon', y='lat', cmap=obslib[obs]['cmap'], ax=ax)
+                    ax.set_title(r'%s [%s], mem. %d, day %d'%(obslib[obs]['label'], obslib[obs]['unit_symbol'], mem, day))
+                    ax.set_xlabel('Longitude')
+                    ax.set_ylabel('Latitude')
+                    ax = axes[1]
+                    hday, = xr.plot.plot(memobs.mean(dim=['time','lon']),y='lat',color='black',ax=ax,label=r'(zonal,time) avg')
+                    havg, = xr.plot.plot(memobs.sel(time=day).mean(dim='lon'),y='lat',color='red',ax=ax,label=r'zonal avg')
+                    ax.legend(handles=[hday,havg])
+
+                    fig.savefig(join(plot_dir,r'%s_mem%d_day%d'%(obslib[obs]['abbrv'],mem,day)),**pltkwargs)
+                    plt.close(fig)
+    return
+
+
 def small_branching_ensemble(nproc):
     tododict = dict({
         'run':            0,
@@ -638,8 +723,8 @@ def small_branching_ensemble(nproc):
     # Run three trajectories, each one picking up where the previous one left off
     base_dir = '/home/ju26596/jf_conv_gray_smooth'
     scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/frierson_gcm"
-    date_str = "2024-02-17"
-    sub_date_str = "1"
+    date_str = "2024-02-18"
+    sub_date_str = "0"
     print(f'About to generate default config')
     config = FriersonGCM.default_config(base_dir)
     label,display = FriersonGCM.label_from_config(config)
@@ -652,10 +737,12 @@ def small_branching_ensemble(nproc):
         gcm = FriersonGCM(config)
         ens = Ensemble(gcm)
 
+        seed_vals = [-1,29183,48271,39183,38383,88822,77612,22345]
+
         # Parent member: run for 8 days
         mem = 0
         init_time = 0
-        fin_time = 8
+        fin_time = 30
         icandf = gcm.generate_default_icandf(init_time,fin_time)
         saveinfo = dict({
             # Temporary folder
@@ -668,18 +755,52 @@ def small_branching_ensemble(nproc):
 
 
         # Branch off some children
-        for (mem,seedval) in zip([1,2,3],[29183,48271,39183]):
+        for mem in [1,2,3]:
             parent = 0
             mdp = ens.traj_metadata[parent]
             init_time = mdp['icandf']['frc'].fin_time
             icandf = dict({
                 'init_cond': mdp['filename_restart'],
-                'frc': forcing.ContinuousTimeForcing(init_time, init_time+10, [init_time+2], [seedval])
+                'frc': forcing.ContinuousTimeForcing(init_time, init_time+30, [init_time+3], [seed_vals[mem]])
                 })
             saveinfo = dict({
                 'temp_dir': join(expt_dir,f'mem{mem}'),
                 'filename_traj': join(expt_dir,f'mem{mem}.nc'),
-                'filename_restart': join(expt_dir,f'restart_mem{mem}.nc'),
+                'filename_restart': join(expt_dir,f'restart_mem{mem}.cpio'),
+                })
+            _ = ens.branch_or_plant(icandf, obs_fun, saveinfo, parent=parent)
+
+        # Another Parent member: run for 8 days
+        mem = 4
+        init_time = 0
+        fin_time = 30
+        icandf = dict({
+            'init_cond': None,
+            'frc': forcing.ContinuousTimeForcing(init_time, fin_time, [init_time+1], [seed_vals[mem]])
+            })
+        saveinfo = dict({
+            # Temporary folder
+            'temp_dir': join(expt_dir,f'mem{mem}'),
+            # Ultimate resulting filenames
+            'filename_traj': join(expt_dir,f'mem{mem}.nc'),
+            'filename_restart': join(expt_dir,f'restart_mem{mem}.cpio'),
+            })
+        _ = ens.branch_or_plant(icandf, obs_fun, saveinfo)
+
+
+        # Branch off some children
+        for mem in [5,6,7]:
+            parent = 4
+            mdp = ens.traj_metadata[parent]
+            init_time = mdp['icandf']['frc'].fin_time
+            icandf = dict({
+                'init_cond': mdp['filename_restart'],
+                'frc': forcing.ContinuousTimeForcing(init_time, init_time+30, [init_time+3], [seed_vals[mem]])
+                })
+            saveinfo = dict({
+                'temp_dir': join(expt_dir,f'mem{mem}'),
+                'filename_traj': join(expt_dir,f'mem{mem}.nc'),
+                'filename_restart': join(expt_dir,f'restart_mem{mem}.cpio'),
                 })
             _ = ens.branch_or_plant(icandf, obs_fun, saveinfo, parent=parent)
 
@@ -688,23 +809,43 @@ def small_branching_ensemble(nproc):
     if tododict['plot']:
         plot_dir = join(expt_dir,'plots')
         makedirs(plot_dir,exist_ok=True)
+
+        obslib = frobs.observable_library() 
         ens = pickle.load(open(join(expt_dir,'ens.pickle'),'rb'))
+        obs2plot = ['temperature','total_rain','column_water_vapor','surface_pressure'][:1]
         lat = 45.0
         lon = 180.0
-        fig,ax = plt.subplots(figsize=(20,5))
-        handles = []
-        for mem in range(ens.memgraph.number_of_nodes()):
-            rtot = xr.open_mfdataset(ens.traj_metadata[mem]['filename_traj'], decode_times=False)['condensation_rain'] * 3600/24
-            i_lat = np.argmin(np.abs(rtot.lat.values - lat))
-            i_lon = np.argmin(np.abs(rtot.lon.values - lon))
-            rtot = rtot.isel(lat=i_lat,lon=i_lon).compute()
-            h, = xr.plot.plot(rtot, x='time', label=f'Member {mem}')
-            handles.append(h)
-        ax.legend(handles=handles)
-        fig.savefig(join(plot_dir,'rain.png'),**pltlkwargs)
+        pfull = 500.0
 
-                    
+        # Plot full fields
+        for mem in [0,4]: #range(ens.memgraph.number_of_nodes()):
+            dsmem = xr.open_mfdataset(ens.traj_metadata[mem]['filename_traj'], decode_times=False)
+            i_pfull = np.argmin(np.abs(dsmem.pfull.values - pfull))
+            for obs in obs2plot:
+                memobs = obslib[obs]['fun'](dsmem)
+                if 'pfull' in memobs.dims:
+                    memobs = memobs.isel(pfull=i_pfull)
+                memobs = memobs.compute()
+                for day in memobs.time.to_numpy().astype(int):
+                    fig,ax = plt.subplots(figsize=(8,5))
+                    xr.plot.pcolormesh(memobs.sel(time=day), x='lon', y='lat', cmap=obslib[obs]['cmap'], ax=ax)
+                    ax.set_title(r'%s [%s], mem. %d, day %d'%(obslib[obs]['label'], obslib[obs]['unit_symbol'], mem, day))
+                    ax.set_xlabel('Longitude')
+                    ax.set_ylabel('Latitude')
+                    fig.savefig(join(plot_dir,r'%s_mem%d_day%d'%(obslib[obs]['abbrv'],mem,day)),**pltkwargs)
+                    plt.close(fig)
 
+        #fig,ax = plt.subplots(figsize=(20,5))
+        #handles = []
+        #for mem in range(ens.memgraph.number_of_nodes()):
+        #    rtot = xr.open_mfdataset(ens.traj_metadata[mem]['filename_traj'], decode_times=False)['condensation_rain'] * 3600/24
+        #    i_lat = np.argmin(np.abs(rtot.lat.values - lat))
+        #    i_lon = np.argmin(np.abs(rtot.lon.values - lon))
+        #    rtot = rtot.isel(lat=i_lat,lon=i_lon).compute()
+        #    h, = xr.plot.plot(rtot, x='time', label=f'Member {mem}', marker='o')
+        #    handles.append(h)
+        #ax.legend(handles=handles)
+        #fig.savefig(join(plot_dir,'rain.png'),**pltkwargs)
 
     return
 
@@ -712,469 +853,10 @@ def small_branching_ensemble(nproc):
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-class FriersonGCMEnsembleMember: #(EnsembleMember):
-    def setup_directories(self):
-
-        # Output directory
-        output_dir = self.dirs["output"]
-        os.makedirs(output_dir, exist_ok=True)
-        os.makedirs(join(output_dir,"history"), exist_ok=True)
-        os.makedirs(join(output_dir,"out_err_files"), exist_ok=True)
-        print(f"Just set up the output directory {self.dirs['output']}")
-
-        # Work directory
-        work_dir = self.dirs["work"]
-        if exists(work_dir):
-            shutil.rmtree(work_dir)
-        os.makedirs(work_dir, exist_ok=False)
-        os.makedirs(join(work_dir,"INPUT"), exist_ok=True)
-        os.makedirs(join(work_dir,"RESTART"), exist_ok=True)
-        print(f"Just set up the work directory {self.dirs['work']}")
-        return
-
-    def cleanup_directories(self):
-        print(f"About to clean up")
-
-        # Remove the temporary and log files 
-        shutil.rmtree(self.dirs["work"])
-        shutil.rmtree(join(self.dirs["output"],"out_err_files"))
-        logfiles = glob.glob(join(self.dirs["output"], "*.out"))
-        for f in logfiles:
-            os.remove(f)
-
-        print(f"About to aggregate")
-        if self.aggregate_output_flag:
-            self.aggregate_output(load_immediately=True)
-        print(f"Finished aggregating")
-        return
-
-    def aggregate_output(self, dt_chunk=None, overwrite=False, load_immediately=True):
-        # TODO account for cases where the data size is too big
-        # Merge the distributed netcdf files into a single one; downsample to daily 
-        hist = self.load_history_selfmade_distributed(load_immediately=load_immediately)
-        hist_agg = dict()
-        # Downsample the 4xday fields to daily
-        freqs = ["4xday","1xday"]
-        for freq in freqs:
-            hist_agg[freq] = transformations.resample_to_daily(hist[freq])
-        # Combine into a single dataset
-        hist_agg = xr.merge([hist_agg[freq] for freq in freqs], compat="override")
-        # Split into chunks if necessary
-        dt = hist_agg["time"][:2].diff("time").item() 
-        Nt = hist_agg["time"].size
-        if dt_chunk is None:
-            dt_chunk = hist_agg["time"][-1].item() - hist_agg["time"][0].item() + 1.5*dt 
-        t0 = hist_agg["time"][0].item()
-        chunk_size = int(round(dt_chunk/dt))
-        i0 = 0
-        while i0 < Nt:
-            i1 = min(i0 + chunk_size, Nt)
-            print(f"i0 = {i0}, i1 = {i1}")
-            hist_chunk = hist_agg.isel(time=slice(i0,i1))
-            chunk_string = f"days{int(hist_chunk['time'][0].item()):04}-{int(hist_chunk['time'][-1].item()):04}"
-            print(f"chunk {chunk_string}")
-            filename = join(
-                    self.dirs["output"], "history",
-                    f"history_{chunk_string}.nc"
-                    )
-            print(f"filename = {filename}")
-            print(f"Does the filename exist? {exists(filename)}")
-            print(f"overwrite = {overwrite}")
-            if (not exists(filename)) or overwrite:
-                print(f"Starting to_netcdf...",end="")
-                #hist_chunk.to_netcdf("/home/ju26596/rare_event_simulation/splitting/examples/frierson_gcm/test_hist.nc")
-                hist_chunk.to_netcdf(filename, format="NETCDF3_64BIT")
-                print(f"Done")
-            i0 += chunk_size
-
-        # Now delete the old chunk directories
-        for freq in freqs:
-            hist[freq].close()
-        
-        chunk_dirs = glob.glob(join(self.dirs["output"],"history","days*h00/"))
-        for chd in chunk_dirs:
-            shutil.rmtree(chd)
-        return
-
-    def set_run_params(self, model_params, warmstart_info):
-        # This must be done only once for each ensemble member. Not at each restart.
-        # TODO make the duration (days per chunk) variable, too. 
-        self.precall = model_params["precall"]
-        self.nproc = model_params["nproc"]
-        self.perturbation_specs = model_params["perturbation_specs"]
-        os.chdir(self.dirs["work"])
-        print(f"Which files are present? \n{os.listdir()}")
-
-        self.aggregate_output_flag = model_params["aggregate_output_flag"] # Yes if the time chunks aren't too long
-
-        # --------- Modify the namelist --------------
-        nml_file_input = model_params["infiles"]["namelist"]
-        nml_file_output = "input.nml"
-
-        nml = f90nml.read(nml_file_input).todict()
-        #nml_patch = {**model_params["variable_namelist"], **warmstart_info["perturbation_namelist"]}
-        #nml.patch(nml_patch)
-        nml.patch(model_params["variable_namelist"])
-        nml.patch(warmstart_info["perturbation_namelist"]) # This can override the duration parameter ('time' in main_nml)
-        nml.end_comma = True
-        nml.default_start_index = 1
-        nml.write(nml_file_output)
-        
-        # ---------------------------------------------
-
-        # Copy the files over to the working directory
-        subprocess.run(f"{self.precall} cp {model_params['infiles']['diagtable']} diag_table", shell=True, executable="/bin/csh")
-        subprocess.run(f"{self.precall} cp {model_params['infiles']['fieldtable']} field_table ", shell=True, executable="/bin/csh")
-        subprocess.run(f"{self.precall} cp {model_params['execdir']}/fms.x fms.x", shell=True, executable="/bin/csh")
-
-        self.days_per_chunk = nml["main_nml"]["days"] #model_params["variable_namelist"]["main_nml"]["days"]
-        self.hourofday = nml["main_nml"]["hours"] #model_params["variable_namelist"]["main_nml"]["hours"]
-        # TODO continue flexibilizing 
-
-        # Record the time of birth of this trajectory 
-        self.init_file_ancestral = warmstart_info["file"]
-        self.init_time_ancestral = warmstart_info["time"]
-        
-        # Record where to start the next lifecycle from
-        self.init_file = copylib.copy(self.init_file_ancestral)
-        self.init_time = self.init_time_ancestral
-        self.time_origin = warmstart_info["time_origin"]
-
-        # Record the perturbation information 
-        self.warmstart_info = warmstart_info
-
-        # Initialize a list of restart files for the benefit of descendants
-        # These will not include the ancestral restarts 
-        self.term_file_list = []
-        self.term_time_list = []
-
-        return
-
-    def run_one_cycle(self, verbose=False):
-        # TODO: keep ability to perturb either outside or inside 
-        os.chdir(self.dirs["work"])
-        if self.init_file is not None:
-            os.chdir("INPUT")
-            subprocess.run(f"cp {self.init_file} {os.path.basename(self.init_file)}", shell=True, executable="/bin/csh")
-            subprocess.run(f"{self.precall} cpio -iv < {os.path.basename(self.init_file)}", executable="/bin/csh", shell=True)
-            os.remove(os.path.basename(self.init_file))
-
-        # ------------ Perturbing the initial conditions -------------
-        if self.warmstart_info["do_perturbation_externally"]:
-            spec_dyn_res = Dataset("spectral_dynamics.res.nc",mode="r+",format="NETCDF4")
-            for field in self.perturbation_specs["fields"]:
-                num_wn_zon = spec_dyn_res[field].shape[3]
-                for wn_zon in range(5,num_wn_zon):
-                    for i_time in self.perturbation_specs["timelevels"]:
-                        spec_dyn_res[field][i_time,:,wn_zon:,wn_zon] *= (1.0 + self.perturbation_specs["amplitude"] * (2*self.rng_perturb.choice([0.0,1.0],size=spec_dyn_res[field][i_time,:,wn_zon:,wn_zon].shape) - 1))
-
-            spec_dyn_res.close()
-
-
-        # ----------- Integrate from the (possibly perturbed) initial conditions -----
-        # TODO: extract the time itself from the restart file 
-        os.chdir(self.dirs["work"])
-        print(f"About to run mpirun")
-        mpirun_output = subprocess.run(f"{self.precall} /home/software/gcc/6.2.0/pkg/openmpi/4.0.4/bin/mpirun -np {self.nproc} {self.dirs['work']}/fms.x", shell=True, executable="/bin/csh", capture_output=True)
-        print(f"mpirun_output: \n{print_comp_proc(mpirun_output)}\n")
-
-        # Move the output files to the output directory
-        date_name = f"days{self.init_time:04d}-{(self.init_time+self.days_per_chunk):04d}h{self.hourofday:02d}"
-
-        # ------------ Move output files to their own directories (don't combine) --------
-        local_files = os.listdir()
-        os.mkdir(os.path.join(self.dirs["output"],"history",date_name)) #
-        nc_files = [lf for lf in local_files if (lf.endswith(".nc") or lf[-8:-4]==".nc.")]
-        for ncf in nc_files:
-            shutil.move(ncf, join(self.dirs["output"],"history",date_name,f"{date_name}.{ncf}"))
-        # ------------ Save ascii output files to local disk --------------
-        local_files = os.listdir()
-        out_files = [lf for lf in local_files if lf.endswith(".out")]
-        for out in out_files:
-            shutil.move(out, os.path.join(self.dirs["output"],f"{date_name}.{out}"))
-
-        # ------------ Move restart files to output directory ----------
-        os.chdir("RESTART")
-        local_files = os.listdir()
-        resfiles = [lf for lf in local_files if ".res" in lf]
-        if len(resfiles) > 0:
-            print(f"There are some restart files: \n{resfiles}")
-            restart_dir = os.path.join(self.dirs["output"], "restart")
-            os.makedirs(restart_dir, exist_ok=True)
-            restart_file_tail = f"{date_name}.cpio"
-            restart_file = os.path.join(self.dirs["output"], "restart", restart_file_tail)
-            subprocess.run(f"{self.precall} cp {self.dirs['work']}/*.nml .", shell=True, executable="/bin/csh")
-            subprocess.run(f"{self.precall} cp {self.dirs['work']}/diag_table .", shell=True, executable="/bin/csh")
-            files = resfiles + ["input.nml", "diag_table"]
-            # Set up a call to cpio
-            filestr = " ".join(files)
-            subprocess.run(f"{self.precall} /bin/ls {filestr} | cpio -ocv > {restart_file_tail}", executable="/bin/csh", shell=True)
-            shutil.move(restart_file_tail, restart_file)
-        else:
-            print(f"Uh oh, there are no restart files... local_files = \n{local_files}")
-
-            # TODO: decide if reload commands should be written to file, or if that's a task for the parent process
-
-        # ---------- Get the next cycle ready ---------------
-        # Out error files: not applicable here. 
-        self.init_file = restart_file
-        self.init_time = self.init_time + self.days_per_chunk
-
-        self.term_file_list += [copylib.copy(self.init_file)]
-        self.term_time_list += [self.init_time]
-        print(f"After preparing next cycle, self.term_time_list = {self.term_time_list} and self.term_file_list = {self.term_file_list}")
-        return 
-
-    def load_history_selfmade(self):
-        return self.load_history_selfmade_aggregated()
-
-    def load_history_selfmade_aggregated(self):
-        # To be called after aggregation
-        files2open = glob.glob(join(self.dirs["output"], "history", "history*.nc"))
-        ds = xr.open_mfdataset(files2open, decode_times=False)
-        return ds
-
-    def load_history_selfmade_distributed(self, verbose=False, load_immediately=False):
-        print("---------- Inside load_history_selfmade ----------")
-        freqs = ["1xday","4xday"]
-        # Return a Dask DataArray from all the netcdfs (1xday and 4xday) under histdir
-        chunk_dirs = glob.glob(join(self.dirs["output"],"history","d*h00"))
-        if verbose:
-            print(f"chunk_dirs = {chunk_dirs}")
-        ds = self.ingest_timechunks(chunk_dirs, verbose=verbose, load_immediately=load_immediately)
-        return ds
-
-    def load_history_selfmade_observable(self, obs_name):
-        # Assumes this observable has been computed and stored
-        ds_obs = xr.open_dataarray(self.obs_files[obs_name], decode_times=False)
-        return ds_obs
-
-    
-    def ingest_timechunks(self, chunk_dirs, verbose=False, load_immediately=False):
-        freqs = ["1xday","4xday"]
-        file_list = dict({freq: [] for freq in freqs})
-        for chd in chunk_dirs:
-            for freq in ["1xday","4xday"]:
-                file_list[freq] += glob.glob(f"{chd}/*{freq}*.nc*")
-        ds = dict()
-        if verbose: print(f"file_list = \n{file_list}")
-        for freq in freqs:
-            ds[freq] = xr.open_mfdataset(file_list[freq], decode_times=False, preprocess=transformations.preprocess)
-            if load_immediately:
-                ds[freq] = ds[freq].load()
-                print(f"loaded immediately indeed")
-        return ds
-
-    def compute_observables(self, fields2comp=None):
-        if fields2comp is None:
-            fields2comp = dict({
-                "1xday": [
-                    "total_rain",
-                    ],
-                "4xday": [
-                    "temperature",
-                    "column_water_vapor",
-                    "zonal_velocity",
-                    "vertical_velocity",
-                    "surface_pressure",
-                    "vorticity",
-                    ],
-                })
-        ds = self.load_history_selfmade()
-        savefolder = self.dirs["output"]
-        target_files = transformations.precompute_features(ds, fields2comp, savefolder, overwrite=False)
-        if not ("obs_files" in list(self.__dict__.keys())):
-            self.obs_files = dict()
-        self.obs_files.update(target_files)
-        return
 
 
 
 # ----------- Below are some standard test methods ------------
-def old_dns():
-    # Run a long integration from warmstart
-    ensemble_size_limit = 1
-    algo_params = dict({
-        "days_per_chunk": 30,
-        "num_chunks": 45,
-        "resolution": "T21",
-        })
-    home_dir = "/home/ju26596"
-    #scratch_dir = "/nobackup1c/users/ju26596/splitting/frierson_gcm"
-    scratch_dir = "/pool001/ju26596/frierson_gcm"
-    date_str = "2023-09-28"
-    sub_date_str = "0"
-    expt_str = (
-            f"dns"
-            f"_res{algo_params['resolution']}"
-            f"_{algo_params['num_chunks']}chunks"
-            f"_{algo_params['days_per_chunk']}days"
-            ).replace(".","p")
-    base_paths = dict({
-        "home": home_dir,
-        "work": join(scratch_dir, date_str, sub_date_str, expt_str, "fms_tmp"), 
-        "output": join(scratch_dir, date_str, sub_date_str, expt_str, "fms_output"), 
-        })
-    perturbation_specs = None
-    if exists(join(base_paths["output"], "abs1.0_smooth", "ens")):
-        print(f"Adding to an existing ensemble")
-        ens = pickle.load(open(join(base_paths["output"], "abs1.0_smooth", "ens"), "rb"))
-
-        # --------- AUGMENT THE ENSEMBLE WITH THE NEW BELLS AND WHISTLES LEFT OVER FROM CODE DEVELOPMENT ----------- 
-        ens.model_params["aggregate_output_flag"] = True
-
-        # ----------------------------------------------------------------------------------------------------------
-        init_file = ens.mem_list[-1].init_file
-        init_time = ens.mem_list[-1].term_time_list[-1]
-    else:
-        print(f"Beginning a new ensemble")
-        ens = FriersonGCMEnsemble.default_init(base_paths, perturbation_specs, algo_params["days_per_chunk"], ensemble_size_limit)
-        #init_file = "/pool001/ju26596/fms_archive/2022-12-13/2/ctrl_noconv_21x100_8proc/abs1.0_smooth/mem_ctrl/restart/days0700-0800h00.cpio" 
-        init_file = None
-        init_time = 0
-
-    # Whether warm- or cold-starting, make a new member
-    warmstart_info = dict({
-        "time": int(init_time), 
-        "file": init_file,
-        "time_origin": init_time,
-        "do_perturbation_externally": False, 
-        })
-    if algo_params["resolution"] == "T21": 
-        lon_max,lat_max,num_fourier,num_spherical = 64,32,21,22
-    elif algo_params["resolution"] == "T42": 
-        lon_max,lat_max,num_fourier,num_spherical = 128,64,42,43
-    warmstart_info["perturbation_namelist"] = dict({
-        "spectral_dynamics_nml": dict(
-            do_perturbation = False,
-            #do_perturbation_eachday = True,
-            num_perturbations_actual = 1,
-            days_to_perturb = [init_time],
-            seed_values = [0],
-            perturbation_fraction = [0.0],
-            # Change resolution
-            lon_max = lon_max,
-            lat_max = lat_max,
-            num_fourier = num_fourier,
-            num_spherical = num_spherical,
-            ),
-        "main_nml": dict(
-            days = int(algo_params["days_per_chunk"]),
-            ),
-        })
-
-    ens.initialize_new_member(FriersonGCMEnsembleMember, warmstart_info.copy())
-
-    num_chunks_per_mem = np.array([algo_params["num_chunks"]])
-    #num_chunks_per_mem = np.array([15])
-    memidx2run = np.array([len(ens.mem_list)-1])
-    print(f"memidx2run = {memidx2run}")
-    ens.run_batch(memidx2run,num_chunks_per_mem)
-
-    # Save out the metadata
-    pickle.dump(ens, open(join(ens.dirs["output"],"ens"), "wb"))
-    return
-
-def test_fortran_split():
-    # Run a control simulation and then a second one, branching off in the middle
-    ensemble_size_limit = 2
-    home_dir = "/home/ju26596"
-    scratch_dir = "/net/hstor001.ib/pog/001/ju26596/frierson_results"
-    date_str = "2024-02-12"
-    sub_date_str = "2"
-    days_per_chunk = 5
-    num_time_chunks = 1
-    expt_str = f"fortran_split".replace(".","p")
-    base_paths = dict({
-        "home": home_dir,
-        "work": join(scratch_dir, date_str, sub_date_str, expt_str, "fms_tmp"), 
-        "output": join(scratch_dir, date_str, sub_date_str, expt_str, "fms_output"), 
-        })
-    perturbation_specs = dict({ # Shouldn't matter in this context
-        "fields": ["vors_real","ts_real","ln_ps_real"],
-        "amplitude": 1.0e-3,
-        "timelevels": [0,1],
-        })
-    ens = FriersonGCMEnsemble.default_init(base_paths, perturbation_specs, days_per_chunk, ensemble_size_limit)
-    start_time = 0 #800
-
-    # Control run
-    warmstart_info = dict({
-        "time": start_time, 
-        "file": None, #f"/pool001/ju26596/fms_archive/2022-12-13/2/ctrl_noconv_21x100_8proc/abs1.0_smooth/mem_ctrl/restart/days{start_time-100:04}-{start_time:04}h00.cpio", 
-        "time_origin": start_time,
-        "do_perturbation_externally": False,
-        })
-    warmstart_info["perturbation_namelist"] = dict({
-        "spectral_dynamics_nml": dict(
-            do_perturbation = False,
-            #do_perturbation_eachday = False,
-            num_perturbations_actual = 1,
-            days_to_perturb = [-1],
-            seed_values = [12345],
-            perturbation_fraction = [perturbation_specs["amplitude"]],
-            )
-        })
-    ens.initialize_new_member(FriersonGCMEnsembleMember, warmstart_info)
-    memidx2run = np.array([0])
-    num_chunks_per_mem = np.array([1])
-    ens.run_batch(memidx2run, num_chunks_per_mem) #, perturb_fields=False)
-
-    # Perturbed run 1: branch off 1/3 of the way through
-    warmstart_info["perturbation_namelist"] = dict({
-        "spectral_dynamics_nml": dict(
-            do_perturbation = True,
-            #do_perturbation_eachday = False,
-            num_perturbations_actual = 1,
-            days_to_perturb = [start_time + int(days_per_chunk / 3)],
-            seed_values = [12345],
-            perturbation_fraction = [perturbation_specs["amplitude"]],
-            )
-        })
-    ens.initialize_new_member(FriersonGCMEnsembleMember, warmstart_info)
-    memidx2run = np.array([1])
-    num_chunks_per_mem = np.array([1])
-    ens.run_batch(memidx2run, num_chunks_per_mem) #, perturb_fields=False)
-
-    # Perturbed run 2: branch off 2/3 of the way through
-    warmstart_info["perturbation_namelist"] = dict({
-        "spectral_dynamics_nml": dict(
-            do_perturbation = True,
-            #do_perturbation_eachday = False,
-            num_perturbations_actual = 2,
-            days_to_perturb = [start_time+int(days_per_chunk/3), start_time+int(2*days_per_chunk/3)],
-            #days_to_perturb = [start_time+int(2*days_per_chunk/3)],
-            seed_values = [12345,30492],
-            perturbation_fraction = [perturbation_specs["amplitude"]],
-            )
-        })
-    ens.initialize_new_member(FriersonGCMEnsembleMember, warmstart_info)
-    print(f'{len(ens.mem_list) = }')
-    memidx2run = np.array([2])
-    num_chunks_per_mem = np.array([1])
-    ens.run_batch(memidx2run, num_chunks_per_mem)
-    
-    # Save out the ensemble
-    pickle.dump(ens, open(join(ens.dirs["output"], "ens"), "wb"))
-    return
-
 
 
 
@@ -1191,4 +873,4 @@ if __name__ == "__main__":
     print(f'Got into Main')
     nproc = int(sys.argv[1])
     print(f'{nproc = }')
-    small_branching_ensemble(nproc)
+    dns_moderate(nproc)

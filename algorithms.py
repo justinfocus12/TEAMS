@@ -109,7 +109,7 @@ class PeriodicBranching(EnsembleAlgorithm):
             self.terminate = (self.num_branch_points <= 0) or (self.branches_per_point <= 0) # AFTER the current round
         else:
             icandf = self.generate_next_icandf()
-            parent = 0
+            parent = 0 # TODO: if the main trunk has a chain of members, choose the parent whos branching time is appropriate
             if self.next_branch < self.branches_per_point - 1:
                 self.next_branch += 1
             elif self.next_branch_point < self.num_branch_points - 1:

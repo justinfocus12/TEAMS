@@ -2,7 +2,7 @@ import numpy as np
 from scipy.sparse import csr_matrix, csgraph
 from scipy import ndimage
 import xarray as xr
-#import netCDF4 as nc
+import netCDF4 as nc
 import matplotlib.pyplot as plt
 import os
 from os import listdir as ls
@@ -413,6 +413,7 @@ def histogram_over_days(da, fmin=None, fmax=None, nbins=20):
 def observable_library():
     obslib = dict()
     obslib["effective_static_stability"] = dict({
+        "fun": eff_stat_stab,
         "abbrv": "ESS",
         "unit_symbol": "s$^{-2}$",
         "label": "Effective static stability",
@@ -424,6 +425,7 @@ def observable_library():
         })
 
     obslib["vertical_velocity"] = dict({
+        "fun": vertical_velocity,
         "abbrv": "W",
         "unit_symbol": "Pa/s",
         "label": "Vertical velocity",
@@ -434,6 +436,7 @@ def observable_library():
         "chi": "yellow",
         })
     obslib["meridional_velocity"] = dict({
+        "fun": meridional_velocity,
         "abbrv": "V",
         "unit_symbol": "m/s",
         "label": "Meridional velocity",
@@ -444,6 +447,7 @@ def observable_library():
         "chi": "yellow",
         })
     obslib["zonal_velocity"] = dict({
+        "fun": zonal_velocity,
         "abbrv": "U",
         "unit_symbol": "m/s",
         "label": "Zonal velocity",
@@ -454,6 +458,7 @@ def observable_library():
         "chi": "yellow",
         })
     obslib["exprec_scaling"] = dict({
+        "fun": exprec_scaling_wrapper,
         "abbrv": "XPS",
         "unit_symbol": "mm/day",
         "label": "Extreme precip. scaling",
@@ -464,6 +469,7 @@ def observable_library():
         "chi": "yellow",
         })
     obslib["convection_rain"] = dict({
+        "fun": convection_rain,
         "abbrv": "Rconv",
         "unit_symbol": "mm/day",
         "label": "Convection rain",
@@ -474,6 +480,7 @@ def observable_library():
         "chi": "yellow",
         })
     obslib["condensation_rain"] = dict({
+        "fun": condensation_rain,
         "abbrv": "Rcond",
         "unit_symbol": "mm/day",
         "label": "Condensation rain",
@@ -484,6 +491,7 @@ def observable_library():
         "chi": "yellow",
         })
     obslib["total_rain"] = dict({
+        "fun": total_rain,
         "abbrv": "Rtot",
         "unit_symbol": "mm/day",
         "label": "Rain rate",
@@ -494,6 +502,7 @@ def observable_library():
         "chi": "yellow",
         })
     obslib["specific_humidity"] = dict({
+        "fun": specific_humidity,
         "abbrv": "Q",
         "unit_symbol": "kg/kg",
         "label": "Specific humidity",
@@ -504,6 +513,7 @@ def observable_library():
         "chi": "yellow",
         })
     obslib["temperature"] = dict({
+        "fun": temperature,
         "abbrv": "T",
         "unit_symbol": "K",
         "label": "Temperature",
@@ -514,6 +524,7 @@ def observable_library():
         "chi": "yellow",
         })
     obslib["column_water_vapor"] = dict({
+        "fun": column_water_vapor,
         "abbrv": "CWV",
         "unit_symbol": r"kg m$^{-2}$",
         "label": "Column water vapor",
@@ -524,6 +535,7 @@ def observable_library():
         "chi": "yellow",
         })
     obslib["column_relative_humidity"] = dict({
+        "fun": column_relative_humidity,
         "abbrv": "CRH",
         "unit_symbol": r"fraction",
         "label": "Column relative humidity",
@@ -534,6 +546,7 @@ def observable_library():
         "chi": "yellow",
         })
     obslib["water_vapor_convergence"] = dict({
+        "fun": water_vapor_convergence,
         "abbrv": "QCON",
         "unit_symbol": r"kg m$^{-2}$s$^{-1}$",
         "label": "Water vapor convergence",
@@ -544,6 +557,7 @@ def observable_library():
         "chi": "yellow",
         })
     obslib["vorticity"] = dict({
+        "fun": vorticity,
         "abbrv": "VOR",
         "unit_symbol": r"s$^{-1}$",
         "label": "Vorticity",
@@ -554,6 +568,7 @@ def observable_library():
         "chi": "yellow",
         })
     obslib["surface_pressure"] = dict({
+        "fun": surface_pressure,
         "abbrv": "PS",
         "unit_symbol": r"Pa",
         "label": "Surface pressure",
