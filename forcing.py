@@ -33,6 +33,19 @@ class WhiteNoiseForcing(Forcing):
     def get_forcing_times(self):
         return self.reseed_times
 
+class ContinuousTimeForcing(Forcing):
+    def __init__(self, init_time, fin_time, reseed_times, seeds):
+        assert len(reseed_times) == len(seeds)
+        if len(reseed_times) > 0:
+            assert (min(reseed_times) >= init_time) and (max(reseed_times) < fin_time)
+        super().__init__(init_time, fin_time)
+        self.reseed_times = reseed_times
+        self.seeds = seeds
+        return
+    def get_forcing_times(self):
+        return self.reseed_times
+
+
 class MultiplicativeTendencyForcing(Forcing):
     # Multiply an ODE tendency by a number between 0 and 1
     def __init__(self, reseed_times, seeds, fin_time):

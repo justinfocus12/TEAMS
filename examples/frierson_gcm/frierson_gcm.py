@@ -8,6 +8,12 @@ import dask
 import f90nml
 from netCDF4 import Dataset
 import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.rcParams.update({
+    "font.family": "monospace",
+    "font.size": 15
+})
+pltkwargs = dict(bbox_inches="tight",pad_inches=0.2)
 import os
 from os.path import join, exists, basename
 from os import mkdir, makedirs
@@ -24,7 +30,7 @@ sys.path.append("../..")
 from ensemble import Ensemble
 from dynamicalsystem import DynamicalSystem
 sys.path.append("/home/ju26596/jf_conv_gray_smooth/fms_analysis")
-import transformations
+import forcing
 
 def boolstr(b):
     if b:
@@ -61,27 +67,25 @@ class FriersonGCM(DynamicalSystem):
 
     def generate_default_icandf(self, init_time, fin_time):
         nml = self.nml_const.copy()
-        nml['main_nml'] = dict({
-            'days': fin_time - init_time + 1,
-            'hours': 0,
-            'dt_atmos': 600,
-            })
-        nml['spectral_init_cond_nml'] = dict({
-            'initial_temperature': 280.0,
-            })
-        nml['spectral_dynamics_nml'].update(dict({
-            'do_perturbation': True,
-            'num_perturbations_actual': 1,
-            # TODO: can I actually have empty lists within the namelist?
-            'days_to_perturb': [0],
-            'seed_values': [84730],
-            'perturbation_fraction': [1.0e-3],
-            }))
+        #nml['main_nml'] = dict({
+        #    'days': fin_time - init_time,
+        #    'hours': 0,
+        #    'dt_atmos': 600,
+        #    })
+        #nml['spectral_init_cond_nml'] = dict({
+        #    'initial_temperature': 280.0,
+        #    })
+        #nml['spectral_dynamics_nml'].update(dict({
+        #    'do_perturbation': True,
+        #    'num_perturbations_actual': 0,
+        #    # TODO: can I actually have empty lists within the namelist?
+        #    'days_to_perturb': [0],
+        #    'seed_values': [84730],
+        #    'perturbation_fraction': [1.0e-3],
+        #    }))
         icandf = dict({
-            'restart_file': None,
-            'namelist': nml,
-            'init_time': init_time, 
-            'fin_time': fin_time,
+            'init_cond': None,
+            'frc': forcing.ContinuousTimeForcing(init_time, fin_time, [], []),
             })
         return icandf
     @staticmethod
@@ -91,14 +95,15 @@ class FriersonGCM(DynamicalSystem):
         return
     @classmethod
     def label_from_config(cls, config):
-        label = r"res%s_abs%g"%(config['resolution'],config['abs'])
-        display = r"%g, $A=%g$"%(config['resolution'],config['abs'])
+        label = (r"res%s_abs%g_pert%g"%(config['resolution'],config['abs'],config['pert_frac'])).replace('.','p')
+        display = r"%s, $A=%g$"%(config['resolution'],config['abs'])
         return label, display
     @classmethod
     def default_config(cls, base_dir):
         config = dict({
             'resolution': 'T21',
             'abs': 1.0, # atmospheric absorption coefficient (larger means more greenhouse) 
+            'pert_frac': 0.001,
             'nml_patches_misc': dict(),
             'base_dir': base_dir,
             'platform': 'gnu',
@@ -110,22 +115,21 @@ class FriersonGCM(DynamicalSystem):
         # This goes on top of the base namelist
         nml = dict({
             "spectral_dynamics_nml": dict({
-                "do_perturbation": True,
+                #"do_perturbation": True,
                 #"do_perturbation_eachday": False,
-                "num_perturbations_actual": 0,
-                "days_to_perturb": [0], 
-                "seed_values": [1234],
-                "perturbation_fraction": [1.0e-3],
+                #"num_perturbations_actual": 0,
+                #"days_to_perturb": [0], 
+                #"seed_values": [1234],
+                #"perturbation_fraction": [1.0e-3],
                 "lon_max": 64,
                 "lat_max": 32,
                 "num_fourier": 21,
                 "num_spherical": 22,
                 }),
-            #"main_nml": dict(
-            #    days =  100, 
-            #    hours =  0,
-            #    dt_atmos =  600
-            #    ),
+            "main_nml": dict(
+                hours =  0,
+                dt_atmos =  600
+                ),
             "atmosphere_nml": dict(
                 two_stream =  True,
                 turb =  True,
@@ -190,22 +194,23 @@ class FriersonGCM(DynamicalSystem):
         make_output = subprocess.run(f"cd {execdir}; make -f Makefile", executable="/bin/csh", shell=True, capture_output=True)
         print(f"make_output: \n{print_comp_proc(make_output)}")
         return
-    def setup_directories(self, work_dir, output_dir): # To be called by an Ensemble object 
+    def setup_directories(self, temp_dir): # To be called by an Ensemble object 
         # Prepare directories for a single ensemble member
-        makedirs(output_dir, exist_ok=True)
-        makedirs(join(output_dir,'history'),exist_ok=True)
-        makedirs(join(output_dir,'out_err_files'),exist_ok=True)
+        makedirs(temp_dir, exist_ok=False)
+        work_dir = join(temp_dir,'work')
+        output_dir = join(temp_dir,'output')
+        makedirs(output_dir, exist_ok=False)
+        makedirs(join(output_dir,'history'),exist_ok=False)
+        makedirs(join(output_dir,'out_err_files'),exist_ok=False)
         print(f"Just set up the output directory {output_dir}")
         makedirs(work_dir, exist_ok=False)
-        makedirs(join(work_dir,'INPUT'),exist_ok=True)
-        makedirs(join(work_dir,'RESTART'),exist_ok=True)
+        makedirs(join(work_dir,'INPUT'),exist_ok=False)
+        makedirs(join(work_dir,'RESTART'),exist_ok=False)
         print(f"Just set up the output directory {work_dir}")
         # Copy the necessary code over
         shutil.copy2(join(self.base_dir,'input','jf_diag_table_precip'), join(work_dir, 'diag_table'))
         shutil.copy2(join(self.base_dir,'input','jf_spectral_field_table'), join(work_dir, 'field_table'))
         shutil.copy2(join(self.base_dir,f'exec_spectral.{self.platform}', 'fms.x'), join(work_dir,'fms.x'))
-
-
         return
 
     @staticmethod
@@ -327,6 +332,9 @@ class FriersonGCM(DynamicalSystem):
                     nml[section].update(nmlpatch[section])
 
         self.nml_const = nml # Because this namelist only includes physical parameters, not duration and timestep as will 
+
+        # Perturbation parameters
+        self.pert_frac = config['pert_frac']
 
         return
         
@@ -485,70 +493,228 @@ class FriersonGCM(DynamicalSystem):
         return 
 
     def run_trajectory(self, icandf, obs_fun, saveinfo, nproc=1):
-        if icandf['restart_file'] is not None:
-            shutil.copy2(icandf['restart_file'],join(saveinfo['work_dir'],'INPUT',basename(icandf['restart_file'])))
-            subprocess.run(f'cd {join(saveinfo["work_dir"],"INPUT")}; cpio -iv < {basename(icandf["restart_file"])}', executable="/bin/csh", shell=True)
-        # Modify the namelist for running time and random seeds
-        f90nml.namelist.Namelist(icandf['namelist'],default_start_index=1).write(join(saveinfo['work_dir'],'input.nml'))
-        mpirun_output = subprocess.run(f'cd {join(saveinfo["work_dir"])}; /home/software/gcc/6.2.0/pkg/openmpi/4.0.4/bin/mpirun -np {nproc} fms.x', shell=True, executable='/bin/csh', capture_output=True)
+        self.setup_directories(saveinfo['temp_dir'])
+        wd = join(saveinfo['temp_dir'],'work')
+        od = join(saveinfo['temp_dir'],'output')
+
+        nml = self.nml_const.copy()
+        if icandf['init_cond'] is not None:
+            shutil.copy2(icandf['init_cond'],join(wd,'INPUT',basename(icandf['init_cond'])))
+            subprocess.run(f'cd {join(wd,"INPUT")}; cpio -iv < {basename(icandf["init_cond"])}', executable="/bin/csh", shell=True)
+        else:
+            nml['spectral_init_cond_nml'] = dict({
+                'initial_temperature': 280.0,
+                })
+
+        # Augment the namelist with forcing information
+        nml['main_nml']['days'] = icandf['frc'].fin_time - icandf['frc'].init_time
+        numperts = len(icandf['frc'].reseed_times)
+        nml['spectral_dynamics_nml']['num_perturbations_actual'] = numperts
+        if numperts == 0:
+            nml['spectral_dynamics_nml']['do_perturbation'] = False
+            nml['spectral_dynamics_nml']['days_to_perturb'] = [-1]
+            nml['spectral_dynamics_nml']['seed_values'] = [-1]
+            nml['spectral_dynamics_nml']['perturbation_fraction'] = [0.0]
+        else:
+            nml['spectral_dynamics_nml']['do_perturbation'] = True
+            nml['spectral_dynamics_nml']['days_to_perturb'] = icandf['frc'].reseed_times
+            nml['spectral_dynamics_nml']['seed_values'] = icandf['frc'].seeds
+            nml['spectral_dynamics_nml']['perturbation_fraction'] = [self.pert_frac for ipert in range(numperts)]
+
+        f90nml.namelist.Namelist(nml,default_start_index=1).write(join(wd,'input.nml'))
+        mpirun_output = subprocess.run(f'cd {join(wd)}; /home/software/gcc/6.2.0/pkg/openmpi/4.0.4/bin/mpirun -np {nproc} fms.x', shell=True, executable='/bin/csh', capture_output=True)
 
         # Move output files to output directory with informative names
-        date_name = f'days{icandf["init_time"]}-{icandf["fin_time"]}hour{icandf["namelist"]["main_nml"]["hours"]}'
-        mkdir(join(saveinfo['output_dir'],'history',date_name))
+        date_range_name = f'days{icandf["frc"].init_time}-{icandf["frc"].fin_time}'
+        mkdir(join(od,'history',date_range_name))
         # netcdf files
-        nc_files = glob.glob('*.nc*', root_dir=saveinfo['work_dir'])
+        nc_files = glob.glob('*.nc*', root_dir=wd)
         for ncf in nc_files:
-            shutil.move(join(saveinfo['work_dir'],ncf), join(saveinfo['output_dir'], 'history', date_name, f'{date_name}.{ncf}'))
+            shutil.move(join(wd,ncf), join(od, 'history', date_range_name, f'{date_range_name}.{ncf}'))
         # ascii files
-        ascii_files = glob.glob('*.out', root_dir=saveinfo['work_dir'])
+        ascii_files = glob.glob('*.out', root_dir=wd)
         for ascf in ascii_files:
-            shutil.move(join(saveinfo['work_dir'],ascf), join(saveinfo['output_dir'],f'{date_name}.{ascf}'))
+            shutil.move(join(wd,ascf), join(od,f'{date_range_name}.{ascf}'))
         # namelists, diagnostics
         for f in ['input.nml','diag_table']:
-            shutil.copy2(join(saveinfo['work_dir'],f),join(saveinfo['work_dir'],'RESTART',f))
-        restart_files = glob.glob('*.res*', root_dir=join(saveinfo['work_dir'],'RESTART'))
+            shutil.copy2(join(wd,f),join(wd,'RESTART',f))
+        restart_files = glob.glob('*.res*', root_dir=join(wd,'RESTART'))
         files2compress_str = " ".join(['input.nml','diag_table'] + restart_files)
         if len(restart_files) > 0:
             print(f'There are some restart files: \n{restart_files = }')
-            compressed_restart_tail = f'{date_name}.cpio'
-            subprocess.run(f'cd {saveinfo["work_dir"]}/RESTART; /bin/ls {files2compress_str} | cpio -ocv > {compressed_restart_tail}', executable='/bin/csh', shell=True)
+            compressed_restart_tail = f'{date_range_name}.cpio'
+            subprocess.run(f'cd {wd}/RESTART; /bin/ls {files2compress_str} | cpio -ocv > {compressed_restart_tail}', executable='/bin/csh', shell=True)
             # Now move to a new restart directory
-            resdir_out = join(saveinfo['output_dir'], 'restart')
-            makedirs(resdir_out, exist_ok=True)
-            shutil.move(join(saveinfo['work_dir'],'RESTART',compressed_restart_tail), join(resdir_out,compressed_restart_tail)) 
+            makedirs(join(od,'restart'), exist_ok=True)
+            shutil.move(join(wd,'RESTART',compressed_restart_tail), join(od,'restart',compressed_restart_tail)) 
         else:
             raise Exception(f'There are no restart files in {resdir_work}')
 
+
         # TODO allow later possibility of running in multiple chunks, but for now just stick to one chunk per member. When doing that, keep the loop contained inside this same function here. 
+
+
+        # Finally, aggregate trajectory output and also move (along with restart) to a common directory
+
+        # Aggregate
+        ds = dict()
+        for freq in [1,4]:
+            ds[freq] = self.resample_to_daily(
+                    xr.open_mfdataset(
+                        glob.glob(join(od,'history',date_range_name,f'*{freq}xday*.nc*')),
+                        decode_times=False, 
+                        preprocess=lambda ds: ds.drop_dims('latb')
+                        )
+                    ).compute()
+            
+            # Reample to daily
+            ds[freq] = self.resample_to_daily(ds[freq])
+        # Save the single netcdf
+        ds = xr.merge(list(ds.values()), compat='override')
+        ds.to_netcdf(saveinfo['filename_traj'])
+        ds.close()
+        # Save the single restart
+        shutil.move(join(od,'restart',compressed_restart_tail),saveinfo['filename_restart'])
+
+        # Clean up the directories
+        shutil.rmtree(saveinfo['temp_dir'])
         
         # TODO evaluate observable functions ...
         metadata = dict({
             'icandf': icandf, 
-            'output_dir': saveinfo['output_dir'],
+            'filename_traj': saveinfo['filename_traj'],
+            'filename_restart': saveinfo['filename_restart'],
             })
         observables = dict()
         return metadata, observables
+    @staticmethod
+    def resample_to_daily(da):
+        day_end_tidx = np.where(np.mod(da["time"].to_numpy(), 1.0) == 0)[0]
+        steps_per_day = day_end_tidx[1] - day_end_tidx[0]
+        runavg = da.isel(time=day_end_tidx)
+        for i_delay in range(1,steps_per_day):
+            runavg += da.shift(time=i_delay).isel(time=day_end_tidx)
+        runavg *= 1.0/steps_per_day
+        return runavg
 
-def dns_short(nproc):
+def dns_short_chain(nproc):
+    # Run three trajectories, each one picking up where the previous one left off
     base_dir = '/home/ju26596/jf_conv_gray_smooth'
     scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/frierson_gcm"
-    date_str = "2024-02-15"
-    sub_date_str = "0"
+    date_str = "2024-02-16"
+    sub_date_str = "1"
+    print(f'About to generate default config')
     config = FriersonGCM.default_config(base_dir)
     gcm = FriersonGCM(config)
 
-    work_dir = join(scratch_dir,date_str,sub_date_str,'work')
-    output_dir = join(scratch_dir,date_str,sub_date_str,'output')
-    gcm.setup_directories(work_dir, output_dir)
+    expt_str = join(scratch_dir,date_str,sub_date_str)
+    makedirs(expt_str,exist_ok=True)
+
+    filename_warmstart = None
     init_time = 0
-    fin_time = 8 
-    icandf = gcm.generate_default_icandf(init_time, fin_time)
-    saveinfo = dict({
-        'work_dir': work_dir,
-        'output_dir': output_dir,
+    for i_mem in range(3):
+        fin_time = init_time + 8
+        icandf = gcm.generate_default_icandf(init_time,fin_time)
+        icandf['filename_warmstart'] = copylib.copy(filename_warmstart)
+        saveinfo = dict({
+            # Temporary folder
+            'temp_dir': join(expt_str,f'mem{i_mem}'),
+            # Ultimate resulting filenames
+            'filename_traj': join(expt_str,f'mem{i_mem}.nc'),
+            'filename_restart': join(expt_str,f'restart_mem{i_mem}.nc'),
+            })
+        obs_fun = None
+        metadata,observable = gcm.run_trajectory(icandf, obs_fun, saveinfo, nproc=nproc)
+        filename_warmstart = saveinfo['filename_restart']
+        init_time = fin_time 
+    return
+
+def small_branching_ensemble(nproc):
+    tododict = dict({
+        'run':            0,
+        'plot':           1,
         })
-    obs_fun = None
-    metadata,observable = gcm.run_trajectory(icandf, obs_fun, saveinfo, nproc=nproc)
+    # Create a small ensemble
+    # Run three trajectories, each one picking up where the previous one left off
+    base_dir = '/home/ju26596/jf_conv_gray_smooth'
+    scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/frierson_gcm"
+    date_str = "2024-02-17"
+    sub_date_str = "1"
+    print(f'About to generate default config')
+    config = FriersonGCM.default_config(base_dir)
+    label,display = FriersonGCM.label_from_config(config)
+    expt_dir = join(scratch_dir,date_str,sub_date_str,label)
+
+    if tododict['run']:
+        makedirs(expt_dir,exist_ok=True)
+        obs_fun = lambda t,x: None
+
+        gcm = FriersonGCM(config)
+        ens = Ensemble(gcm)
+
+        # Parent member: run for 8 days
+        mem = 0
+        init_time = 0
+        fin_time = 8
+        icandf = gcm.generate_default_icandf(init_time,fin_time)
+        saveinfo = dict({
+            # Temporary folder
+            'temp_dir': join(expt_dir,f'mem{mem}'),
+            # Ultimate resulting filenames
+            'filename_traj': join(expt_dir,f'mem{mem}.nc'),
+            'filename_restart': join(expt_dir,f'restart_mem{mem}.nc'),
+            })
+        _ = ens.branch_or_plant(icandf, obs_fun, saveinfo)
+
+
+        # Branch off some children
+        for (mem,seedval) in zip([1,2,3],[29183,48271,39183]):
+            parent = 0
+            mdp = ens.traj_metadata[parent]
+            init_time = mdp['icandf']['frc'].fin_time
+            icandf = dict({
+                'init_cond': mdp['filename_restart'],
+                'frc': forcing.ContinuousTimeForcing(init_time, init_time+10, [init_time+2], [seedval])
+                })
+            saveinfo = dict({
+                'temp_dir': join(expt_dir,f'mem{mem}'),
+                'filename_traj': join(expt_dir,f'mem{mem}.nc'),
+                'filename_restart': join(expt_dir,f'restart_mem{mem}.nc'),
+                })
+            _ = ens.branch_or_plant(icandf, obs_fun, saveinfo, parent=parent)
+
+        # Save out the ensemble for later querying
+        pickle.dump(ens, open(join(expt_dir,'ens.pickle'),'wb'))
+    if tododict['plot']:
+        plot_dir = join(expt_dir,'plots')
+        makedirs(plot_dir,exist_ok=True)
+        ens = pickle.load(open(join(expt_dir,'ens.pickle'),'rb'))
+        lat = 45.0
+        lon = 180.0
+        fig,ax = plt.subplots(figsize=(20,5))
+        handles = []
+        for mem in range(ens.memgraph.number_of_nodes()):
+            rtot = xr.open_mfdataset(ens.traj_metadata[mem]['filename_traj'], decode_times=False)['condensation_rain'] * 3600/24
+            i_lat = np.argmin(np.abs(rtot.lat.values - lat))
+            i_lon = np.argmin(np.abs(rtot.lon.values - lon))
+            rtot = rtot.isel(lat=i_lat,lon=i_lon).compute()
+            h, = xr.plot.plot(rtot, x='time', label=f'Member {mem}')
+            handles.append(h)
+        ax.legend(handles=handles)
+        fig.savefig(join(plot_dir,'rain.png'),**pltlkwargs)
+
+                    
+
+
+    return
+
+
+
+
+
+
+
+
 
 
 
@@ -1022,6 +1188,7 @@ def score_fun_instantaneous(ds):
     return score 
 
 if __name__ == "__main__":
+    print(f'Got into Main')
     nproc = int(sys.argv[1])
-    dns_short(nproc)
-    #test_fortran_split()
+    print(f'{nproc = }')
+    small_branching_ensemble(nproc)
