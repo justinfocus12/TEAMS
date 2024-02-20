@@ -29,6 +29,8 @@ class Ensemble(ABC):
         if parent is not None:
             self.memgraph.add_edge(parent, newmem)
         return observables
+    def get_member_timespan(self, member):
+        return self.dynsys.get_timespan(self.traj_metadata[member])
     # --------------- Plotting methods ---------------
     def plot_observables(self, mems, ts, obsvals):
         # TODO also make an alternative method to compute observable functions
@@ -43,9 +45,11 @@ class Ensemble(ABC):
             handles.append(h)
             # Plot origin time
             ax.scatter(t[0]*tu, obs[0], marker='o', color=colors[i_mem])
-            # plot forcing times
-            tf = np.array(self.traj_metadata[mem]['icandf']['frc'].get_forcing_times())
+            # plot forcing times (plus one, since we didn't save initial conditions; add this as possible modification)
+            tf = np.array(self.traj_metadata[mem]['icandf']['frc'].get_forcing_times()) + 1 
+            print(f'{tf = }')
             i_tf = tf - t[0]
+            print(f'{i_tf = }, {obs[i_tf] = }')
             ax.scatter(tf*tu, obs[i_tf], marker='x', color=colors[i_mem])
             ax.set_xlabel("Time")
         ax.legend(handles=handles, loc=(1,0))

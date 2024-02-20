@@ -36,6 +36,11 @@ from frierson_gcm import FriersonGCM
 class FriersonGCMPeriodicBranching(algorithms.PeriodicBranching):
     def obs_dict_names(self):
         return ['total_rain','column_water_vapor']
-    def obs_fun(self, t, x):
-        # here x is an xarray dataset
+    def obs_fun(self, t, ds):
+        obs = dict()
+        for key in self.obs_dict_names():
+            obs[key] = getattr(self.ens.dynsys, key)(ds)
+        return obs
+    def generate_next_icandf(self):
+        
 

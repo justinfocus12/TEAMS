@@ -19,6 +19,10 @@ class DynamicalSystem(ABC):
     @abstractmethod
     def generate_default_icandf(self,init_time,fin_time): # for spinup
         pass
+    @staticmethod
+    @abstractmethod
+    def get_timespan(metadata):
+        pass
     @abstractmethod
     def run_trajectory(self, icandf, obs_fun, saveinfo):
         # return some metadata sufficient to reconstruct the output, for example (1) a filename, (2) full numpy array of the output of an ODE solver. 
@@ -76,6 +80,10 @@ class ODESystem(DynamicalSystem):
             'filename': saveinfo['filename'],
             })
         return md
+    @staticmethod
+    def get_timespan(metadata):
+        frc = md['icandf']['frc']
+        return frc.init_time,frc.fin_time
         
     def load_trajectory(self, metadata, tspan=None):
         traj = dict(np.load(metadata['filename']))
@@ -100,23 +108,17 @@ class ODESystem(DynamicalSystem):
     def run_trajectory_unperturbed(self, init_cond, init_time, fin_time, method):
         assert(isinstance(init_time,int) and isinstance(fin_time,int))
         print(f"In RTU: {init_cond = }")
-        t_save = np.arange(init_time, fin_time+1, 1) # unitless
+        t_save = np.arange(init_time+1, fin_time+1, 1) # unitless
         tp_save = t_save * self.dt_save # physical (unitful)
         Nt_save = len(t_save)
         # Initialize the solution array
         x_save = np.zeros((Nt_save, self.state_dim))
         print(f"{x_save.shape = }")
-        # special cases: endpoints
-        if init_time % 1 == 0:
-            x_save[0] = init_cond
-            i_save = 1
-        else:
-            i_save = 0
+        i_save = 0
         tp_save_next = tp_save[i_save]
         x = init_cond.copy()
         tp = init_time * self.dt_save # physical units
-        timestep_fun_dict = {'rk4': self.timestep_rk4, 'euler': self.timestep_euler}
-        timestep_fun = timestep_fun_dict[method]
+        timestep_fun = getattr(self, f'timestep_{method}')
         while tp < tp_save[-1]:
             tpnew,xnew = timestep_fun(tp, x)
             if tpnew > tp_save_next:
@@ -133,7 +135,7 @@ class ODESystem(DynamicalSystem):
         init_cond_nopert,f = icandf['init_cond'],icandf['frc']
         print(f"IN RT: {init_cond_nopert = }")
         assert(isinstance(f.init_time,int) and isinstance(f.fin_time,int))
-        t = np.arange(f.init_time, f.fin_time+1)
+        t = np.arange(f.init_time+1, f.fin_time+1)
         Nt = len(t)
         x = np.zeros((Nt, self.state_dim))
         # Need to set up three things: init_time, init_cond, fin_time
@@ -144,9 +146,7 @@ class ODESystem(DynamicalSystem):
         i_save = 0
         nimp = len(f.impulse_times)
         for i_imp in range(nimp):
-            print(f"Before applying impulse, {init_cond_temp.shape = }")
             init_cond_temp = self.apply_impulse(init_time_temp, init_cond_temp, f.impulses[i_imp])
-            print(f"After applying impulse, {init_cond_temp.shape = }")
             if i_imp+1 < len(f.impulse_times):
                 fin_time_temp = f.impulse_times[i_imp+1]
             else:
@@ -156,7 +156,7 @@ class ODESystem(DynamicalSystem):
             x[i_save:i_save+len(t_temp)] = x_temp
             init_time_temp = fin_time_temp
             init_cond_temp = x_temp[-1]
-            i_save += len(t_temp) - 1
+            i_save += len(t_temp) 
         # Return metadata and observables
         metadata = self.assemble_metadata(icandf, method, saveinfo)
         observables = obs_fun(t,x)
@@ -191,22 +191,16 @@ class SDESystem(DynamicalSystem):
     def run_trajectory_unperturbed(self, init_cond, init_time, fin_time, method, rng):
         print(f'{init_time = }, {fin_time = }')
         #assert(isinstance(init_time,int) and isinstance(fin_time,int))
-        t_save = np.arange(init_time, fin_time+1, 1) # unitless
+        t_save = np.arange(init_time+1, fin_time+1, 1) # unitless
         tp_save = t_save * self.ode.dt_save # physical (unitful)
         Nt_save = len(t_save)
         # Initialize the solution array
         x_save = np.zeros((Nt_save, self.ode.state_dim))
-        # special cases: endpoints
-        if init_time % 1 == 0:
-            x_save[0] = init_cond
-            i_save = 1
-        else:
-            i_save = 0
+        i_save = 0
         tp_save_next = tp_save[i_save]
         x = init_cond.copy()
         tp = init_time * self.ode.dt_save # physical units
-        if method == 'euler_maruyama':
-            timestep_fun = self.timestep_euler_maruyama
+        timestep_fun = getattr(self, f'timestep_{method}')
         while tp < tp_save[-1]:
             tpnew,xnew = timestep_fun(tp, x, rng)
             if tpnew > tp_save_next:
@@ -221,7 +215,7 @@ class SDESystem(DynamicalSystem):
         return t_save,x_save
     def run_trajectory(self, icandf, obs_fun, saveinfo):
         init_cond_nopert,f = icandf['init_cond'],icandf['frc']
-        t = np.arange(f.init_time, f.fin_time+1)
+        t = np.arange(f.init_time+1, f.fin_time+1)
         Nt = len(t)
         x = np.zeros((Nt, self.ode.state_dim))
         # Need to set up three things: init_time, init_cond, fin_time
@@ -248,7 +242,7 @@ class SDESystem(DynamicalSystem):
             x[i_save:i_save+len(t_temp)] = x_temp
             init_time_temp = fin_time_temp
             init_cond_temp = x_temp[-1]
-            i_save += len(t_temp) - 1
+            i_save += len(t_temp) 
         metadata = self.assemble_metadata(icandf, method, saveinfo)
         observables = obs_fun(t,x)
         # save full state out to saveinfo
@@ -273,6 +267,9 @@ class SDESystem(DynamicalSystem):
             'filename': saveinfo['filename'],
             })
         return md
+    @staticmethod
+    def get_timespan(metadata):
+        return self.ode.get_timespan(metadata)
     def load_trajectory(self, metadata, tspan=None):
         return self.ode.load_trajectory(metadata, tspan)
 
@@ -299,19 +296,13 @@ class CoupledSystem(DynamicalSystem):
     def run_trajectory_unperturbed(self, init_cond_x, init_cond_y, init_time, fin_time, method, rng):
         print(f'{init_time = }, {fin_time = }')
         #assert(isinstance(init_time,int) and isinstance(fin_time,int))
-        t_save = np.arange(init_time, fin_time+1, 1) # unitless
+        t_save = np.arange(init_time+1, fin_time+1, 1) # unitless
         tp_save = t_save * self.ode.dt_save # physical (unitful)
         Nt_save = len(t_save)
         # Initialize the solution array
         x_save = np.zeros((Nt_save, self.ode.state_dim))
         y_save = np.zeros((Nt_save, self.sde.state_dim))
-        # special cases: endpoints
-        if init_time % 1 == 0:
-            x_save[0] = init_cond_x
-            y_save[0] = init_cond_y
-            i_save = 1
-        else:
-            i_save = 0
+        i_save = 0
         tp_save_next = tp_save[i_save]
         x = init_cond_x.copy()
         y = init_cond_y.copy()
@@ -335,7 +326,7 @@ class CoupledSystem(DynamicalSystem):
     def run_trajectory(self, icandf, obs_fun, saveinfo):
         init_cond_nopert_x,f_x = icandf['x']['init_cond'],icandf['x']['frc']
         init_cond_nopert_y,f_y = icandf['y']['init_cond'],icandf['y']['frc']
-        t = np.arange(f_x.init_time, f_x.fin_time+1)
+        t = np.arange(f_x.init_time+1, f_x.fin_time+1)
         Nt = len(t)
         x = np.zeros((Nt, self.ode.state_dim))
         y = np.zeros((Nt, self.sde.state_dim))
@@ -374,7 +365,7 @@ class CoupledSystem(DynamicalSystem):
             y[i_save:i_save+len(t_temp)] = y_temp
             init_time_temp = fin_time_temp
             init_cond_temp = x_temp[-1]
-            i_save += len(t_temp) - 1
+            i_save += len(t_temp) 
         metadata = self.assemble_metadata(icandf, method, saveinfo)
         observables = obs_fun(t,x,y)
         # save full state out to saveinfo

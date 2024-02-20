@@ -31,6 +31,7 @@ from ensemble import Ensemble
 from dynamicalsystem import DynamicalSystem
 import forcing
 import frierson_observables as frobs
+import precip_extremes_scaling
 
 def boolstr(b):
     if b:
@@ -599,6 +600,319 @@ class FriersonGCM(DynamicalSystem):
             runavg += da.shift(time=i_delay).isel(time=day_end_tidx)
         runavg *= 1.0/steps_per_day
         return runavg
+    # --------------- Observable functions ---------------------
+    def observable_props(self):
+        obslib = dict()
+        obslib["effective_static_stability"] = dict({
+            "abbrv": "ESS",
+            "unit_symbol": "s$^{-2}$",
+            "label": "Effective static stability",
+            "cmap": "coolwarm",
+            "cmin": None,
+            "cmax": None,
+            "clo": "gray",
+            "chi": "yellow",
+            })
+
+        obslib["vertical_velocity"] = dict({
+            "abbrv": "W",
+            "unit_symbol": "Pa/s",
+            "label": "Vertical velocity",
+            "cmap": "coolwarm",
+            "cmin": None,
+            "cmax": None,
+            "clo": "gray",
+            "chi": "yellow",
+            })
+        obslib["meridional_velocity"] = dict({
+            "abbrv": "V",
+            "unit_symbol": "m/s",
+            "label": "Meridional velocity",
+            "cmap": "coolwarm",
+            "cmin": None,
+            "cmax": None,
+            "clo": "gray",
+            "chi": "yellow",
+            })
+        obslib["zonal_velocity"] = dict({
+            "abbrv": "U",
+            "unit_symbol": "m/s",
+            "label": "Zonal velocity",
+            "cmap": "coolwarm",
+            "cmin": None,
+            "cmax": None,
+            "clo": "gray",
+            "chi": "yellow",
+            })
+        obslib["exprec_scaling"] = dict({
+            "abbrv": "XPS",
+            "unit_symbol": "mm/day",
+            "label": "Extreme precip. scaling",
+            "cmap": "Blues",
+            "cmin": 0.0,
+            "cmax": 64.0,
+            "clo": "gray",
+            "chi": "yellow",
+            })
+        obslib["convection_rain"] = dict({
+            "abbrv": "Rconv",
+            "unit_symbol": "mm/day",
+            "label": "Convection rain",
+            "cmap": "Blues",
+            "cmin": 0.0, 
+            "cmax": 64.0,
+            "clo": "gray", 
+            "chi": "yellow",
+            })
+        obslib["condensation_rain"] = dict({
+            "abbrv": "Rcond",
+            "unit_symbol": "mm/day",
+            "label": "Condensation rain",
+            "cmap": "Blues",
+            "cmin": 0.0, 
+            "cmax": 64.0,
+            "clo": "gray",
+            "chi": "yellow",
+            })
+        obslib["total_rain"] = dict({
+            "abbrv": "Rtot",
+            "unit_symbol": "mm/day",
+            "label": "Rain rate",
+            "cmap": "Blues",
+            "cmin": 0.0, 
+            "cmax": 64.0,
+            "clo": "gray",
+            "chi": "yellow",
+            })
+        obslib["specific_humidity"] = dict({
+            "abbrv": "Q",
+            "unit_symbol": "kg/kg",
+            "label": "Specific humidity",
+            "cmap": "Blues",
+            "cmin": None,
+            "cmax": None,
+            "clo": "gray",
+            "chi": "yellow",
+            })
+        obslib["temperature"] = dict({
+            "abbrv": "T",
+            "unit_symbol": "K",
+            "label": "Temperature",
+            "cmap": "Reds",
+            "cmin": 210.0, 
+            "cmax": 350.0,
+            "clo": "gray",
+            "chi": "yellow",
+            })
+        obslib["column_water_vapor"] = dict({
+            "abbrv": "CWV",
+            "unit_symbol": r"kg m$^{-2}$",
+            "label": "Column water vapor",
+            "cmap": "Blues",
+            "cmin": 0.0, 
+            "cmax": 7.0,
+            "clo": "gray",
+            "chi": "yellow",
+            })
+        obslib["column_relative_humidity"] = dict({
+            "abbrv": "CRH",
+            "unit_symbol": r"fraction",
+            "label": "Column relative humidity",
+            "cmap": "Blues",
+            "cmin": 0.0, 
+            "cmax": 1.0,
+            "clo": "gray",
+            "chi": "yellow",
+            })
+        obslib["water_vapor_convergence"] = dict({
+            "abbrv": "QCON",
+            "unit_symbol": r"kg m$^{-2}$s$^{-1}$",
+            "label": "Water vapor convergence",
+            "cmap": "coolwarm_r",
+            "cmin": None, 
+            "cmax": None,
+            "clo": "gray",
+            "chi": "yellow",
+            })
+        obslib["vorticity"] = dict({
+            "abbrv": "VOR",
+            "unit_symbol": r"s$^{-1}$",
+            "label": "Vorticity",
+            "cmap": "coolwarm",
+            "cmin": None, 
+            "cmax": None,
+            "clo": "gray",
+            "chi": "yellow",
+            })
+        obslib["surface_pressure"] = dict({
+            "abbrv": "PS",
+            "unit_symbol": r"Pa",
+            "label": "Surface pressure",
+            "cmap": "rainbow",
+            "cmin": 96.0e3, 
+            "cmax": 103.0e3,
+            "clo": "gray",
+            "chi": "yellow",
+            })
+        return obslib
+    @staticmethod
+    def effective_static_stability(ds):
+        # Compute effective static stability
+        p,dp_dpfull = pressure(ds)
+        temp = ds["temp"]
+        lam = 1.0
+        # Constants
+        Rd = 287.04
+        Rv = 461.5
+        cpd = 1005.7
+        cpv = 1870.0
+        g = 9.80665
+        p0 = 1e5
+        kappa = Rd/cpd
+        gc_ratio = Rd/Rv
+    
+        # Saturation vapor pressure
+        Tc = temp - 273.15
+        es = 611.2 * np.exp(17.67*Tc/(Tc + 243.5))
+        
+        # Latent heat of condensation
+        L = (2.501-0.00237*Tc)*1e6
+        
+        # Saturation mixing ratio
+        rs = gc_ratio*es/(p - es)
+    
+        # Saturation specific humidity
+        qs = rs/(1 + rs)
+        
+        # Potential temperature
+        exponent = kappa*(1 + rs/gc_ratio)/(1 + rs*cpv/cpd)
+        theta = temp * (p0/p) ** exponent
+    
+        # derivative of potential temperature with respect to pressure
+        dtheta_dp = theta.differentiate("pfull") / dp_dpfull
+    
+        # density
+        temp_virtual = temp * (1 + rs/gc_ratio)/(1 + rs)
+        rho = p/Rd/temp_virtual
+    
+        # moist adiabatic lapse rate
+        malr = g/cpd * (1+rs) / (1+cpv/cpd*rs) * (1+L*rs/Rd/temp) / (1+L**2*rs*(1+rs/gc_ratio)/(Rv*temp**2*(cpd+rs*cpv)))
+    
+        # Derivative of potential temperature wrt pressure along a moist adiabat (neglects small contribution from vertical variations of exponent)
+        dtemp_dp_ma = malr/g/rho
+        dtheta_dp_ma = dtemp_dp_ma * theta/temp - exponent*theta/p
+    
+        # effective static stability (eq. 8 of O'Gorman JAS 2011)
+        dtheta_dp_eff = dtheta_dp - lam*dtheta_dp_ma
+    
+        # Convert to buoyancy frequency
+        dtheta_dz_eff = dtheta_dp_eff * (-rho*g) # K/m
+        Nsq_eff = dtheta_dz_eff * g/theta # 1/s^2
+        print(f"Nsq_eff coords = {Nsq_eff.coords}")
+        return Nsq_eff 
+    
+    @staticmethod
+    def column_water_vapor(ds):
+        g = 9.806 
+        p,dp_dpfull = pressure(ds)
+        p = ds["bk"] * ds["ps"] # Pascals
+        cwv = (ds["sphum"] * dp_dpfull).integrate("pfull")/g
+        return cwv
+    
+    @staticmethod
+    def water_vapor_convergence(ds):
+        g = 9.806 
+        p,dp_dpfull = pressure(ds)
+        p = ds["bk"] * ds["ps"] # Pascals
+        conv = -divergence(ds["ucomp"]*ds["sphum"], ds["vcomp"]*ds["sphum"])
+        qcon = (conv * dp_dpfull).integrate("pfull")/g
+        return qcon 
+    
+    @staticmethod
+    def column_relative_humidity(ds):
+        # CWV / max possible CWV
+        p,dp_dpfull = pressure(ds)
+        cwv_xg = (ds["sphum"] * dp_dpfull).integrate("pfull") # / g, but this cancels 
+        qs = sat_spec_hum(ds)
+        cwv_max_xg = (qs * dp_dpfull).integrate("pfull") # / g, but this cancels
+        return cwv_xg / cwv_max_xg
+    
+    @staticmethod
+    def vert_deriv_sat_sphum(ds):
+        # Vertical derivative of saturation specific humidity at fixed saturation equivalent potential temperature
+        pass
+    
+    @staticmethod
+    def divergence(u, v):
+        # Divergence in spherical coordinates
+        a = 6371.0e3 # radius of earth
+        coslat = np.cos(np.deg2rad(u["lat"]))
+        div = 1.0/(a*coslat)*((v*coslat).differentiate("lat") + u.differentiate("lon")) * 180/np.pi
+        return div
+    
+    @staticmethod
+    def vorticity(ds):
+        return curl(ds["ucomp"], ds["vcomp"])
+    
+    @staticmethod
+    def curl(u, v):
+        # Divergence in spherical coordinates (in the vertical direction)
+        a = 6371.0e3 # radius of earth
+        coslat = np.cos(np.deg2rad(u["lat"]))
+        uxv = 1.0/(a*coslat)*(v.differentiate("lon") - (u*coslat).differentiate("lat")) * 180/np.pi
+        return uxv
+    
+    @staticmethod
+    def condensation_rain(ds):
+        cond = ds["condensation_rain"] * 3600*24 # From kg/(m**2 * s) to kg/(m**2 * day) = mm/day
+        cond.attrs["units"] = "mm/day"
+        return cond
+    @staticmethod
+    def convection_rain(ds):
+        if "convection_rain" in list(ds.data_vars.keys()):
+            conv = ds["convection_rain"] * 3600*24 # From kg/(m**2 * s) to kg/(m**2 * day) = mm/day
+        else:
+            conv = xr.zeros_like(ds["condensation_rain"])
+        conv.attrs["units"] = "mm/day"
+        return conv
+    @staticmethod
+    def total_rain(ds):
+        return FriersonGCM.convection_rain(ds) + FriersonGCM.convection_rain(ds)
+    @staticmethod
+    def temperature(ds):
+        return ds["temp"] 
+    @staticmethod
+    def specific_humidity(ds):
+        return ds["sphum"] 
+    @staticmethod
+    def surface_pressure(ds):
+        return ds["ps"]
+    
+    @staticmethod
+    def vertical_velocity(ds):
+        return ds["omega"]
+    
+    @staticmethod
+    def zonal_velocity(ds):
+        return ds["ucomp"]
+    
+    @staticmethod
+    def meridional_velocity(ds):
+        return ds["vcomp"]
+
+    @staticmethod
+    def exprec_scaling_wrapper(ds):
+        # Swap the order of pressure to be increasing on all variables
+        omega = ds["omega"].reindex(pfull=ds["pfull"][::-1])
+        temp = ds["temp"].reindex(pfull=ds["pfull"][::-1])
+        ps = ds["ps"]
+        p, dp_dpfull = pressure(ds)
+        p = p.reindex(pfull=ds["pfull"][::-1])
+        dp_dpfull = dp_dpfull.reindex(pfull=ds["pfull"][::-1])
+        scaling = precip_extremes_scaling.scaling(omega, temp, p, dp_dpfull, ps)
+        scaling *= 3600 * 24
+        return scaling
+
 
 def dns_short_chain(nproc):
     # Run three trajectories, each one picking up where the previous one left off
@@ -635,7 +949,7 @@ def dns_short_chain(nproc):
 
 def dns_moderate(nproc):
     tododict = dict({
-        'run':            0,
+        'run':            1,
         'plot':           1,
         })
     # Create a small ensemble
@@ -646,6 +960,7 @@ def dns_moderate(nproc):
     sub_date_str = "1"
     print(f'About to generate default config')
     config = FriersonGCM.default_config(base_dir)
+    config['resolution'] = 'T42'
     label,display = FriersonGCM.label_from_config(config)
     expt_dir = join(scratch_dir,date_str,sub_date_str,label)
     gcm = FriersonGCM(config)

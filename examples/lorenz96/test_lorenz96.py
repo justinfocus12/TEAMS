@@ -37,7 +37,7 @@ def test_Lorenz96_ode():
             }),
         })
     scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/lorenz96"
-    date_str = "2024-02-10"
+    date_str = "2024-02-20"
     sub_date_str = "0"
     param_abbrv,param_label = Lorenz96ODE.label_from_config(config)
     ensdir = join(scratch_dir, date_str, sub_date_str, param_abbrv)
@@ -186,7 +186,7 @@ def test_Lorenz96_sde():
             }),
         })
     scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/lorenz96"
-    date_str = "2024-02-10"
+    date_str = "2024-02-20"
     sub_date_str = "0"
     param_abbrv,param_label = Lorenz96SDE.label_from_config(config_ode,config_sde)
     ensdir = join(scratch_dir, date_str, sub_date_str, param_abbrv)
@@ -300,6 +300,6 @@ def test_Lorenz96_sde():
     return
 
 if __name__ == "__main__":
-    sysarg2test = dict({'0': test_Lorenz96_sde, '1': test_Lorenz96_ode, })
+    sysarg2test = dict({'0': test_Lorenz96_ode, '1': test_Lorenz96_sde, })
     for arg in sys.argv[1:]:
         sysarg2test[arg]()
