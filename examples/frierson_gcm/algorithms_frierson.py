@@ -41,6 +41,21 @@ class FriersonGCMPeriodicBranching(algorithms.PeriodicBranching):
         for key in self.obs_dict_names():
             obs[key] = getattr(self.ens.dynsys, key)(ds)
         return obs
-    def generate_next_icandf(self):
+    def generate_icandf_from_parent(self, parent, branch_time, duration):
+        init_time_parent,fin_time_parent = self.ens.get_member_timespan(parent)
+        assert init_time_parent <= branch_time <= fin_time_parent
+        if branch_time < fin_time_parent:
+            init_cond = self.ens.traj_metadata[parent]['icandf']['init_cond']
+            init_time = init_time_parent
+        else:
+            init_cond = self.ens.traj_metadata[parent]['filename_restart']
+            init_time = fin_time_parent
+        fin_time = branch_time + duration - init_time
+        seed = self.rng.integers(low=self.seed_min, high=self.seed_max)
+        icandf = dict({
+            'init_cond': init_cond,
+            'frc': forcing.ContinuousTimeForcing(init_time, fin_time, [init_time], [seed]),
+            })
+        # TODO make sure that reseeding at init_time (not init_time+1, e.g.) really does implement the perturbation. But we have to change that code around anywyay
         
 

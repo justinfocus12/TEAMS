@@ -44,14 +44,14 @@ class PeriodicBranching(EnsembleAlgorithm):
     def derive_parameters(self, config):
         self.seed_min,self.seed_max = config['seed_min'],config['seed_max']
         # Determine branching number
-        self.branches_per_bunch = config['branches_per_bunch'] # How many different members to spawn from the same initial condition
+        self.branches_per_group = config['branches_per_group'] # How many different members to spawn from the same initial condition
         tu = self.ens.dynsys.dt_save
         # How long can each member run for, out of storage considerations? 
         self.max_member_duration = int(config['max_member_duration_phys']/tu)
         self.interbranch_interval = int(config['interbranch_interval_phys']/tu) # How long to wait between consecutive splits
         self.branch_duration = int(config['branch_duration_phys']/tu) # How long to run each branch
-        self.num_branch_points = config['num_branch_points'] # but include the possibility for extension
-        self.trunk_duration = self.ens.dynsys.t_burnin + self.interbranch_interval * self.num_branch_points
+        self.num_branch_groups = config['num_branch_groups'] # but include the possibility for extension
+        self.trunk_duration = self.ens.dynsys.t_burnin + self.interbranch_interval * self.num_branch_groups
         # Most likely all subclasses will derive from this 
         self.obs_dict = dict({key: [] for key in self.obs_dict_names()})
         return
@@ -59,7 +59,7 @@ class PeriodicBranching(EnsembleAlgorithm):
     def label_from_config(config):
         abbrv_population = (
                 r"bpp%d_ibi%.1f_bd%.1f"%(
-                    config["branches_per_bunch"],
+                    config["branches_per_group"],
                     config["interbranch_interval_phys"],
                     config["branch_duration_phys"]
                     )
@@ -86,34 +86,33 @@ class PeriodicBranching(EnsembleAlgorithm):
         for name in self.obs_dict_names():
             self.obs_dict[name].append(obs_dict_new[name])
         return 
-    def plot_obs_spaghetti(self, obs_name, branch_point_subset=None):
-        if branch_point_subset is None:
-            branch_point_subset = np.arange(self.next_branch_point) # TODO include the branch point of each child as an observable function
+    def plot_obs_spaghetti(self, obs_name, branch_group_subset=None):
+        if branch_group_subset is None:
+            branch_group_subset = np.arange(self.branching_state['next_branch_group']) # TODO include the branch point of each child as an observable function
         tu = self.ens.dynsys.dt_save
         fig,ax = plt.subplots(figsize=(12,5))
-        for bp in branch_point_subset:
-            child_subset = 1 + np.arange(bp * self.branches_per_bunch, (bp+1) * self.branches_per_bunch)
+        for bp in branch_group_subset:
+            child_subset = 1 + np.arange(bp * self.branches_per_group, (bp+1) * self.branches_per_group)
             for child in child_subset:
                 pass
 
         return
     def take_next_step(self, saveinfo):
+        if self.terminate:
+            return
         if self.ens.memgraph.number_of_nodes() == 0:
             # Initialize the state of the branching algorithm
             # Assume that a branch duration is no longer than max_mem_duration
             self.branching_state = dict({
-                'trunk_duration_complete': 0,
                 'next_branch_group': 0,
                 'next_branch': 0,
                 'next_branch_time': self.ens.dynsys.t_burnin,
-                'terminate': False,
                 'trunk_lineage': [],
                 'trunk_lineage_init_times': [],
                 'trunk_lineage_fin_times': [],
                 })
             duration = min(self.trunk_duration, self.max_member_duration)
             branching_state_update = dict({
-                'trunk_duration_complete': duration,
                 'trunk_lineage': [0],
                 'trunk_lineage_init_times': [0],
                 'trunk_lineage_fin_times': [duration],
@@ -122,29 +121,35 @@ class PeriodicBranching(EnsembleAlgorithm):
             # Keep track of trunk length
             parent = None
             icandf = self.ens.dynsys.generate_default_icandf(0,duration)
-        elif self.branching_state['trunk_duration_complete'] < self.trunk_duration:
-            parent = self.ens.memgraph.number_of_nodes() - 1
-            duration = min(self.max_member_duration, self.trunk_duration-self.branching_state['trunk_duration_complete'])
-            icandf = self.generate_icandf_from_parent(parent, self.branching_state['trunk_duration_complete'], duration)
+        elif self.branching_state['trunk_lineage_fin_times'][-1] < self.trunk_duration: # TODO make this more flexible; we could start branching as soon as the burnin time is exceeded
+            parent = self.branching_state['trunk_lineage'][-1]
+            parent_init_time,parent_fin_time = self.ens.get_member_timespan(parent)
+            duration = min(self.max_member_duration, self.trunk_duration-parent_fin_time)
+            icandf = self.generate_icandf_from_parent(parent, parent_fin_time, duration)
             branching_state_update = dict({
-                'trunk_duration_complete': self.branching_state['trunk_duration_complete'] + duration,
+                'trunk_lineage': self.branching_state['trunk_lineage'] + [parent],
+                'trunk_lineage_init_times': self.branching_state['trunk_lineage_init_times'] + [parent_fin_time],
+                'trunk_lineage_fin_times': self.branching_state['trunk_lineage_fin_times'] + [parent_fin_time + duration],
                 })
         else:
             # decide whom to branch off of 
-            parent = int(self.branching_state['next_branch_time'] / self.max_member_duration)
-            icandf = self.generate_icandf_from_parent(parent, self.branching_state['next_branch_time'], duration)
-            parent,icandf = self.generate_next_icandf()
-            if self.next_branch < self.branches_per_bunch - 1:
-                self.next_branch += 1
-            elif self.next_branch_point < self.num_branch_points - 1:
-                self.next_branch_point += 1
-                self.next_branch_time += self.interbranch_interval
-                self.next_branch = 0
+            trunk_segment_2branch = np.searchsorted(self.branching_state['trunk_lineage_fin_times'], self.branching_state['next_branch_time'], side='left')
+            print(f'{self.branching_state = }')
+            parent = self.branching_state['trunk_lineage'][trunk_segment_2branch]
+            icandf = self.generate_icandf_from_parent(parent, self.branching_state['next_branch_time'], self.branch_duration)
+            branching_state_update = dict()
+            if self.branching_state['next_branch'] < self.branches_per_group - 1:
+                branching_state_update['next_branch'] = self.branching_state['next_branch'] + 1
+            elif self.branching_state['next_branch_group'] < self.num_branch_groups - 1:
+                branching_state_update['next_branch_group'] = self.branching_state['next_branch_group'] + 1
+                branching_state_update['next_branch_time'] = self.branching_state['next_branch_time'] + self.interbranch_interval
+                branching_state_update['next_branch'] = 0
                 self.rng = default_rng(self.seed_init) # Every new branch point will receive the same sequence of random numbers
             else:
                 self.terminate = True
         obs_dict_new = self.ens.branch_or_plant(icandf, self.obs_fun, saveinfo, parent=parent)
         self.append_obs_dict(obs_dict_new)
+        self.branching_state.update(branching_state_update)
         return
         
 class ODEPeriodicBranching(PeriodicBranching):

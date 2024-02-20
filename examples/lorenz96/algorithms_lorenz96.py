@@ -40,22 +40,23 @@ class Lorenz96SDEPeriodicBranching(algorithms.SDEPeriodicBranching):
 
 def periodic_branching_impulsive():
     tododict = dict({
-        'run_pert':                1,
+        'run_pebr':                1,
         'plot_divergence':         1,
         })
     config_ode = Lorenz96ODE.default_config()
     tu = config_ode['dt_save'],
     scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/lorenz96"
-    date_str = "2024-02-13"
+    date_str = "2024-02-20"
     sub_date_str = "0"
     param_abbrv_ode,param_label_ode = Lorenz96ODE.label_from_config(config_ode)
     config_algo = dict({
         'seed_min': 1000,
         'seed_max': 100000,
-        'branches_per_point': 8, 
-        'interbranch_interval_phys': 12.0,
-        'branch_duration_phys': 10.0,
-        'num_branch_points': 5,
+        'branches_per_group': 8, 
+        'interbranch_interval_phys': 3.0,
+        'branch_duration_phys': 12.0,
+        'num_branch_groups': 5,
+        'max_member_duration_phys': 200.0,
         })
     seed = 849582 # TODO make this a command-line argument
     param_abbrv_algo,param_label_algo = Lorenz96ODEPeriodicBranching.label_from_config(config_algo)
@@ -63,7 +64,7 @@ def periodic_branching_impulsive():
     makedirs(algdir, exist_ok=True)
     alg_filename = join(algdir,'alg.pickle')
 
-    if tododict['run_pert']:
+    if tododict['run_pebr']:
         if exists(alg_filename):
             alg = pickle.load(open(alg_filename, 'rb'))
         else:
@@ -100,7 +101,7 @@ def periodic_branching_impulsive():
 
 def periodic_branching_white():
     tododict = dict({
-        'run_pert':                1,
+        'run_pebr':                1,
         'plot_divergence':         1,
         })
     config_ode = Lorenz96ODE.default_config()
@@ -115,10 +116,10 @@ def periodic_branching_white():
     config_algo = dict({
         'seed_min': 1000,
         'seed_max': 100000,
-        'branches_per_point': 8, 
+        'branches_per_group': 8, 
         'interbranch_interval_phys': 12.0,
         'branch_duration_phys': 10.0,
-        'num_branch_points': 5,
+        'num_branch_groups': 5,
         })
     seed = 849582 # TODO make this a command-line argument
     param_abbrv_algo,param_label_algo = Lorenz96SDEPeriodicBranching.label_from_config(config_algo)
@@ -126,7 +127,7 @@ def periodic_branching_white():
     makedirs(algdir, exist_ok=True)
     alg_filename = join(algdir,'alg.pickle')
 
-    if tododict['run_pert']:
+    if tododict['run_pebr']:
         if exists(alg_filename):
             print(f'Alg is continuing')
             alg = pickle.load(open(alg_filename, 'rb'))
@@ -137,13 +138,13 @@ def periodic_branching_white():
             ens = Ensemble(sde)
             alg = Lorenz96SDEPeriodicBranching(config_algo, ens, seed)
 
-        while not alg.terminate:
+        while not alg.branching_state['terminate']:
             mem = alg.ens.memgraph.number_of_nodes()
             print(f'----------- Starting member {mem} ----------------')
             saveinfo = dict(filename=join(algdir,f'mem{mem}.npz'))
             alg.take_next_step(saveinfo)
             pickle.dump(alg, open(alg_filename, 'wb'))
-        print(f'{alg.terminate = }')
+        print(f'{alg.branching_state["terminate"] = }')
 
     if tododict['plot_divergence']:
         alg = pickle.load(open(alg_filename, 'rb'))

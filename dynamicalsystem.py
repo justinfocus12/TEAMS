@@ -82,7 +82,7 @@ class ODESystem(DynamicalSystem):
         return md
     @staticmethod
     def get_timespan(metadata):
-        frc = md['icandf']['frc']
+        frc = metadata['icandf']['frc']
         return frc.init_time,frc.fin_time
         
     def load_trajectory(self, metadata, tspan=None):

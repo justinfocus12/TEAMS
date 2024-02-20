@@ -67,23 +67,6 @@ class FriersonGCM(DynamicalSystem):
         return
 
     def generate_default_icandf(self, init_time, fin_time):
-        nml = self.nml_const.copy()
-        #nml['main_nml'] = dict({
-        #    'days': fin_time - init_time,
-        #    'hours': 0,
-        #    'dt_atmos': 600,
-        #    })
-        #nml['spectral_init_cond_nml'] = dict({
-        #    'initial_temperature': 280.0,
-        #    })
-        #nml['spectral_dynamics_nml'].update(dict({
-        #    'do_perturbation': True,
-        #    'num_perturbations_actual': 0,
-        #    # TODO: can I actually have empty lists within the namelist?
-        #    'days_to_perturb': [0],
-        #    'seed_values': [84730],
-        #    'perturbation_fraction': [1.0e-3],
-        #    }))
         icandf = dict({
             'init_cond': None,
             'frc': forcing.ContinuousTimeForcing(init_time, fin_time, [], []),
@@ -214,80 +197,6 @@ class FriersonGCM(DynamicalSystem):
         shutil.copy2(join(self.base_dir,f'exec_spectral.{self.platform}', 'fms.x'), join(work_dir,'fms.x'))
         return
 
-    @staticmethod
-    def cleanup_directories(base_dir, work_dir, output_dir, aggregate_output_flag=False):
-        print(f"About to clean up")
-        shutil.rmtree(work_dir)
-        shutil.rmtree(join(output_dir,'out_err_files'))
-        logfiles = glob.glob(join(output_dir,'*.out'))
-        for f in logfiles:
-            os.remove(f)
-        print("About to aggregate")
-        if aggregate_output:
-            self.aggregate_output(load_immediately=True)
-        print("Finished aggregating")
-
-        # Remove the temporary and log files 
-        shutil.rmtree(self.dirs["work"])
-        shutil.rmtree(join(self.dirs["output"],"out_err_files"))
-        logfiles = glob.glob(join(self.dirs["output"], "*.out"))
-        for f in logfiles:
-            os.remove(f)
-
-        print(f"About to aggregate")
-        if aggregate_output_flag:
-            self.aggregate_output(load_immediately=True)
-        print(f"Finished aggregating")
-        return
-
-    def aggregate_output(self, dt_chunk=None, overwrite=False, load_immediately=True):
-        # TODO account for cases where the data size is too big
-        # Merge the distributed netcdf files into a single one; downsample to daily 
-        hist = self.load_history_selfmade_distributed(load_immediately=load_immediately)
-        hist_agg = dict()
-        # Downsample the 4xday fields to daily
-        freqs = ["4xday","1xday"]
-        for freq in freqs:
-            hist_agg[freq] = transformations.resample_to_daily(hist[freq])
-        # Combine into a single dataset
-        hist_agg = xr.merge([hist_agg[freq] for freq in freqs], compat="override")
-        # Split into chunks if necessary
-        dt = hist_agg["time"][:2].diff("time").item() 
-        Nt = hist_agg["time"].size
-        if dt_chunk is None:
-            dt_chunk = hist_agg["time"][-1].item() - hist_agg["time"][0].item() + 1.5*dt 
-        t0 = hist_agg["time"][0].item()
-        chunk_size = int(round(dt_chunk/dt))
-        i0 = 0
-        while i0 < Nt:
-            i1 = min(i0 + chunk_size, Nt)
-            print(f"i0 = {i0}, i1 = {i1}")
-            hist_chunk = hist_agg.isel(time=slice(i0,i1))
-            chunk_string = f"days{int(hist_chunk['time'][0].item()):04}-{int(hist_chunk['time'][-1].item()):04}"
-            print(f"chunk {chunk_string}")
-            filename = join(
-                    self.dirs["output"], "history",
-                    f"history_{chunk_string}.nc"
-                    )
-            print(f"filename = {filename}")
-            print(f"Does the filename exist? {exists(filename)}")
-            print(f"overwrite = {overwrite}")
-            if (not exists(filename)) or overwrite:
-                print(f"Starting to_netcdf...",end="")
-                #hist_chunk.to_netcdf("/home/ju26596/rare_event_simulation/splitting/examples/frierson_gcm/test_hist.nc")
-                hist_chunk.to_netcdf(filename, format="NETCDF3_64BIT")
-                print(f"Done")
-            i0 += chunk_size
-
-        # Now delete the old chunk directories
-        for freq in freqs:
-            hist[freq].close()
-        
-        chunk_dirs = glob.glob(join(self.dirs["output"],"history","days*h00/"))
-        for chd in chunk_dirs:
-            shutil.rmtree(chd)
-        return
-
     def derive_parameters(self, config):
 
         # Basic dynamical systems attributes
@@ -342,91 +251,6 @@ class FriersonGCM(DynamicalSystem):
 
         return
         
-    @classmethod
-    def default_init(cls, base_paths, perturbation_specs, days_per_chunk, ensemble_size_limit, aggregate_output_flag=True, vbl_nml=None):
-        resource.setrlimit(resource.RLIMIT_STACK, (-1,-1))
-        phys_par = dict({"abs": 1.0})
-        fms_version = "jf_conv_gray_smooth"
-        platform = "gnu"
-        dirs_ens = dict({
-            "home": base_paths["home"],
-            "base": join(base_paths["home"], fms_version), 
-            "source": join(base_paths["home"], fms_version, "src"), 
-            "script": join(base_paths["home"], fms_version, "scripts"), 
-            "exec": join(base_paths["home"], fms_version, f"exec_spectral.{platform}"),
-            "output": join(base_paths["output"], f"abs{phys_par['abs']}_smooth"),
-            "work": join(base_paths["work"], f"abs{phys_par['abs']}_smooth/"),
-            })
-        
-        # ---------- Specify the variable part of the namelist (but the same for all members) ------------
-        # It should contain a flag for convection 
-        if vbl_nml is None:
-            vbl_nml = cls.default_namelist()
-        vbl_nml["main_nml"]["days"] = days_per_chunk # each member will be able to run for a different number of chunks, however
-        vbl_nml["radiation_nml"]["del_sol"] = 1.2
-        vbl_nml["radiation_nml"]["ir_tau_eq"] = 7.2*phys_par["abs"]
-        vbl_nml["radiation_nml"]["ir_tau_pole"] = 1.8*phys_par["abs"]
-
-        model_params = dict({
-            "nproc": 4,
-            "parallel_flag": True,
-            "fms_version": fms_version,
-            "platform": "gnu",
-            "phys_par": phys_par,
-            "variable_namelist": vbl_nml,
-            "perturbation_specs": perturbation_specs,
-            "execdir": dirs_ens["exec"],
-            "infiles": dict(
-                template = os.path.join(dirs_ens["base"],"bin",f"mkmf.template.{platform}"),
-                mkmf = os.path.join(dirs_ens["base"],"bin","mkmf"),
-                pathnames = os.path.join(dirs_ens["base"],"input","jf_spectral_pathnames"),
-                diagtable = os.path.join(dirs_ens["base"],"input","jf_diag_table_precip"),
-                namelist = os.path.join(dirs_ens["base"],"input","jf_spectral_namelist"),
-                fieldtable = os.path.join(dirs_ens["base"],"input","jf_spectral_field_table_fv"),
-                mppnccombine = os.path.join(dirs_ens["base"],"bin",f"mppnccombine.{platform}"),
-                time_stamp = os.path.join(dirs_ens["base"],"bin","time_stamp.csh"),
-                )
-            })
-        model_params["precall"] = f"set nproc = {model_params['nproc']}; set fms_version = {model_params['fms_version']}; unset noclobber; set echo; " 
-        model_params["aggregate_output_flag"] = aggregate_output_flag
-
-        # -------- Prepare the ensemble --------
-        ens = cls(dirs_ens, model_params, ensemble_size_limit) 
-
-        return ens
-
-    def setup_model(self): # To be called after __init__
-        self.nproc = self.model_params["nproc"]
-        self.platform = self.model_params["platform"]
-        self.fms_version = self.model_params["fms_version"]
-        self.infiles = self.model_params["infiles"].copy()
-        self.vbl_nml = self.model_params["variable_namelist"].copy()
-        self.perturbation_specs = self.model_params["perturbation_specs"]
-
-        self.days_per_chunk = self.vbl_nml["main_nml"]["days"] # In other words, the restart interval
-        
-        self.precall = self.model_params["precall"]
-
-        # Set the directories for base code and work
-
-        if not np.all([dirname in self.dirs for dirname in ["base","exec","work"]]):
-            raise Exception(f"The list of directories is incomplete: you passed dirs = {dirs}")
-
-        if not np.all([f in self.infiles for f in ["template","mkmf","pathnames","diagtable","namelist","fieldtable","mppnccombine","time_stamp"]]):
-            raise Exception(f"You gave an incomplete list of input files: you passed infiles = {infiles}")
-
-        # Set up the directory for archiving the whole thing
-        os.makedirs(self.dirs["output"], exist_ok=True) # This will be the permanent directory
-        os.makedirs(self.dirs["work"], exist_ok=True)
-
-        self.compile_mppnccombine()
-        self.compile_model()
-        
-        # Initialize lists to store metadata about ensemble members and their relationships 
-        self.mem_list = []
-        self.address_book = []
-        
-        return
 
     def compile_mppnccombine(self):
         # Compile mppnccombine
@@ -446,7 +270,6 @@ class FriersonGCM(DynamicalSystem):
         else:
             print(f"No need to compile mppnccombine")
         return
-        return
 
     def load_member_ancestry(self, i_mem_leaf):
         # Return a Dask DataArray from all the netcdfs (1xday and 4xday) under histdir
@@ -459,42 +282,6 @@ class FriersonGCM(DynamicalSystem):
             ds = xr.concat([ds_new.sel(time=slice(None,start_time-dt/10)), ds], dim="time")
         return ds
 
-    def compute_observables(self, fields2comp=None):
-        for i_mem,mem in enumerate(self.mem_list):
-            print(f"------------- Starting member {i_mem} out of {len(self.mem_list)} ------------")
-            mem.compute_observables(fields2comp=fields2comp)
-        return
-
-    def compute_observables_altogether(self, fields2comp=None):
-        # Only for when the ensemble members have disjoint times (e.g., all strung together)
-        if fields2comp is None:
-            fields2comp = dict({
-                "1xday": [
-                    "total_rain",
-                    ],
-                "4xday": [
-                    "temperature",
-                    "column_water_vapor",
-                    "zonal_velocity",
-                    "vertical_velocity",
-                    "surface_pressure",
-                    "vorticity",
-                    ],
-                })
-        ds = dict({freq: [] for freq in fields2comp.keys()})
-        for i_mem,mem in enumerate(self.mem_list):
-            hist = mem.load_history_selfmade()
-            for freq in fields2comp.keys():
-                ds[freq].append(hist[freq])
-            print(f"loaded history {i_mem} out of {len(self.mem_list)}")
-        for freq in fields2comp.keys():
-            ds[freq] = xr.concat(ds[freq], dim="time")
-        print(f"Loaded the dataset")
-        savefolder = join(self.dirs["output"], "observables")
-        os.makedirs(savefolder, exist_ok=True)
-        target_files = transformations.precompute_features(ds, fields2comp, savefolder, overwrite=False)
-        self.target_files = target_files
-        return 
 
     def run_trajectory(self, icandf, obs_fun, saveinfo, nproc=1):
         self.setup_directories(saveinfo['temp_dir'])
@@ -591,6 +378,10 @@ class FriersonGCM(DynamicalSystem):
             })
         observables = dict()
         return metadata, observables
+    @staticmethod
+    def get_timespan(metadata):
+        frc = metadata['icandf']['frc']
+        return frc.init_time,frc.fin_time
     @staticmethod
     def resample_to_daily(da):
         day_end_tidx = np.where(np.mod(da["time"].to_numpy(), 1.0) == 0)[0]
