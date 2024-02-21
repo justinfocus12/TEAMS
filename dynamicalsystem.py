@@ -107,7 +107,6 @@ class ODESystem(DynamicalSystem):
         return t+self.dt_step, xnew
     def run_trajectory_unperturbed(self, init_cond, init_time, fin_time, method):
         assert(isinstance(init_time,int) and isinstance(fin_time,int))
-        print(f"In RTU: {init_cond = }")
         t_save = np.arange(init_time+1, fin_time+1, 1) # unitless
         tp_save = t_save * self.dt_save # physical (unitful)
         Nt_save = len(t_save)
@@ -133,7 +132,6 @@ class ODESystem(DynamicalSystem):
         return t_save,x_save
     def run_trajectory(self, icandf, obs_fun, saveinfo):
         init_cond_nopert,f = icandf['init_cond'],icandf['frc']
-        print(f"IN RT: {init_cond_nopert = }")
         assert(isinstance(f.init_time,int) and isinstance(f.fin_time,int))
         t = np.arange(f.init_time+1, f.fin_time+1)
         Nt = len(t)

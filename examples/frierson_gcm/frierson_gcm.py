@@ -345,7 +345,7 @@ class FriersonGCM(DynamicalSystem):
             makedirs(join(od,'restart'), exist_ok=True)
             shutil.move(join(wd,'RESTART',compressed_restart_tail), join(od,'restart',compressed_restart_tail)) 
         else:
-            raise Exception(f'There are no restart files in {resdir_work}')
+            raise Exception(f'There are no restart files in {wd}')
 
 
         # TODO allow later possibility of running in multiple chunks, but for now just stick to one chunk per member. When doing that, keep the loop contained inside this same function here. 

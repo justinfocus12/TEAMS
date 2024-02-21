@@ -23,6 +23,9 @@ class ImpulsiveForcing(Forcing):
         return
     def get_forcing_times(self):
         return self.impulse_times
+    def __str__(self):
+        s = f'timespan = ({self.init_time},{self.fin_time}); imptimes = {self.impulse_times}'
+        return s
 
 class WhiteNoiseForcing(Forcing):
     def __init__(self, reseed_times, seeds, fin_time):

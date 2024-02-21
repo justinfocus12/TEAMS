@@ -46,13 +46,14 @@ class FriersonGCMPeriodicBranching(algorithms.PeriodicBranching):
     def generate_icandf_from_parent(self, parent, branch_time, duration):
         init_time_parent,fin_time_parent = self.ens.get_member_timespan(parent)
         assert init_time_parent <= branch_time <= fin_time_parent
+        print(f'{init_time_parent = }, {branch_time = }, {fin_time_parent = }')
         if branch_time < fin_time_parent:
             init_cond = self.ens.traj_metadata[parent]['icandf']['init_cond']
             init_time = init_time_parent
         else:
             init_cond = self.ens.traj_metadata[parent]['filename_restart']
             init_time = fin_time_parent
-        fin_time = branch_time + duration - init_time
+        fin_time = branch_time + duration
         seed = self.rng.integers(low=self.seed_min, high=self.seed_max)
         icandf = dict({
             'init_cond': init_cond,
@@ -87,7 +88,9 @@ def test_periodic_branching(nproc):
     makedirs(algdir, exist_ok=True)
     alg_filename = join(algdir,'alg.pickle')
 
-    init_cond = '/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/frierson_gcm/2024-02-18/1/resT21_abs1_pert0p001/restart_mem19.cpio'
+    init_cond_dir = '/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/frierson_gcm/2024-02-18/1/resT21_abs1_pert0p001/'
+    init_cond = join(init_cond_dir,'restart_mem19.cpio')
+    init_time = int(xr.open_mfdataset(join(init_cond_dir,'mem19.nc'),decode_times=False)['time'].load()[-1].item())
         
     if tododict['run_pebr']:
         if exists(alg_filename):

@@ -46,17 +46,17 @@ def periodic_branching_impulsive():
     config_ode = Lorenz96ODE.default_config()
     tu = config_ode['dt_save'],
     scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/lorenz96"
-    date_str = "2024-02-20"
+    date_str = "2024-02-21"
     sub_date_str = "0"
     param_abbrv_ode,param_label_ode = Lorenz96ODE.label_from_config(config_ode)
     config_algo = dict({
         'seed_min': 1000,
         'seed_max': 100000,
-        'branches_per_group': 8, 
-        'interbranch_interval_phys': 3.0,
-        'branch_duration_phys': 12.0,
-        'num_branch_groups': 5,
-        'max_member_duration_phys': 200.0,
+        'branches_per_group': 16, 
+        'interbranch_interval_phys': 2.0,
+        'branch_duration_phys': 15.0,
+        'num_branch_groups': 10,
+        'max_member_duration_phys': 20.0,
         })
     seed = 849582 # TODO make this a command-line argument
     param_abbrv_algo,param_label_algo = Lorenz96ODEPeriodicBranching.label_from_config(config_algo)
@@ -72,7 +72,8 @@ def periodic_branching_impulsive():
             ens = Ensemble(ode)
             alg = Lorenz96ODEPeriodicBranching(config_algo, ens, seed)
 
-        while not alg.terminate:
+        mem = 0
+        while not (alg.terminate):
             mem = alg.ens.memgraph.number_of_nodes()
             print(f'----------- Starting member {mem} ----------------')
             saveinfo = dict(filename=join(algdir,f'mem{mem}.npz'))
@@ -83,16 +84,25 @@ def periodic_branching_impulsive():
         alg = pickle.load(open(alg_filename, 'rb'))
         tu = alg.ens.dynsys.dt_save
         fig,ax = plt.subplots(figsize=(12,5))
-        parent = 0
-        t_parent,x_parent = alg.ens.dynsys.load_trajectory(alg.ens.traj_metadata[parent])
+        # Load the entire trunk
+        t_trunk = []
+        x_trunk = []
+        for mem in alg.branching_state['trunk_lineage']:
+            t,x = alg.ens.dynsys.load_trajectory(alg.ens.traj_metadata[mem])
+            t_trunk.append(t)
+            x_trunk.append(x)
+        t_trunk = np.concatenate(tuple(t_trunk))
+        x_trunk = np.concatenate(tuple(x_trunk))
+        print(f'{t_trunk[[0,-1]] = }')
         for child in range(1,alg.ens.memgraph.number_of_nodes()):
             t_child,x_child = alg.ens.dynsys.load_trajectory(alg.ens.traj_metadata[child])
+            print(f'{t_child[[0,-1]] = }')
             # Get the overlap time indices
-            tmin,tmax = max(t_parent[0],t_child[0]),min(t_parent[-1],t_child[-1])
+            tmin,tmax = max(t_trunk[0],t_child[0]),min(t_trunk[-1],t_child[-1])
             tic,tfc = tmin-t_child[0], tmax-t_child[0]
-            tip,tfp = tmin-t_parent[0], tmax-t_parent[0]
-            dist = alg.ens.dynsys.distance(t_parent[tip:tfp+1], x_parent[tip:tfp+1], t_child[tic:tfc+1], x_child[tic:tfc+1], 'euclidean')
-            ax.plot(t_parent[tip:tfp+1]*tu, dist)
+            tip,tfp = tmin-t_trunk[0], tmax-t_trunk[0]
+            dist = alg.ens.dynsys.distance(t_trunk[tip:tfp+1], x_trunk[tip:tfp+1], t_child[tic:tfc+1], x_child[tic:tfc+1], 'euclidean')
+            ax.plot(t_trunk[tip:tfp+1]*tu, dist)
         ax.set_yscale('log')
         ax.set_xlabel('Time')
         ax.set_ylabel('Distance from parent')

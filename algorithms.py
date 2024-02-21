@@ -51,7 +51,8 @@ class PeriodicBranching(EnsembleAlgorithm):
         self.interbranch_interval = int(config['interbranch_interval_phys']/tu) # How long to wait between consecutive splits
         self.branch_duration = int(config['branch_duration_phys']/tu) # How long to run each branch
         self.num_branch_groups = config['num_branch_groups'] # but include the possibility for extension
-        self.trunk_duration = self.ens.dynsys.t_burnin + self.interbranch_interval * self.num_branch_groups
+        self.trunk_duration = self.ens.dynsys.t_burnin + self.interbranch_interval * (self.num_branch_groups - 1) + self.branch_duration
+        print(f'{self.trunk_duration = }')
         # Most likely all subclasses will derive from this 
         self.obs_dict = dict({key: [] for key in self.obs_dict_names()})
 
@@ -65,10 +66,11 @@ class PeriodicBranching(EnsembleAlgorithm):
     @staticmethod
     def label_from_config(config):
         abbrv_population = (
-                r"bpp%d_ibi%.1f_bd%.1f"%(
+                r"bpg%d_ibi%.1f_bd%.1f_mmd%.1f"%(
                     config["branches_per_group"],
                     config["interbranch_interval_phys"],
-                    config["branch_duration_phys"]
+                    config["branch_duration_phys"],
+                    config['max_member_duration_phys']
                     )
                 ).replace(".","p")
         abbrv = '_'.join([
@@ -129,14 +131,18 @@ class PeriodicBranching(EnsembleAlgorithm):
             parent = None
             icandf = self.ens.dynsys.generate_default_icandf(self.init_time,self.init_time+duration)
             if self.init_cond is not None:
-                icandf['init_cond'] = init_cond
+                icandf['init_cond'] = self.init_cond
         elif self.branching_state['trunk_lineage_fin_times'][-1] < self.trunk_duration: # TODO make this more flexible; we could start branching as soon as the burnin time is exceeded
+            print(f'{self.branching_state = }')
             parent = self.branching_state['trunk_lineage'][-1]
             parent_init_time,parent_fin_time = self.ens.get_member_timespan(parent)
+            print(f'{parent_init_time = }, {parent_fin_time = }')
             duration = min(self.max_member_duration, self.trunk_duration-parent_fin_time)
+            print(f'{duration = }')
             icandf = self.generate_icandf_from_parent(parent, parent_fin_time, duration)
+            print(f'{icandf = }')
             branching_state_update = dict({
-                'trunk_lineage': self.branching_state['trunk_lineage'] + [parent],
+                'trunk_lineage': self.branching_state['trunk_lineage'] + [self.ens.memgraph.number_of_nodes()],
                 'trunk_lineage_init_times': self.branching_state['trunk_lineage_init_times'] + [parent_fin_time],
                 'trunk_lineage_fin_times': self.branching_state['trunk_lineage_fin_times'] + [parent_fin_time + duration],
                 })
@@ -170,7 +176,7 @@ class ODEPeriodicBranching(PeriodicBranching):
         impulse = self.rng.normal(size=self.ens.dynsys.impulse_dim)
         icandf = dict({
             'init_cond': parent_x[0],
-            'frc': forcing.ImpulsiveForcing([branch_time], [impulse], branch_time+self.branch_duration)
+            'frc': forcing.ImpulsiveForcing([branch_time], [impulse], branch_time+duration)
             })
         return icandf
 
