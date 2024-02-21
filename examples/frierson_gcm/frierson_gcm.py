@@ -30,7 +30,6 @@ sys.path.append("../..")
 from ensemble import Ensemble
 from dynamicalsystem import DynamicalSystem
 import forcing
-import frierson_observables as frobs
 import precip_extremes_scaling
 
 def boolstr(b):
@@ -64,6 +63,11 @@ class FriersonGCM(DynamicalSystem):
         self.configure_os_environment()
         self.compile_mppnccombine()
         self.compile_model()
+        self.nproc = 1
+        return
+
+    def set_nproc(self, nproc):
+        self.nproc = nproc
         return
 
     def generate_default_icandf(self, init_time, fin_time):
@@ -79,18 +83,20 @@ class FriersonGCM(DynamicalSystem):
         return
     @classmethod
     def label_from_config(cls, config):
-        label = (r"res%s_abs%g_pert%g"%(config['resolution'],config['abs'],config['pert_frac'])).replace('.','p')
-        display = r"%s, $A=%g$"%(config['resolution'],config['abs'])
-        return label, display
+        abbrv = (r"res%s_abs%g_pert%g"%(config['resolution'],config['abs'],config['pert_frac'])).replace('.','p')
+        label = r"%s, $A=%g$"%(config['resolution'],config['abs'])
+        return abbrv,label
     @classmethod
-    def default_config(cls, base_dir):
+    def default_config(cls, source_dir, base_dir):
         config = dict({
             'resolution': 'T21',
             'abs': 1.0, # atmospheric absorption coefficient (larger means more greenhouse) 
             'pert_frac': 0.001,
             'nml_patches_misc': dict(),
-            'base_dir': base_dir,
+            'source_dir': source_dir, # where the original source code comes from. Don't modify! 
+            'base_dir': base_dir, # Copied from source_dir and then modified, compiled etc. 
             'platform': 'gnu',
+            't_burnin': 5,
             })
         return config
     @classmethod
@@ -174,7 +180,6 @@ class FriersonGCM(DynamicalSystem):
 
         # Step 2: compile the source code using the mkmf-generated Makefile
         print(f'About to compile source code')
-        precall = f"set nproc = 4; set fms_version = jf_conv_gray_smooth; unset noclobber; set echo;  "
         make_output = subprocess.run(f"cd {execdir}; make -f Makefile", executable="/bin/csh", shell=True, capture_output=True)
         print(f"make_output: \n{print_comp_proc(make_output)}")
         return
@@ -201,6 +206,7 @@ class FriersonGCM(DynamicalSystem):
 
         # Basic dynamical systems attributes
         self.dt_save = 1.0 # days are the fundamental time unit
+        self.t_burnin = config['t_burnin']
 
         # Directories containing source code and binaries
         self.base_dir = config['base_dir']
@@ -283,7 +289,7 @@ class FriersonGCM(DynamicalSystem):
         return ds
 
 
-    def run_trajectory(self, icandf, obs_fun, saveinfo, nproc=1):
+    def run_trajectory(self, icandf, obs_fun, saveinfo):
         self.setup_directories(saveinfo['temp_dir'])
         wd = join(saveinfo['temp_dir'],'work')
         od = join(saveinfo['temp_dir'],'output')
@@ -313,7 +319,7 @@ class FriersonGCM(DynamicalSystem):
             nml['spectral_dynamics_nml']['perturbation_fraction'] = [self.pert_frac for ipert in range(numperts)]
 
         f90nml.namelist.Namelist(nml,default_start_index=1).write(join(wd,'input.nml'))
-        mpirun_output = subprocess.run(f'cd {join(wd)}; /home/software/gcc/6.2.0/pkg/openmpi/4.0.4/bin/mpirun -np {nproc} fms.x', shell=True, executable='/bin/csh', capture_output=True)
+        mpirun_output = subprocess.run(f'cd {join(wd)}; /home/software/gcc/6.2.0/pkg/openmpi/4.0.4/bin/mpirun -np {self.nproc} fms.x', shell=True, executable='/bin/csh', capture_output=True)
 
         # Move output files to output directory with informative names
         date_range_name = f'days{icandf["frc"].init_time}-{icandf["frc"].fin_time}'
@@ -363,6 +369,10 @@ class FriersonGCM(DynamicalSystem):
         # Save the single netcdf
         ds = xr.merge(list(ds.values()), compat='override')
         ds.to_netcdf(saveinfo['filename_traj'])
+
+        # Compute any observables of interest
+        observables = obs_fun(ds.time, ds)
+
         ds.close()
         # Save the single restart
         shutil.move(join(od,'restart',compressed_restart_tail),saveinfo['filename_restart'])
@@ -376,7 +386,6 @@ class FriersonGCM(DynamicalSystem):
             'filename_traj': saveinfo['filename_traj'],
             'filename_restart': saveinfo['filename_restart'],
             })
-        observables = dict()
         return metadata, observables
     @staticmethod
     def get_timespan(metadata):
@@ -547,9 +556,17 @@ class FriersonGCM(DynamicalSystem):
             })
         return obslib
     @staticmethod
+    def pressure(ds):
+        # Return pressure with "pfull" as a vertical coordinate. 
+        p_edge = ds["bk"]*ds["ps"] # Pascals
+        p_cent = 0.5*(p_edge + p_edge.shift(phalf=-1)).isel(phalf=slice(None,-1)).rename({"phalf": "pfull"}).assign_coords({"pfull": ds["pfull"]})
+        dp_dpfull = (p_edge.shift(phalf=-1) - p_edge)/(ds["phalf"].shift(phalf=-1) - ds["phalf"])
+        dp_dpfull = dp_dpfull.isel(phalf=slice(None,-1)).rename({"phalf": "pfull"}).assign_coords({"pfull": ds["pfull"]})
+        return p_cent, dp_dpfull
+    @staticmethod
     def effective_static_stability(ds):
         # Compute effective static stability
-        p,dp_dpfull = pressure(ds)
+        p,dp_dpfull = FriersonGCM.pressure(ds)
         temp = ds["temp"]
         lam = 1.0
         # Constants
@@ -605,7 +622,7 @@ class FriersonGCM(DynamicalSystem):
     @staticmethod
     def column_water_vapor(ds):
         g = 9.806 
-        p,dp_dpfull = pressure(ds)
+        p,dp_dpfull = FriersonGCM.pressure(ds)
         p = ds["bk"] * ds["ps"] # Pascals
         cwv = (ds["sphum"] * dp_dpfull).integrate("pfull")/g
         return cwv
@@ -613,7 +630,7 @@ class FriersonGCM(DynamicalSystem):
     @staticmethod
     def water_vapor_convergence(ds):
         g = 9.806 
-        p,dp_dpfull = pressure(ds)
+        p,dp_dpfull = FriersonGCM.pressure(ds)
         p = ds["bk"] * ds["ps"] # Pascals
         conv = -divergence(ds["ucomp"]*ds["sphum"], ds["vcomp"]*ds["sphum"])
         qcon = (conv * dp_dpfull).integrate("pfull")/g
@@ -622,7 +639,7 @@ class FriersonGCM(DynamicalSystem):
     @staticmethod
     def column_relative_humidity(ds):
         # CWV / max possible CWV
-        p,dp_dpfull = pressure(ds)
+        p,dp_dpfull = FriersonGCM.pressure(ds)
         cwv_xg = (ds["sphum"] * dp_dpfull).integrate("pfull") # / g, but this cancels 
         qs = sat_spec_hum(ds)
         cwv_max_xg = (qs * dp_dpfull).integrate("pfull") # / g, but this cancels
@@ -697,7 +714,7 @@ class FriersonGCM(DynamicalSystem):
         omega = ds["omega"].reindex(pfull=ds["pfull"][::-1])
         temp = ds["temp"].reindex(pfull=ds["pfull"][::-1])
         ps = ds["ps"]
-        p, dp_dpfull = pressure(ds)
+        p, dp_dpfull = FriersonGCM.pressure(ds)
         p = p.reindex(pfull=ds["pfull"][::-1])
         dp_dpfull = dp_dpfull.reindex(pfull=ds["pfull"][::-1])
         scaling = precip_extremes_scaling.scaling(omega, temp, p, dp_dpfull, ps)
@@ -714,6 +731,7 @@ def dns_short_chain(nproc):
     print(f'About to generate default config')
     config = FriersonGCM.default_config(base_dir)
     gcm = FriersonGCM(config)
+    gcm.set_nproc(nproc)
 
     expt_str = join(scratch_dir,date_str,sub_date_str)
     makedirs(expt_str,exist_ok=True)
@@ -822,14 +840,14 @@ def dns_moderate(nproc):
 
 def small_branching_ensemble(nproc):
     tododict = dict({
-        'run':            0,
+        'run':            1,
         'plot':           1,
         })
     # Create a small ensemble
     # Run three trajectories, each one picking up where the previous one left off
     base_dir = '/home/ju26596/jf_conv_gray_smooth'
     scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/frierson_gcm"
-    date_str = "2024-02-18"
+    date_str = "2024-02-20"
     sub_date_str = "0"
     print(f'About to generate default config')
     config = FriersonGCM.default_config(base_dir)
@@ -841,33 +859,36 @@ def small_branching_ensemble(nproc):
         obs_fun = lambda t,x: None
 
         gcm = FriersonGCM(config)
+        gcm.set_nproc(nproc)
         ens = Ensemble(gcm)
 
         seed_vals = [-1,29183,48271,39183,38383,88822,77612,22345]
+        parent_duration = 15
+        child_duration = 10
 
-        # Parent member: run for 8 days
+        # Parent member
         mem = 0
         init_time = 0
-        fin_time = 30
+        fin_time = parent_duration
         icandf = gcm.generate_default_icandf(init_time,fin_time)
         saveinfo = dict({
             # Temporary folder
             'temp_dir': join(expt_dir,f'mem{mem}'),
             # Ultimate resulting filenames
             'filename_traj': join(expt_dir,f'mem{mem}.nc'),
-            'filename_restart': join(expt_dir,f'restart_mem{mem}.nc'),
+            'filename_restart': join(expt_dir,f'restart_mem{mem}.cpio'),
             })
         _ = ens.branch_or_plant(icandf, obs_fun, saveinfo)
 
 
         # Branch off some children
-        for mem in [1,2,3]:
+        for mem in [1,2]:
             parent = 0
             mdp = ens.traj_metadata[parent]
             init_time = mdp['icandf']['frc'].fin_time
             icandf = dict({
                 'init_cond': mdp['filename_restart'],
-                'frc': forcing.ContinuousTimeForcing(init_time, init_time+30, [init_time+3], [seed_vals[mem]])
+                'frc': forcing.ContinuousTimeForcing(init_time, init_time+child_duration, [init_time], [seed_vals[mem]])
                 })
             saveinfo = dict({
                 'temp_dir': join(expt_dir,f'mem{mem}'),
@@ -877,12 +898,12 @@ def small_branching_ensemble(nproc):
             _ = ens.branch_or_plant(icandf, obs_fun, saveinfo, parent=parent)
 
         # Another Parent member: run for 8 days
-        mem = 4
+        mem = 3
         init_time = 0
-        fin_time = 30
+        fin_time = parent_duration
         icandf = dict({
             'init_cond': None,
-            'frc': forcing.ContinuousTimeForcing(init_time, fin_time, [init_time+1], [seed_vals[mem]])
+            'frc': forcing.ContinuousTimeForcing(init_time, fin_time, [init_time], [seed_vals[mem]])
             })
         saveinfo = dict({
             # Temporary folder
@@ -895,13 +916,13 @@ def small_branching_ensemble(nproc):
 
 
         # Branch off some children
-        for mem in [5,6,7]:
-            parent = 4
+        for mem in [4,5]:
+            parent = 3
             mdp = ens.traj_metadata[parent]
             init_time = mdp['icandf']['frc'].fin_time
             icandf = dict({
                 'init_cond': mdp['filename_restart'],
-                'frc': forcing.ContinuousTimeForcing(init_time, init_time+30, [init_time+3], [seed_vals[mem]])
+                'frc': forcing.ContinuousTimeForcing(init_time, init_time+child_duration, [init_time], [seed_vals[mem]])
                 })
             saveinfo = dict({
                 'temp_dir': join(expt_dir,f'mem{mem}'),
@@ -916,19 +937,42 @@ def small_branching_ensemble(nproc):
         plot_dir = join(expt_dir,'plots')
         makedirs(plot_dir,exist_ok=True)
 
-        obslib = frobs.observable_library() 
         ens = pickle.load(open(join(expt_dir,'ens.pickle'),'rb'))
-        obs2plot = ['temperature','total_rain','column_water_vapor','surface_pressure'][:1]
+        obslib = ens.dynsys.observable_props()
+        obs2plot = ['temperature','total_rain','column_water_vapor','surface_pressure'][1:]
         lat = 45.0
         lon = 180.0
         pfull = 500.0
+
+        # Plot local observables for all members
+        obs_vals = dict({obs: [] for obs in obs2plot})
+        for mem in range(ens.memgraph.number_of_nodes()):
+            dsmem = xr.open_mfdataset(ens.traj_metadata[mem]['filename_traj'], decode_times=False)
+            i_lat = np.argmin(np.abs(dsmem.lat.values - lat))
+            i_lon = np.argmin(np.abs(dsmem.lon.values - lon))
+            for obs in obs2plot:
+                memobs = getattr(ens.dynsys, obs)(dsmem).isel(lat=i_lat,lon=i_lon).compute()
+                if 'pfull' in memobs.dims:
+                    i_pfull = np.argmin(np.abs(dsmem.pfull.values - pfull))
+                    memobs = memobs.isel(pfull=i_pfull)
+                obs_vals[obs].append(memobs)
+        for obs in obs2plot:
+            fig,ax = plt.subplots(figsize=(20,5))
+            handles = []
+            for mem in range(ens.memgraph.number_of_nodes()):
+                h, = xr.plot.plot(obs_vals[obs][mem], x='time', label=f'm{mem}', marker='o')
+                handles.append(h)
+            ax.legend(handles=handles)
+            ax.set_title(obslib[obs]['label'])
+            fig.savefig(join(plot_dir,f'{obslib[obs]["abbrv"]}.png'),**pltkwargs)
+
 
         # Plot full fields
         for mem in [0,4]: #range(ens.memgraph.number_of_nodes()):
             dsmem = xr.open_mfdataset(ens.traj_metadata[mem]['filename_traj'], decode_times=False)
             i_pfull = np.argmin(np.abs(dsmem.pfull.values - pfull))
             for obs in obs2plot:
-                memobs = obslib[obs]['fun'](dsmem)
+                memobs = getattr(ens.dynsys, obs)(dsmem)
                 if 'pfull' in memobs.dims:
                     memobs = memobs.isel(pfull=i_pfull)
                 memobs = memobs.compute()
@@ -940,18 +984,6 @@ def small_branching_ensemble(nproc):
                     ax.set_ylabel('Latitude')
                     fig.savefig(join(plot_dir,r'%s_mem%d_day%d'%(obslib[obs]['abbrv'],mem,day)),**pltkwargs)
                     plt.close(fig)
-
-        #fig,ax = plt.subplots(figsize=(20,5))
-        #handles = []
-        #for mem in range(ens.memgraph.number_of_nodes()):
-        #    rtot = xr.open_mfdataset(ens.traj_metadata[mem]['filename_traj'], decode_times=False)['condensation_rain'] * 3600/24
-        #    i_lat = np.argmin(np.abs(rtot.lat.values - lat))
-        #    i_lon = np.argmin(np.abs(rtot.lon.values - lon))
-        #    rtot = rtot.isel(lat=i_lat,lon=i_lon).compute()
-        #    h, = xr.plot.plot(rtot, x='time', label=f'Member {mem}', marker='o')
-        #    handles.append(h)
-        #ax.legend(handles=handles)
-        #fig.savefig(join(plot_dir,'rain.png'),**pltkwargs)
 
     return
 
@@ -979,4 +1011,4 @@ if __name__ == "__main__":
     print(f'Got into Main')
     nproc = int(sys.argv[1])
     print(f'{nproc = }')
-    dns_moderate(nproc)
+    small_branching_ensemble(nproc)

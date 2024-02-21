@@ -54,6 +54,13 @@ class PeriodicBranching(EnsembleAlgorithm):
         self.trunk_duration = self.ens.dynsys.t_burnin + self.interbranch_interval * self.num_branch_groups
         # Most likely all subclasses will derive from this 
         self.obs_dict = dict({key: [] for key in self.obs_dict_names()})
+
+        self.init_cond = None
+        self.init_time = 0
+        return
+    def set_init_cond(self, init_time, init_cond):
+        self.init_time = init_time
+        self.init_cond = init_cond
         return
     @staticmethod
     def label_from_config(config):
@@ -106,7 +113,7 @@ class PeriodicBranching(EnsembleAlgorithm):
             self.branching_state = dict({
                 'next_branch_group': 0,
                 'next_branch': 0,
-                'next_branch_time': self.ens.dynsys.t_burnin,
+                'next_branch_time': self.init_time + self.ens.dynsys.t_burnin,
                 'trunk_lineage': [],
                 'trunk_lineage_init_times': [],
                 'trunk_lineage_fin_times': [],
@@ -114,13 +121,15 @@ class PeriodicBranching(EnsembleAlgorithm):
             duration = min(self.trunk_duration, self.max_member_duration)
             branching_state_update = dict({
                 'trunk_lineage': [0],
-                'trunk_lineage_init_times': [0],
-                'trunk_lineage_fin_times': [duration],
+                'trunk_lineage_init_times': [self.init_time],
+                'trunk_lineage_fin_times': [self.init_time + duration],
                 })
 
             # Keep track of trunk length
             parent = None
-            icandf = self.ens.dynsys.generate_default_icandf(0,duration)
+            icandf = self.ens.dynsys.generate_default_icandf(self.init_time,self.init_time+duration)
+            if self.init_cond is not None:
+                icandf['init_cond'] = init_cond
         elif self.branching_state['trunk_lineage_fin_times'][-1] < self.trunk_duration: # TODO make this more flexible; we could start branching as soon as the burnin time is exceeded
             parent = self.branching_state['trunk_lineage'][-1]
             parent_init_time,parent_fin_time = self.ens.get_member_timespan(parent)

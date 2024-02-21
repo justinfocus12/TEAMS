@@ -35,11 +35,13 @@ from frierson_gcm import FriersonGCM
 
 class FriersonGCMPeriodicBranching(algorithms.PeriodicBranching):
     def obs_dict_names(self):
-        return ['total_rain','column_water_vapor']
+        return ['total_rain','column_water_vapor','surface_pressure']
     def obs_fun(self, t, ds):
+        lat = 45.0
+        lon = 180.0
         obs = dict()
         for key in self.obs_dict_names():
-            obs[key] = getattr(self.ens.dynsys, key)(ds)
+            obs[key] = getattr(self.ens.dynsys, key)(ds).sel(dict(lat=lat,lon=lon),method='nearest')
         return obs
     def generate_icandf_from_parent(self, parent, branch_time, duration):
         init_time_parent,fin_time_parent = self.ens.get_member_timespan(parent)
@@ -54,8 +56,97 @@ class FriersonGCMPeriodicBranching(algorithms.PeriodicBranching):
         seed = self.rng.integers(low=self.seed_min, high=self.seed_max)
         icandf = dict({
             'init_cond': init_cond,
-            'frc': forcing.ContinuousTimeForcing(init_time, fin_time, [init_time], [seed]),
+            'frc': forcing.ContinuousTimeForcing(init_time, fin_time, [branch_time], [seed]),
             })
-        # TODO make sure that reseeding at init_time (not init_time+1, e.g.) really does implement the perturbation. But we have to change that code around anywyay
-        
+        return icandf
 
+def test_periodic_branching(nproc):
+    tododict = dict({
+        'run_pebr':                1,
+        'plot_pebr':               1,
+        })
+    base_dir = '/home/ju26596/jf_conv_gray_smooth'
+    scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/frierson_gcm"
+    date_str = "2024-02-20"
+    sub_date_str = "0"
+    print(f'About to generate default config')
+    config_gcm = FriersonGCM.default_config(base_dir,base_dir)
+    param_abbrv_gcm,param_label_gcm = FriersonGCM.label_from_config(config_gcm)
+    config_algo = dict({
+        'seed_min': 1000,
+        'seed_max': 100000,
+        'branches_per_group': 4, 
+        'interbranch_interval_phys': 10.0,
+        'branch_duration_phys': 20.0,
+        'num_branch_groups': 10,
+        'max_member_duration_phys': 50.0,
+        })
+    seed = 849582 # TODO make this a command-line argument
+    param_abbrv_algo,param_label_algo = FriersonGCMPeriodicBranching.label_from_config(config_algo)
+    algdir = join(scratch_dir, date_str, sub_date_str, param_abbrv_gcm, param_abbrv_algo)
+    makedirs(algdir, exist_ok=True)
+    alg_filename = join(algdir,'alg.pickle')
+
+    init_cond = '/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/frierson_gcm/2024-02-18/1/resT21_abs1_pert0p001/restart_mem19.cpio'
+        
+    if tododict['run_pebr']:
+        if exists(alg_filename):
+            alg = pickle.load(open(alg_filename, 'rb'))
+        else:
+            gcm = FriersonGCM(config_gcm)
+            ens = Ensemble(gcm)
+            alg = FriersonGCMPeriodicBranching(config_algo, ens, seed)
+            alg.set_init_cond(init_time,init_cond)
+
+        alg.ens.dynsys.set_nproc(nproc)
+        while not alg.terminate:
+            mem = alg.ens.memgraph.number_of_nodes()
+            print(f'----------- Starting member {mem} ----------------')
+            saveinfo = dict(filename=join(algdir,f'mem{mem}.npz'))
+            saveinfo = dict({
+                # Temporary folder
+                'temp_dir': join(algdir,f'mem{mem}'),
+                # Ultimate resulting filenames
+                'filename_traj': join(algdir,f'mem{mem}.nc'),
+                'filename_restart': join(algdir,f'restart_mem{mem}.cpio'),
+                })
+            alg.take_next_step(saveinfo)
+            pickle.dump(alg, open(alg_filename, 'wb'))
+    if tododict['plot_pebr']:
+        plot_dir = join(algdir,'plots')
+        makedirs(plot_dir,exist_ok=True)
+
+        alg = pickle.load(open(join(algdir,'alg.pickle'),'rb'))
+        ens = alg.ens
+        obslib = ens.dynsys.observable_props()
+        obs2plot = ['temperature','total_rain','column_water_vapor','surface_pressure'][1:]
+        lat = 45.0
+        lon = 180.0
+        pfull = 500.0
+
+        # Plot local observables for all members
+        obs_vals = dict({obs: [] for obs in obs2plot})
+        for mem in range(ens.memgraph.number_of_nodes()):
+            dsmem = xr.open_mfdataset(ens.traj_metadata[mem]['filename_traj'], decode_times=False)
+            for obs in obs2plot:
+                memobs = getattr(ens.dynsys, obs)(dsmem).sel(dict(lat=lat,lon=lon),method='nearest').compute()
+                if 'pfull' in memobs.dims:
+                    memobs = memobs.sel(pfull=pfull,method='nearest')
+                obs_vals[obs].append(memobs)
+        for obs in obs2plot:
+            fig,ax = plt.subplots(figsize=(20,5))
+            handles = []
+            for mem in range(ens.memgraph.number_of_nodes()):
+                h, = xr.plot.plot(obs_vals[obs][mem], x='time', label=f'm{mem}', marker='o')
+                handles.append(h)
+            ax.legend(handles=handles)
+            ax.set_title(obslib[obs]['label'])
+            fig.savefig(join(plot_dir,f'{obslib[obs]["abbrv"]}.png'),**pltkwargs)
+
+    return
+
+if __name__ == "__main__":
+    print(f'Got into Main')
+    nproc = int(sys.argv[1])
+    print(f'{nproc = }')
+    test_periodic_branching(nproc)
