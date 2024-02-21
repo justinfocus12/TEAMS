@@ -14,7 +14,7 @@ matplotlib.rcParams.update({
 })
 pltkwargs = dict(bbox_inches="tight",pad_inches=0.2)
 import os
-from os.path import join, exists, basename
+from os.path import join, exists, basename, relpath
 from os import mkdir, makedirs
 import sys
 import shutil
@@ -64,14 +64,14 @@ class FriersonGCMPeriodicBranching(algorithms.PeriodicBranching):
 def test_periodic_branching(nproc):
     tododict = dict({
         'run_pebr':                1,
-        'plot_pebr':               1,
+        'plot_pebr':               0,
         })
-    base_dir = '/home/ju26596/jf_conv_gray_smooth'
+    base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
     scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/frierson_gcm"
-    date_str = "2024-02-20"
-    sub_date_str = "0"
+    date_str = "2024-02-21"
+    sub_date_str = "0/PeBr"
     print(f'About to generate default config')
-    config_gcm = FriersonGCM.default_config(base_dir,base_dir)
+    config_gcm = FriersonGCM.default_config(base_dir_absolute,base_dir_absolute)
     param_abbrv_gcm,param_label_gcm = FriersonGCM.label_from_config(config_gcm)
     config_algo = dict({
         'seed_min': 1000,
@@ -80,38 +80,39 @@ def test_periodic_branching(nproc):
         'interbranch_interval_phys': 10.0,
         'branch_duration_phys': 20.0,
         'num_branch_groups': 10,
-        'max_member_duration_phys': 50.0,
+        'max_member_duration_phys': 25.0,
         })
     seed = 849582 # TODO make this a command-line argument
     param_abbrv_algo,param_label_algo = FriersonGCMPeriodicBranching.label_from_config(config_algo)
     algdir = join(scratch_dir, date_str, sub_date_str, param_abbrv_gcm, param_abbrv_algo)
+    root_dir = algdir
     makedirs(algdir, exist_ok=True)
     alg_filename = join(algdir,'alg.pickle')
 
-    init_cond_dir = '/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/frierson_gcm/2024-02-18/1/resT21_abs1_pert0p001/'
-    init_cond = join(init_cond_dir,'restart_mem19.cpio')
+    init_cond_dir = join(scratch_dir, date_str, sub_date_str)
     init_time = int(xr.open_mfdataset(join(init_cond_dir,'mem19.nc'),decode_times=False)['time'].load()[-1].item())
+    init_cond = relpath(join(init_cond_dir,'restart_mem19.cpio'), root_dir)
         
     if tododict['run_pebr']:
         if exists(alg_filename):
             alg = pickle.load(open(alg_filename, 'rb'))
         else:
             gcm = FriersonGCM(config_gcm)
-            ens = Ensemble(gcm)
+            ens = Ensemble(gcm, root_dir=root_dir)
             alg = FriersonGCMPeriodicBranching(config_algo, ens, seed)
             alg.set_init_cond(init_time,init_cond)
 
         alg.ens.dynsys.set_nproc(nproc)
+        alg.ens.set_root_dir(root_dir)
         while not alg.terminate:
             mem = alg.ens.memgraph.number_of_nodes()
             print(f'----------- Starting member {mem} ----------------')
-            saveinfo = dict(filename=join(algdir,f'mem{mem}.npz'))
             saveinfo = dict({
                 # Temporary folder
-                'temp_dir': join(algdir,f'mem{mem}'),
+                'temp_dir': f'mem{mem}',
                 # Ultimate resulting filenames
-                'filename_traj': join(algdir,f'mem{mem}.nc'),
-                'filename_restart': join(algdir,f'restart_mem{mem}.cpio'),
+                'filename_traj': f'mem{mem}.nc',
+                'filename_restart': f'restart_mem{mem}.cpio',
                 })
             alg.take_next_step(saveinfo)
             pickle.dump(alg, open(alg_filename, 'wb'))
@@ -130,7 +131,7 @@ def test_periodic_branching(nproc):
         # Plot local observables for all members
         obs_vals = dict({obs: [] for obs in obs2plot})
         for mem in range(ens.memgraph.number_of_nodes()):
-            dsmem = xr.open_mfdataset(ens.traj_metadata[mem]['filename_traj'], decode_times=False)
+            dsmem = xr.open_mfdataset(join(ens.root_dir,ens.traj_metadata[mem]['filename_traj']), decode_times=False)
             for obs in obs2plot:
                 memobs = getattr(ens.dynsys, obs)(dsmem).sel(dict(lat=lat,lon=lon),method='nearest').compute()
                 if 'pfull' in memobs.dims:

@@ -15,14 +15,19 @@ pltkwargs = dict(bbox_inches="tight",pad_inches=0.2)
 
 class Ensemble(ABC): 
     # TODO decide how to handle trajectory reloading, etc. Should this be implemented in inherited Ensemble objects, or in Manager objects?
-    def __init__(self, dynsys):
+    def __init__(self, dynsys, root_dir):
         self.dynsys = dynsys
         self.memgraph = nx.DiGraph() 
         self.traj_metadata = [] 
+        self.root_dir = root_dir
+        return
+    def set_root_dir(self, root_dir):
+        # For example, after we've moved the whole ensemble to somewhere else 
+        self.root_dir = root_dir
         return
     def branch_or_plant(self, icandf, obs_fun, saveinfo, parent=None):
         # TODO in case icandf has no explicit initial condition, pull the state from the corresponding parent at the initial time given in f
-        metadata,observables = self.dynsys.run_trajectory(icandf, obs_fun, saveinfo)
+        metadata,observables = self.dynsys.run_trajectory(icandf, obs_fun, saveinfo, self.root_dir)
         self.traj_metadata.append(metadata)
         newmem = self.memgraph.number_of_nodes()
         self.memgraph.add_node(newmem)

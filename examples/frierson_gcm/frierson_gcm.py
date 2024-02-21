@@ -87,14 +87,14 @@ class FriersonGCM(DynamicalSystem):
         label = r"%s, $A=%g$"%(config['resolution'],config['abs'])
         return abbrv,label
     @classmethod
-    def default_config(cls, source_dir, base_dir):
+    def default_config(cls, source_dir_absolute, base_dir_absolute):
         config = dict({
             'resolution': 'T21',
             'abs': 1.0, # atmospheric absorption coefficient (larger means more greenhouse) 
             'pert_frac': 0.001,
             'nml_patches_misc': dict(),
-            'source_dir': source_dir, # where the original source code comes from. Don't modify! 
-            'base_dir': base_dir, # Copied from source_dir and then modified, compiled etc. 
+            'source_dir_absolute': source_dir_absolute, # where the original source code comes from. Don't modify! 
+            'base_dir_absolute': base_dir_absolute, # Copied from source_dir and then modified, compiled etc. 
             'platform': 'gnu',
             't_burnin': 5,
             })
@@ -169,12 +169,12 @@ class FriersonGCM(DynamicalSystem):
     def compile_model(self):
         # Step 1: make the Makefile via mkmf
         print('About to mkmf')
-        mkmf = join(self.base_dir,"bin","mkmf")
-        template = join(self.base_dir,'bin','mkmf.template.{self.platform}')
-        source = join(self.base_dir,'src')
-        execdir = join(self.base_dir, f'exec_spectral.{self.platform}')
+        mkmf = join(self.base_dir_absolute,"bin","mkmf")
+        template = join(self.base_dir_absolute,'bin','mkmf.template.{self.platform}')
+        source = join(self.base_dir_absolute,'src')
+        execdir = join(self.base_dir_absolute, f'exec_spectral.{self.platform}')
         print(f'{os.listdir(execdir) = }')
-        pathnames = join(self.base_dir,'input','jf_spectral_pathnames')
+        pathnames = join(self.base_dir_absolute,'input','jf_spectral_pathnames')
         mkmf_output = subprocess.run(f'cd {execdir}; {mkmf} -p fms.x -t {template} -c "-Duse_libMPI -Duse_netCDF"  -a {source} {pathnames}', executable="/bin/csh", shell=True, capture_output=True)
         print(f"mkmf_output: \n{print_comp_proc(mkmf_output)}")
 
@@ -197,9 +197,9 @@ class FriersonGCM(DynamicalSystem):
         makedirs(join(work_dir,'RESTART'),exist_ok=False)
         print(f"Just set up the output directory {work_dir}")
         # Copy the necessary code over
-        shutil.copy2(join(self.base_dir,'input','jf_diag_table_precip'), join(work_dir, 'diag_table'))
-        shutil.copy2(join(self.base_dir,'input','jf_spectral_field_table'), join(work_dir, 'field_table'))
-        shutil.copy2(join(self.base_dir,f'exec_spectral.{self.platform}', 'fms.x'), join(work_dir,'fms.x'))
+        shutil.copy2(join(self.base_dir_absolute,'input','jf_diag_table_precip'), join(work_dir, 'diag_table'))
+        shutil.copy2(join(self.base_dir_absolute,'input','jf_spectral_field_table'), join(work_dir, 'field_table'))
+        shutil.copy2(join(self.base_dir_absolute,f'exec_spectral.{self.platform}', 'fms.x'), join(work_dir,'fms.x'))
         return
 
     def derive_parameters(self, config):
@@ -209,10 +209,10 @@ class FriersonGCM(DynamicalSystem):
         self.t_burnin = config['t_burnin']
 
         # Directories containing source code and binaries
-        self.base_dir = config['base_dir']
+        self.base_dir_absolute = config['base_dir_absolute']
         self.platform = config['platform'] # probably gnu
 
-        nml = f90nml.read(join(self.base_dir, 'input', 'jf_spectral_namelist')).todict()
+        nml = f90nml.read(join(self.base_dir_absolute, 'input', 'jf_spectral_namelist')).todict()
         nml_default = self.default_namelist() # actually a dictionary
         for key in nml_default.keys():
             if not (key in nml.keys()):
@@ -260,7 +260,7 @@ class FriersonGCM(DynamicalSystem):
 
     def compile_mppnccombine(self):
         # Compile mppnccombine
-        mppnccombine_file = join(self.base_dir,'bin','mppnccombine.{self.platform}')
+        mppnccombine_file = join(self.base_dir_absolute,'bin','mppnccombine.{self.platform}')
         if not exists(mppnccombine_file):
             mppnccombine_output = subprocess.run(
                     f"/home/software/gcc/6.2.0/bin/gcc -O -o {mppnccombine_file}"
@@ -271,7 +271,7 @@ class FriersonGCM(DynamicalSystem):
                     f" -L/home/software/hdf5/1.10.5-parallel/lib" 
                     f" -Wl,-rpath /home/software/hdf5/1.10.5-parallel/lib" 
                     f" -I/home/software/hdf5/1.10.5-parallel/include" 
-                    f" {self.base_dir}/postprocessing/mppnccombine.c", shell=True, executable="/bin/csh", capture_output=True)
+                    f" {self.base_dir_absolute}/postprocessing/mppnccombine.c", shell=True, executable="/bin/csh", capture_output=True)
             print(f"mppnccombine output: \n{print_comp_proc(mppnccombine_output)}")
         else:
             print(f"No need to compile mppnccombine")
@@ -289,14 +289,14 @@ class FriersonGCM(DynamicalSystem):
         return ds
 
 
-    def run_trajectory(self, icandf, obs_fun, saveinfo):
-        self.setup_directories(saveinfo['temp_dir'])
-        wd = join(saveinfo['temp_dir'],'work')
-        od = join(saveinfo['temp_dir'],'output')
+    def run_trajectory(self, icandf, obs_fun, saveinfo, root_dir):
+        self.setup_directories(join(root_dir,saveinfo['temp_dir']))
+        wd = join(root_dir,saveinfo['temp_dir'],'work')
+        od = join(root_dir,saveinfo['temp_dir'],'output')
 
         nml = self.nml_const.copy()
         if icandf['init_cond'] is not None:
-            shutil.copy2(icandf['init_cond'],join(wd,'INPUT',basename(icandf['init_cond'])))
+            shutil.copy2(join(root_dir,icandf['init_cond']),join(wd,'INPUT',basename(icandf['init_cond'])))
             subprocess.run(f'cd {join(wd,"INPUT")}; cpio -iv < {basename(icandf["init_cond"])}', executable="/bin/csh", shell=True)
         else:
             nml['spectral_init_cond_nml'] = dict({
@@ -319,7 +319,7 @@ class FriersonGCM(DynamicalSystem):
             nml['spectral_dynamics_nml']['perturbation_fraction'] = [self.pert_frac for ipert in range(numperts)]
 
         f90nml.namelist.Namelist(nml,default_start_index=1).write(join(wd,'input.nml'))
-        mpirun_output = subprocess.run(f'cd {join(wd)}; /home/software/gcc/6.2.0/pkg/openmpi/4.0.4/bin/mpirun -np {self.nproc} fms.x', shell=True, executable='/bin/csh', capture_output=True)
+        mpirun_output = subprocess.run(f'cd {wd}; /home/software/gcc/6.2.0/pkg/openmpi/4.0.4/bin/mpirun -np {self.nproc} fms.x', shell=True, executable='/bin/csh', capture_output=True)
 
         # Move output files to output directory with informative names
         date_range_name = f'days{icandf["frc"].init_time}-{icandf["frc"].fin_time}'
@@ -368,17 +368,17 @@ class FriersonGCM(DynamicalSystem):
             ds[freq] = self.resample_to_daily(ds[freq])
         # Save the single netcdf
         ds = xr.merge(list(ds.values()), compat='override')
-        ds.to_netcdf(saveinfo['filename_traj'])
+        ds.to_netcdf(join(root_dir,saveinfo['filename_traj']))
 
         # Compute any observables of interest
         observables = obs_fun(ds.time, ds)
 
         ds.close()
         # Save the single restart
-        shutil.move(join(od,'restart',compressed_restart_tail),saveinfo['filename_restart'])
+        shutil.move(join(od,'restart',compressed_restart_tail),join(root_dir,saveinfo['filename_restart']))
 
         # Clean up the directories
-        shutil.rmtree(saveinfo['temp_dir'])
+        shutil.rmtree(join(root_dir,saveinfo['temp_dir']))
         
         # TODO evaluate observable functions ...
         metadata = dict({
@@ -695,19 +695,15 @@ class FriersonGCM(DynamicalSystem):
     @staticmethod
     def surface_pressure(ds):
         return ds["ps"]
-    
     @staticmethod
     def vertical_velocity(ds):
         return ds["omega"]
-    
     @staticmethod
     def zonal_velocity(ds):
         return ds["ucomp"]
-    
     @staticmethod
     def meridional_velocity(ds):
         return ds["vcomp"]
-
     @staticmethod
     def exprec_scaling_wrapper(ds):
         # Swap the order of pressure to be increasing on all variables
@@ -720,7 +716,6 @@ class FriersonGCM(DynamicalSystem):
         scaling = precip_extremes_scaling.scaling(omega, temp, p, dp_dpfull, ps)
         scaling *= 3600 * 24
         return scaling
-
 
 def dns_short_chain(nproc):
     # Run three trajectories, each one picking up where the previous one left off
@@ -755,46 +750,56 @@ def dns_short_chain(nproc):
         init_time = fin_time 
     return
 
-
 def dns_moderate(nproc):
     tododict = dict({
         'run':            1,
-        'plot':           1,
+        'plot':           0,
         })
     # Create a small ensemble
     # Run three trajectories, each one picking up where the previous one left off
-    base_dir = '/home/ju26596/jf_conv_gray_smooth'
+    base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
     scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/frierson_gcm"
-    date_str = "2024-02-18"
-    sub_date_str = "1"
+    date_str = "2024-02-21"
+    sub_date_str = "0/DNS"
     print(f'About to generate default config')
-    config = FriersonGCM.default_config(base_dir)
-    config['resolution'] = 'T42'
+    config = FriersonGCM.default_config(base_dir_absolute,base_dir_absolute)
+    config['resolution'] = 'T21'
     label,display = FriersonGCM.label_from_config(config)
     expt_dir = join(scratch_dir,date_str,sub_date_str,label)
-    gcm = FriersonGCM(config)
+    makedirs(expt_dir,exist_ok=True)
+    ens_filename = join(expt_dir,'ens.pickle')
+    root_dir = expt_dir
 
     if tododict['run']:
-        makedirs(expt_dir,exist_ok=True)
+        days_per_chunk = 100
+        num_chunks = 21
         obs_fun = lambda t,x: None
-
-        ens = Ensemble(gcm)
-        days_per_chunk = 50
-
-        # Parent member: run for 8 days
-        init_time = 0
-        init_cond = None
-        parent = None
-        for mem in range(20):
+        if exists(ens_filename):
+            ens = pickle.load(open(ens_filename,'rb'))
+            ens.set_root_dir(root_dir)
+            n_mem = ens.memgraph.number_of_nodes()
+            parent = n_mem-1
+            _,init_time = ens.get_member_timespan(n_mem-1)
+            init_cond = ens.traj_metadata[n_mem-1]['filename_restart']
+        else:
+            gcm = FriersonGCM(config)
+            ens = Ensemble(gcm,root_dir=root_dir)
+            n_mem = 0
+            init_time = 0
+            init_cond = None
+            parent = None
+        ens.dynsys.set_nproc(nproc)
+        for mem in range(n_mem,n_mem+num_chunks):
             fin_time = init_time + days_per_chunk
-            icandf = gcm.generate_default_icandf(init_time,fin_time)
+            icandf = ens.dynsys.generate_default_icandf(init_time,fin_time)
             icandf['init_cond'] = init_cond
+            # saveinfo will have RELATIVE paths 
             saveinfo = dict({
                 # Temporary folder
-                'temp_dir': join(expt_dir,f'mem{mem}'),
+                'temp_dir': f'mem{mem}',
                 # Ultimate resulting filenames
-                'filename_traj': join(expt_dir,f'mem{mem}.nc'),
-                'filename_restart': join(expt_dir,f'restart_mem{mem}.cpio'),
+                'filename_traj': f'mem{mem}.nc',
+                'filename_restart': f'restart_mem{mem}.cpio',
                 })
             _ = ens.branch_or_plant(icandf, obs_fun, saveinfo, parent=parent)
             init_time = fin_time
@@ -805,23 +810,27 @@ def dns_moderate(nproc):
         plot_dir = join(expt_dir,'plots')
         makedirs(plot_dir,exist_ok=True)
 
-        obslib = frobs.observable_library() 
+        ens = pickle.load(open(ens_filename,'rb'))
+        ens.set_root_dir(root_dir)
+        obslib = ens.dynsys.observable_props()
         ens = pickle.load(open(join(expt_dir,'ens.pickle'),'rb'))
-        obs2plot = ['temperature','total_rain','surface_pressure'][1:2]
+        obs2plot = ['temperature','total_rain','column_water_vapor','surface_pressure']
         lat = 45.0
         lon = 180.0
         pfull = 1000.0
 
         # Plot full fields
         for mem in np.arange(ens.memgraph.number_of_nodes())[-1:]:
-            dsmem = xr.open_mfdataset(ens.traj_metadata[mem]['filename_traj'], decode_times=False)
-            i_pfull = np.argmin(np.abs(dsmem.pfull.values - pfull))
+            dsmem = xr.open_mfdataset(join(ens.root_dir,ens.traj_metadata[mem]['filename_traj']), decode_times=False)
+            print(f'{dsmem.coords = }')
             for obs in obs2plot:
-                memobs = obslib[obs]['fun'](dsmem)
+                memobs = getattr(ens.dynsys, obs)(dsmem) #.sel(dict(lat=lat,lon=lon),method='nearest')
                 if 'pfull' in memobs.dims:
-                    memobs = memobs.isel(pfull=i_pfull)
+                    memobs = memobs.sel(pfull=pfull,method='nearest')
                 memobs = memobs.compute()
-                for day in memobs.time.to_numpy().astype(int):
+                print(f'{memobs.time = }')
+                for day in memobs.time.to_numpy(): #.astype(int):
+                    print(f'{day = }')
                     fig,axes = plt.subplots(figsize=(12,5),ncols=2,sharey=True)
                     ax = axes[0]
                     xr.plot.pcolormesh(memobs.sel(time=day), x='lon', y='lat', cmap=obslib[obs]['cmap'], ax=ax)
@@ -845,12 +854,12 @@ def small_branching_ensemble(nproc):
         })
     # Create a small ensemble
     # Run three trajectories, each one picking up where the previous one left off
-    base_dir = '/home/ju26596/jf_conv_gray_smooth'
+    base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
     scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/frierson_gcm"
     date_str = "2024-02-20"
     sub_date_str = "0"
     print(f'About to generate default config')
-    config = FriersonGCM.default_config(base_dir)
+    config = FriersonGCM.default_config(base_dir_absolute,base_dir_absolute)
     label,display = FriersonGCM.label_from_config(config)
     expt_dir = join(scratch_dir,date_str,sub_date_str,label)
 
@@ -1011,4 +1020,4 @@ if __name__ == "__main__":
     print(f'Got into Main')
     nproc = int(sys.argv[1])
     print(f'{nproc = }')
-    small_branching_ensemble(nproc)
+    dns_moderate(nproc)

@@ -24,13 +24,14 @@ class DynamicalSystem(ABC):
     def get_timespan(metadata):
         pass
     @abstractmethod
-    def run_trajectory(self, icandf, obs_fun, saveinfo):
+    def run_trajectory(self, icandf, obs_fun, saveinfo, root_dir):
         # return some metadata sufficient to reconstruct the output, for example (1) a filename, (2) full numpy array of the output of an ODE solver. 
         # Optionally, return some observables passed as a dictionary of function handles
         # icandf stands for "initial conditions and forcing." It: could be e.g. 
         # 1. (a full state vector, a few impulses) (for a small ODESystem) 
         # 2. (a full state vector, a few reseeds) (for a small stochastic ODESystem) 
         # 3. (A filename containing a full state vector, a namelist) (for a big PDE system)
+        # All directories specified in icandf and saveinfo must be relative to root_dir
         pass 
 
 
@@ -85,8 +86,8 @@ class ODESystem(DynamicalSystem):
         frc = metadata['icandf']['frc']
         return frc.init_time,frc.fin_time
         
-    def load_trajectory(self, metadata, tspan=None):
-        traj = dict(np.load(metadata['filename']))
+    def load_trajectory(self, metadata, root_dir, tspan=None):
+        traj = dict(np.load(join(root_dir,metadata['filename'])))
         if tspan is not None:
             idx0 = np.where(traj['t'] == tspan[0])[0][0]
             idx1 = np.where(traj['t'] == tspan[1])[0][0]
@@ -130,7 +131,7 @@ class ODESystem(DynamicalSystem):
             x = xnew
             tp = tpnew
         return t_save,x_save
-    def run_trajectory(self, icandf, obs_fun, saveinfo):
+    def run_trajectory(self, icandf, obs_fun, saveinfo, root_dir):
         init_cond_nopert,f = icandf['init_cond'],icandf['frc']
         assert(isinstance(f.init_time,int) and isinstance(f.fin_time,int))
         t = np.arange(f.init_time+1, f.fin_time+1)
@@ -159,7 +160,7 @@ class ODESystem(DynamicalSystem):
         metadata = self.assemble_metadata(icandf, method, saveinfo)
         observables = obs_fun(t,x)
         # save full state out to saveinfo
-        np.savez(saveinfo['filename'], t=t, x=x)
+        np.savez(join(root_dir, saveinfo['filename']), t=t, x=x)
         return metadata,observables
 
 
@@ -211,7 +212,7 @@ class SDESystem(DynamicalSystem):
             x = xnew
             tp = tpnew
         return t_save,x_save
-    def run_trajectory(self, icandf, obs_fun, saveinfo):
+    def run_trajectory(self, icandf, obs_fun, saveinfo, root_dir):
         init_cond_nopert,f = icandf['init_cond'],icandf['frc']
         t = np.arange(f.init_time+1, f.fin_time+1)
         Nt = len(t)
@@ -244,7 +245,7 @@ class SDESystem(DynamicalSystem):
         metadata = self.assemble_metadata(icandf, method, saveinfo)
         observables = obs_fun(t,x)
         # save full state out to saveinfo
-        np.savez(saveinfo['filename'], t=t, x=x)
+        np.savez(join(root_dir,saveinfo['filename']), t=t, x=x)
         return metadata,observables
     def generate_default_forcing_sequence(self,init_time,fin_time):
         f = forcing.WhiteNoiseForcing([init_time], [self.seed_min], fin_time)
@@ -321,7 +322,7 @@ class CoupledSystem(DynamicalSystem):
             y = ynew
             tp = tpnew
         return t_save,x_save,y_save
-    def run_trajectory(self, icandf, obs_fun, saveinfo):
+    def run_trajectory(self, icandf, obs_fun, saveinfo, root_dir):
         init_cond_nopert_x,f_x = icandf['x']['init_cond'],icandf['x']['frc']
         init_cond_nopert_y,f_y = icandf['y']['init_cond'],icandf['y']['frc']
         t = np.arange(f_x.init_time+1, f_x.fin_time+1)
@@ -367,7 +368,7 @@ class CoupledSystem(DynamicalSystem):
         metadata = self.assemble_metadata(icandf, method, saveinfo)
         observables = obs_fun(t,x,y)
         # save full state out to saveinfo
-        np.savez(saveinfo['filename'], t=t, x=x, y=y)
+        np.savez(join(root_dir,saveinfo['filename']), t=t, x=x, y=y)
         return metadata,observables
     def assemble_metadata(self, icandf, method, saveinfo):
         md = dict({
@@ -376,8 +377,8 @@ class CoupledSystem(DynamicalSystem):
             'filename': saveinfo['filename'],
             })
         return md
-    def load_trajectory(self, metadata, tspan=None):
-        traj = dict(np.load(metadata['filename']))
+    def load_trajectory(self, metadata, root_dir, tspan=None):
+        traj = dict(np.load(join(root_dir,metadata['filename'])))
         if tspan is not None:
             idx0 = np.where(traj['t'] == tspan[0])[0][0]
             idx1 = np.where(traj['t'] == tspan[1])[0][0]
