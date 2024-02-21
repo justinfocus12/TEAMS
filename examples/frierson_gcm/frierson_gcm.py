@@ -685,7 +685,7 @@ class FriersonGCM(DynamicalSystem):
         return conv
     @staticmethod
     def total_rain(ds):
-        return FriersonGCM.convection_rain(ds) + FriersonGCM.convection_rain(ds)
+        return FriersonGCM.condensation_rain(ds) + FriersonGCM.convection_rain(ds)
     @staticmethod
     def temperature(ds):
         return ds["temp"] 
@@ -752,8 +752,8 @@ def dns_short_chain(nproc):
 
 def dns_moderate(nproc):
     tododict = dict({
-        'run':            1,
-        'plot':           0,
+        'run':            0,
+        'plot':           1,
         })
     # Create a small ensemble
     # Run three trajectories, each one picking up where the previous one left off
@@ -814,7 +814,7 @@ def dns_moderate(nproc):
         ens.set_root_dir(root_dir)
         obslib = ens.dynsys.observable_props()
         ens = pickle.load(open(join(expt_dir,'ens.pickle'),'rb'))
-        obs2plot = ['temperature','total_rain','column_water_vapor','surface_pressure']
+        obs2plot = ['temperature','total_rain','column_water_vapor','surface_pressure'][1:2]
         lat = 45.0
         lon = 180.0
         pfull = 1000.0

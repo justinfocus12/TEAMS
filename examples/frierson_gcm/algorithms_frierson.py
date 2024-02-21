@@ -64,7 +64,7 @@ class FriersonGCMPeriodicBranching(algorithms.PeriodicBranching):
 def test_periodic_branching(nproc):
     tododict = dict({
         'run_pebr':                1,
-        'plot_pebr':               0,
+        'plot_pebr':               1,
         })
     base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
     scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/frierson_gcm"
@@ -89,9 +89,9 @@ def test_periodic_branching(nproc):
     makedirs(algdir, exist_ok=True)
     alg_filename = join(algdir,'alg.pickle')
 
-    init_cond_dir = join(scratch_dir, date_str, sub_date_str)
-    init_time = int(xr.open_mfdataset(join(init_cond_dir,'mem19.nc'),decode_times=False)['time'].load()[-1].item())
-    init_cond = relpath(join(init_cond_dir,'restart_mem19.cpio'), root_dir)
+    init_cond_dir = '/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/frierson_gcm/2024-02-21/0/DNS/resT21_abs1_pert0p001'
+    init_time = int(xr.open_mfdataset(join(init_cond_dir,'mem24.nc'),decode_times=False)['time'].load()[-1].item())
+    init_cond = relpath(join(init_cond_dir,'restart_mem24.cpio'), root_dir)
         
     if tododict['run_pebr']:
         if exists(alg_filename):
@@ -121,12 +121,60 @@ def test_periodic_branching(nproc):
         makedirs(plot_dir,exist_ok=True)
 
         alg = pickle.load(open(join(algdir,'alg.pickle'),'rb'))
+        print(f'{alg.trunk_duration = }')
+        print(f'{alg.branching_state["trunk_lineage_fin_times"] = }')
         ens = alg.ens
         obslib = ens.dynsys.observable_props()
-        obs2plot = ['temperature','total_rain','column_water_vapor','surface_pressure'][1:]
+        obs2plot = ['temperature','total_rain','column_water_vapor','surface_pressure'][1:2]
         lat = 45.0
         lon = 180.0
         pfull = 500.0
+
+        # Plot distance from trunk for all branches, in terms of (u,v) coordinates
+        trulin = alg.branching_state['trunk_lineage']
+        for mem in trulin:
+            print(f'{mem = } in trunk; {alg.ens.get_member_timespan(mem) = }')
+        dist_region = dict(lat=slice(lat-10,lat+10),lon=slice(lon-10,lon+10))
+        ds_trunk = (
+                xr.open_mfdataset([
+                    join(ens.root_dir,ens.traj_metadata[mem]['filename_traj'])
+                    for mem in alg.branching_state['trunk_lineage']],
+                    decode_times=False,
+                    data_vars=["ucomp","vcomp"])
+                .sel(dist_region)
+                .sel(pfull=pfull,method='nearest')
+                )
+        print(f'{ds_trunk.time.values = }')
+        dist2trunk = dict()
+        for mem in np.setdiff1d(np.arange(ens.memgraph.number_of_nodes()), alg.branching_state['trunk_lineage']):
+            dsmem = (
+                    xr.open_dataset(
+                        join(ens.root_dir,ens.traj_metadata[mem]['filename_traj']),
+                        decode_times=False)
+                    .sel(dist_region)
+                    .sel(pfull=pfull,method='nearest')
+                    )
+            dsmem.drop_vars(np.setdiff1d(list(dsmem.data_vars.keys()),['ucomp','vcomp']))
+            common_time = np.intersect1d(dsmem.time.to_numpy(), ds_trunk.time.to_numpy())
+            if len(common_time) > 0:
+                timesel = dict(time=common_time)
+                print(f'{ds_trunk["ucomp"].sel(timesel).shape = }')
+                print(f'{dsmem["ucomp"].sel(timesel).shape = }')
+                dist2trunk[mem] = np.sqrt((
+                    (dsmem['ucomp'].sel(timesel) - ds_trunk['ucomp'].sel(timesel))**2 + 
+                    (dsmem['vcomp'].sel(timesel) - ds_trunk['vcomp'].sel(timesel))**2
+                    )
+                    .sum(dim=['lat','lon']))
+
+        fig,ax = plt.subplots()
+        for (mem,dist) in dist2trunk.items():
+            xr.plot.plot(dist, x='time', label=f'm{mem}')
+        ax.set_yscale('log')
+        ax.set_title('Distance to trunk')
+        ax.set_xlabel('Time')
+        ax.set_ylabel('Euclidean distance')
+        fig.savefig(join(plot_dir,f'dist2trunk.png'), **pltkwargs)
+        plt.close(fig)
 
         # Plot local observables for all members
         obs_vals = dict({obs: [] for obs in obs2plot})
@@ -146,6 +194,13 @@ def test_periodic_branching(nproc):
             ax.legend(handles=handles)
             ax.set_title(obslib[obs]['label'])
             fig.savefig(join(plot_dir,f'{obslib[obs]["abbrv"]}.png'),**pltkwargs)
+
+
+
+
+
+        
+
 
     return
 

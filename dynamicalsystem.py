@@ -94,6 +94,7 @@ class ODESystem(DynamicalSystem):
             traj['t'] = traj['t'][idx0:idx1+1]
             traj['x'] = traj['x'][idx0:idx1+1]
         return traj['t'],traj['x']
+
     # These are driven by impulses only
     def timestep_rk4(self, t, x): # physical time units
         k1 = self.dt_step * self.tendency(t,x)

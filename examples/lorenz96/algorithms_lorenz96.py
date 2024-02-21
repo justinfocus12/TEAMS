@@ -41,7 +41,7 @@ class Lorenz96SDEPeriodicBranching(algorithms.SDEPeriodicBranching):
 def periodic_branching_impulsive():
     tododict = dict({
         'run_pebr':                1,
-        'plot_divergence':         1,
+        'plot_pebr':               1,
         })
     config_ode = Lorenz96ODE.default_config()
     tu = config_ode['dt_save'],
@@ -80,7 +80,7 @@ def periodic_branching_impulsive():
             alg.take_next_step(saveinfo)
             pickle.dump(alg, open(alg_filename, 'wb'))
 
-    if tododict['plot_divergence']:
+    if tododict['plot_pebr']:
         alg = pickle.load(open(alg_filename, 'rb'))
         tu = alg.ens.dynsys.dt_save
         fig,ax = plt.subplots(figsize=(12,5))
@@ -112,7 +112,7 @@ def periodic_branching_impulsive():
 def periodic_branching_white():
     tododict = dict({
         'run_pebr':                1,
-        'plot_divergence':         1,
+        'plot_pebr':               1,
         })
     config_ode = Lorenz96ODE.default_config()
     for key in ['wavenumbers','wavenumber_magnitudes','sites','site_magnitudes']:
@@ -156,7 +156,7 @@ def periodic_branching_white():
             pickle.dump(alg, open(alg_filename, 'wb'))
         print(f'{alg.branching_state["terminate"] = }')
 
-    if tododict['plot_divergence']:
+    if tododict['plot_pebr']:
         alg = pickle.load(open(alg_filename, 'rb'))
         tu = alg.ens.dynsys.dt_save
         fig,ax = plt.subplots(figsize=(12,5))

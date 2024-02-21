@@ -51,7 +51,7 @@ class PeriodicBranching(EnsembleAlgorithm):
         self.interbranch_interval = int(config['interbranch_interval_phys']/tu) # How long to wait between consecutive splits
         self.branch_duration = int(config['branch_duration_phys']/tu) # How long to run each branch
         self.num_branch_groups = config['num_branch_groups'] # but include the possibility for extension
-        self.trunk_duration = self.ens.dynsys.t_burnin + self.interbranch_interval * (self.num_branch_groups - 1) + self.branch_duration
+        self.trunk_duration = self.ens.dynsys.t_burnin + self.interbranch_interval * (self.num_branch_groups) + self.branch_duration
         print(f'{self.trunk_duration = }')
         # Most likely all subclasses will derive from this 
         self.obs_dict = dict({key: [] for key in self.obs_dict_names()})
@@ -132,7 +132,7 @@ class PeriodicBranching(EnsembleAlgorithm):
             icandf = self.ens.dynsys.generate_default_icandf(self.init_time,self.init_time+duration)
             if self.init_cond is not None:
                 icandf['init_cond'] = self.init_cond
-        elif self.branching_state['trunk_lineage_fin_times'][-1] < self.trunk_duration: # TODO make this more flexible; we could start branching as soon as the burnin time is exceeded
+        elif self.branching_state['trunk_lineage_fin_times'][-1] < self.init_time + self.trunk_duration: # TODO make this more flexible; we could start branching as soon as the burnin time is exceeded
             print(f'{self.branching_state = }')
             parent = self.branching_state['trunk_lineage'][-1]
             parent_init_time,parent_fin_time = self.ens.get_member_timespan(parent)
@@ -150,6 +150,7 @@ class PeriodicBranching(EnsembleAlgorithm):
             # decide whom to branch off of 
             trunk_segment_2branch = np.searchsorted(self.branching_state['trunk_lineage_fin_times'], self.branching_state['next_branch_time'], side='left')
             print(f'{self.branching_state = }')
+            print(f'{trunk_segment_2branch = }')
             parent = self.branching_state['trunk_lineage'][trunk_segment_2branch]
             icandf = self.generate_icandf_from_parent(parent, self.branching_state['next_branch_time'], self.branch_duration)
             branching_state_update = dict()
