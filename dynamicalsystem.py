@@ -24,6 +24,15 @@ class DynamicalSystem(ABC):
     @abstractmethod
     def get_timespan(metadata):
         pass
+    @staticmethod
+    @abstractmethod
+    def observable_props():
+        # Should return a dictionary whose keys correspond to class methods and whose values correspond to plotting arguments
+        pass
+    @abstractmethod
+    def compute_observables(self,obs_names, metadata, root_dir):
+        # obs_names must correspond to class methods
+        pass
     @abstractmethod
     def run_trajectory(self, icandf, obs_fun, saveinfo, root_dir):
         # return some metadata sufficient to reconstruct the output, for example (1) a filename, (2) full numpy array of the output of an ODE solver. 
@@ -87,7 +96,8 @@ class ODESystem(DynamicalSystem):
         frc = metadata['icandf']['frc']
         return frc.init_time,frc.fin_time
         
-    def load_trajectory(self, metadata, root_dir, tspan=None):
+    @staticmethod
+    def load_trajectory(metadata, root_dir, tspan=None):
         traj = dict(np.load(join(root_dir,metadata['filename'])))
         if tspan is not None:
             idx0 = np.where(traj['t'] == tspan[0])[0][0]

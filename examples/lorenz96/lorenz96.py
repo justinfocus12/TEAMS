@@ -90,16 +90,45 @@ class Lorenz96ODE(ODESystem): # TODO make a superclass Lorenz96, and a sibling s
     def generate_default_init_cond(self, init_time):
         return self.F + 0.001*np.sin(2*np.pi*np.arange(self.K)/self.K)
     # --------------- Common observable functions --------
-    def observable(self, t, x, obs_name):
-        if obs_name == 't':
-            return t
-        name2func = dict({
-            'x0': self.observable_x0,
-            'E0': self.observable_E0,
-            'E': self.observable_E,
-            'Emax': self.observable_Emax,
+    def compute_observables(self,obs_names, metadata, root_dir, tspan=None):
+        t,x = Lorenz96ODE.load_trajectory(metadata, root_dir, tspan=tspan)
+        obs_dict = dict()
+        for obs_name in obs_names:
+            obs_dict[obs_name] = getattr(self, f'observable_{obs_name}')(t,x)
+        return obs_dict
+    @staticmethod
+    def observable_props():
+        obslib = dict({
+            't': dict({
+                'abbrv': 't',
+                'label': 'Time',
+                }),
+            'x0': dict({
+                'abbrv': 'x0',
+                'label': r'$x_0$',
+                'cmap': 'coolwarm',
+                }),
+            'E0': dict({
+                'abbrv': 'E0',
+                'label': r'$\frac{1}{2}x_0^2$',
+                'cmap': 'coolwarm',
+                }),
+            'E': dict({
+                'abbrv': 'E',
+                'label': r'$\frac{1}{2}\sum_k x_k^2$',
+                'cmap': 'coolwarm',
+                }),
+            'Emax': dict({
+                'abbrv': 'Emax',
+                'label': r'$\mathrm{max}_k x_k^2$',
+                'cmap': 'coolwarm',
+                }),
             })
-        return name2func[obs_name](t,x)
+        return obslib
+    def observable_t(self, t, x):
+        return t
+    def observable_x(self, t, x):
+        return x
     def observable_x0(self, t, x):
         return x[:,0]
     def observable_E0(self, t, x):

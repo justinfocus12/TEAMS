@@ -95,16 +95,38 @@ class PeriodicBranching(EnsembleAlgorithm):
         for name in self.obs_dict_names():
             self.obs_dict[name].append(obs_dict_new[name])
         return 
-    def plot_obs_spaghetti(self, obs_name, branch_group_subset=None):
-        if branch_group_subset is None:
-            branch_group_subset = np.arange(self.branching_state['next_branch_group']) # TODO include the branch point of each child as an observable function
-        tu = self.ens.dynsys.dt_save
-        fig,ax = plt.subplots(figsize=(12,5))
-        for bp in branch_group_subset:
-            child_subset = 1 + np.arange(bp * self.branches_per_group, (bp+1) * self.branches_per_group)
-            for child in child_subset:
-                pass
+    def plot_obs_spaghetti(self, obs_names, branch_group, plotdir):
+        # Plot all the observables from a single group of branches, along with the control 
+        obs_names = set(obs_names) | {'t'}
+        # Get all timespans
+        all_timespans = np.array([np.array(self.ens.get_member_timespan(mem)) for mem in range(self.ens.memgraph.number_of_nodes())])
+        all_init_times = all_timespans[:,0]
+        all_fin_times = all_timespans[:,1]
+        split_time = self.init_time + self.ens.dynsys.t_burnin + branch_group*self.interbranch_interval
+        mems_branch = np.where(all_init_times == split_time)[0]
+        i_mem_trunk_init = np.searchsorted(self.branching_state['trunk_lineage_init_times'], split_time, side='left') - 1
+        i_mem_trunk_fin = np.searchsorted(self.branching_state['trunk_lineage_init_times'], split_time+self.branch_duration, side='left')
+        mems_trunk = self.branching_state['trunk_lineage'][i_mem_trunk_init:i_mem_trunk_fin+1]
+        print(f'{mems_trunk = }')
 
+        obs_dict_branch = self.ens.compute_observables(obs_names, mems_branch)
+        obs_dict_trunk = self.ens.compute_observables(obs_names, mems_trunk)
+        obslib = self.ens.dynsys.observable_props()
+        print(f'{obs_dict_trunk["t"] = }')
+        print(f'{obs_dict_branch["t"] = }')
+
+        for obs_name in obs_names - {'t'}:
+            print(f'============== Plotting observable {obs_name} ============= ')
+            fig,ax = plt.subplots(figsize=(12,5))
+            hctrl, = ax.plot(np.concatenate(obs_dict_trunk['t']), np.concatenate(obs_dict_trunk[obs_name]), linestyle='--', color='black', linewidth=2, zorder=1, label='CTRL')
+            for i_mem,mem in enumerate(mems_branch):
+                hpert, = ax.plot(obs_dict_branch['t'][i_mem], obs_dict_branch[obs_name][i_mem], linestyle='-', color='tomato', linewidth=1, zorder=0, label='PERT')
+            ax.legend(handles=[hctrl,hpert])
+            ax.set_xlabel('time')
+            ax.set_ylabel(obslib[obs_name]['label'])
+            ax.set_xlim(obs_dict_branch['t'][0][[0,-1]])
+            fig.savefig(join(plotdir,r'%s_group%d.png'%(obslib[obs_name]['abbrv'],branch_group)), **pltkwargs)
+            plt.close(fig)
         return
     def take_next_step(self, saveinfo):
         if self.terminate:

@@ -13,10 +13,12 @@ matplotlib.rcParams.update({
     "font.size": 15
 })
 pltkwargs = dict(bbox_inches="tight",pad_inches=0.2)
+sys.path.append('../..')
 from lorenz96 import Lorenz96ODE,Lorenz96SDE
 from ensemble import Ensemble
 import forcing
 import algorithms
+import utils
 
 class Lorenz96ODEPeriodicBranching(algorithms.ODEPeriodicBranching):
     def obs_dict_names(self):
@@ -38,10 +40,15 @@ class Lorenz96SDEPeriodicBranching(algorithms.SDEPeriodicBranching):
             })
         return obs_dict
 
+
 def periodic_branching_impulsive():
     tododict = dict({
-        'run_pebr':                1,
-        'plot_pebr':               1,
+        'run_pebr':                0,
+        'plot_pebr': dict({
+            'observables':    1,
+            'divergence':     0,
+            'response':       0,
+            }),
         })
     config_ode = Lorenz96ODE.default_config()
     tu = config_ode['dt_save'],
@@ -81,34 +88,92 @@ def periodic_branching_impulsive():
             alg.take_next_step(saveinfo)
             pickle.dump(alg, open(alg_filename, 'wb'))
 
-    if tododict['plot_pebr']:
+    if utils.find_true_in_dict(tododict['plot_pebr']):
+        plotdir = join(algdir, 'plots')
+        makedirs(plotdir, exist_ok=1)
         alg = pickle.load(open(alg_filename, 'rb'))
         tu = alg.ens.dynsys.dt_save
-        fig,ax = plt.subplots(figsize=(12,5))
-        # Load the entire trunk
-        t_trunk = []
-        x_trunk = []
-        for mem in alg.branching_state['trunk_lineage']:
-            t,x = alg.ens.dynsys.load_trajectory(alg.ens.traj_metadata[mem], alg.ens.root_dir)
-            t_trunk.append(t)
-            x_trunk.append(x)
-        t_trunk = np.concatenate(tuple(t_trunk))
-        x_trunk = np.concatenate(tuple(x_trunk))
-        print(f'{t_trunk[[0,-1]] = }')
-        for child in range(1,alg.ens.memgraph.number_of_nodes()):
-            t_child,x_child = alg.ens.dynsys.load_trajectory(alg.ens.traj_metadata[child], alg.ens.root_dir)
-            print(f'{t_child[[0,-1]] = }')
-            # Get the overlap time indices
-            tmin,tmax = max(t_trunk[0],t_child[0]),min(t_trunk[-1],t_child[-1])
-            tic,tfc = tmin-t_child[0], tmax-t_child[0]
-            tip,tfp = tmin-t_trunk[0], tmax-t_trunk[0]
-            dist = alg.ens.dynsys.distance(t_trunk[tip:tfp+1], x_trunk[tip:tfp+1], t_child[tic:tfc+1], x_child[tic:tfc+1], 'euclidean')
-            ax.plot(t_trunk[tip:tfp+1]*tu, dist)
-        ax.set_yscale('log')
-        ax.set_xlabel('Time')
-        ax.set_ylabel('Distance from parent')
-        fig.savefig(join(algdir, 'divergence.png'), **pltkwargs)
-        plt.close(fig)
+
+        if tododict['plot_pebr']['observables']:
+            obs_names = ['x0','E0','E','Emax']
+            for branch_group in range(alg.branching_state['next_branch_group']):
+                alg.plot_obs_spaghetti(obs_names, branch_group, plotdir)
+
+        # TODO implement methods for pairwise distances, maybe localized, and plot those divergences too 
+
+        if False:
+            # Compute observables separately on branches and trunk 
+            mems_branch = np.setdiff1d(np.arange(alg.ens.get_nmem()), alg.branching_state['trunk_lineage'])
+            obs_dict_branch = alg.ens.compute_observables(obs_names, mems_branch)
+            obs_dict_trunk = alg.ens.compute_observables_along_lineage(obs_names, alg.branching_state['trunk_lineage'][-1])
+            for obs_name in obs_names:
+                obs_dict_trunk[obs_name] = np.concatenate(obs_dict_trunk[obs_name], axis=0) # 0 is the time axis
+                
+            # Get all timespans
+            all_timespans = np.array([np.array(alg.ens.get_member_timespan(mem)) for mem in range(alg.ens.memgraph.number_of_nodes())])
+            all_init_times = all_timespans[:,0]
+            all_fin_times = all_timespans[:,1]
+
+        if tododict['plot_pebr']['divergence']:
+            fig,ax = plt.subplots(figsize=(12,5))
+
+            # Load the entire trunk
+            t_trunk = []
+            x_trunk = []
+            for mem in alg.branching_state['trunk_lineage']:
+                t,x = alg.ens.dynsys.load_trajectory(alg.ens.traj_metadata[mem], alg.ens.root_dir)
+                t_trunk.append(t)
+                x_trunk.append(x)
+            t_trunk = np.concatenate(tuple(t_trunk))
+            x_trunk = np.concatenate(tuple(x_trunk))
+
+
+            for child in mems_branch:
+                t_child,x_child = alg.ens.dynsys.load_trajectory(alg.ens.traj_metadata[child], alg.ens.root_dir)
+                # Get the overlap time indices
+                tmin,tmax = max(t_trunk[0],t_child[0]),min(t_trunk[-1],t_child[-1])
+                tic,tfc = tmin-t_child[0], tmax-t_child[0]
+                tip,tfp = tmin-t_trunk[0], tmax-t_trunk[0]
+                dist = alg.ens.dynsys.distance(t_trunk[tip:tfp+1], x_trunk[tip:tfp+1], t_child[tic:tfc+1], x_child[tic:tfc+1], 'euclidean')
+                ax.plot(t_trunk[tip:tfp+1]*tu, dist)
+            ax.set_yscale('log')
+            ax.set_xlabel('Time')
+            ax.set_ylabel('Distance from parent')
+            fig.savefig(join(plotdir, 'divergence.png'), **pltkwargs)
+            plt.close(fig)
+
+        if tododict['plot_pebr']['response']:
+            # 3. Plot lagged observable vs. perturbation for each IC
+            obs2plot = 'x0'
+            timelags_phys = np.arange(10)
+            timelags = (timelags_phys/alg.ens.dynsys.dt_save).astype(int)
+            for i_group in range(alg.branching_state['next_branch_group']):
+                branch_time = alg.init_time + alg.ens.dynsys.t_burnin + i_group*alg.interbranch_interval
+                idx_branches = np.array([i_b for i_b in range(len(mems_branch)) if obs_dict_branch['t'][i_b][0] == branch_time])
+                print(f'{branches = }')
+                fig,ax = plt.subplots()
+                impulses = np.nan*np.ones(len(idx_branches))
+                obs_branch_lagged = np.nan*np.ones((len(idx_branches),len(timelags)))
+                obs_trunk_lagged = np.nan*np.ones(len(timelags))
+                for i_branch in range(len(idx_branches)):
+                    mem = mems_branch[idx_branches[i_branch]]
+                    imp = alg.ens.traj_metadata[mem]['icandf']['frc'].impulses[0]
+                    print(f'{imp = }')
+                    impulses[i_branch] = imp.item()
+                    x0lagged[i_branch,:] = obs_dict_branch[i_mem][timelags]
+                ord_imp = np.argsort(impulses)
+                handles = []
+                for i_timelag,timelag in enumerate(timelags):
+                    h, = ax.plot(impulses[ord_imp], x0lagged[ord_imp,i_timelag] - obs_dict_trunk[branch_time+timelag-alg.init_time], color=plt.cm.coolwarm(timelag/timelags[-1]), label=r'$\Delta t=%g$'%(timelag))
+                    handles.append(h)
+                ax.set_xlabel('Impulse')
+                ax.set_ylabel(r'Lagged response')
+                ax.legend(handles=[handles[0],handles[-1]], loc=(1,0))
+                imgname = (f'response_group{i_group}_{obs2plot}').replace('.','p')
+                print(f'{imgname = }')
+                fig.savefig(join(plotdir,imgname), **pltkwargs)
+                plt.close()
+            
 
 def periodic_branching_white():
     tododict = dict({

@@ -34,8 +34,26 @@ class Ensemble(ABC):
         if parent is not None:
             self.memgraph.add_edge(parent, newmem)
         return observables
+    def get_nmem(self):
+        return self.memgraph.number_of_nodes()
     def get_member_timespan(self, member):
         return self.dynsys.get_timespan(self.traj_metadata[member])
+    def compute_observables(self, obs_names, mems, tspans=None):
+        obs_dict = dict({obs_name: [] for obs_name in obs_names})
+        if tspans is None:
+            tspans = [None]*len(mems)
+        for i_mem,mem in enumerate(mems):
+            metadata = self.traj_metadata[mem]
+            obs_dict_mem = self.dynsys.compute_observables(obs_names, metadata, self.root_dir, tspans[i_mem])
+            for obs_name in obs_names:
+                obs_dict[obs_name].append(obs_dict_mem[obs_name])
+        return obs_dict
+
+    def compute_observables_along_lineage(self, obs_names, mem_leaf):
+        mems = sorted(nx.ancestors(self.memgraph, mem_leaf) | {mem_leaf})
+        obs_dict = self.compute_observables(obs_names, mems)
+        return obs_dict # leave the explicit concatenation to later
+
     # --------------- Plotting methods ---------------
     def plot_observables(self, mems, ts, obsvals):
         # TODO also make an alternative method to compute observable functions
