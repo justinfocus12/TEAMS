@@ -134,10 +134,12 @@ class PeriodicBranching(EnsembleAlgorithm):
                 icandf['init_cond'] = self.init_cond
         elif self.branching_state['trunk_lineage_fin_times'][-1] < self.init_time + self.trunk_duration: # TODO make this more flexible; we could start branching as soon as the burnin time is exceeded
             print(f'{self.branching_state = }')
+            print(f'{self.ens.root_dir = }')
+            print(f'{self.ens.memgraph.number_of_nodes() = }')
             parent = self.branching_state['trunk_lineage'][-1]
             parent_init_time,parent_fin_time = self.ens.get_member_timespan(parent)
             print(f'{parent_init_time = }, {parent_fin_time = }')
-            duration = min(self.max_member_duration, self.trunk_duration-parent_fin_time)
+            duration = min(self.max_member_duration, self.init_time+self.trunk_duration-parent_fin_time)
             print(f'{duration = }')
             icandf = self.generate_icandf_from_parent(parent, parent_fin_time, duration)
             print(f'{icandf = }')
@@ -173,7 +175,7 @@ class ODEPeriodicBranching(PeriodicBranching):
     def generate_icandf_from_parent(self, parent, branch_time, duration):
         init_time_parent,fin_time_parent = self.ens.get_member_timespan(parent)
         assert init_time_parent < branch_time <= fin_time_parent
-        parent_t,parent_x = self.ens.dynsys.load_trajectory(self.ens.traj_metadata[parent], tspan=[branch_time]*2)
+        parent_t,parent_x = self.ens.dynsys.load_trajectory(self.ens.traj_metadata[parent], self.ens.root_dir, tspan=[branch_time]*2)
         impulse = self.rng.normal(size=self.ens.dynsys.impulse_dim)
         icandf = dict({
             'init_cond': parent_x[0],
@@ -188,7 +190,7 @@ class SDEPeriodicBranching(PeriodicBranching):
     def generate_icandf_from_parent(self, parent, branch_time, duration):
         init_time_parent,fin_time_parent = self.ens.get_member_timespan(parent)
         assert init_time_parent < branch_time <= fin_time_parent
-        parent_t,parent_x = self.ens.dynsys.load_trajectory(self.ens.traj_metadata[parent], tspan=[branch_time]*2)
+        parent_t,parent_x = self.ens.dynsys.load_trajectory(self.ens.traj_metadata[parent], self.ens.root_dir, tspan=[branch_time]*2)
         seed = self.rng.integers(low=self.seed_min,high=self.seed_max)
         frc_imp = forcing.ImpulsiveForcing([branch_time], [np.zeros(self.ens.dynsys.ode.impulse_dim)], branch_time+self.branch_duration)
         frc_white = forcing.WhiteNoiseForcing([branch_time], [seed], branch_time+self.branch_duration)

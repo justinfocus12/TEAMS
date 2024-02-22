@@ -47,21 +47,22 @@ def periodic_branching_impulsive():
     tu = config_ode['dt_save'],
     scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/lorenz96"
     date_str = "2024-02-21"
-    sub_date_str = "0"
+    sub_date_str = "1"
     param_abbrv_ode,param_label_ode = Lorenz96ODE.label_from_config(config_ode)
     config_algo = dict({
         'seed_min': 1000,
         'seed_max': 100000,
         'branches_per_group': 16, 
-        'interbranch_interval_phys': 2.0,
+        'interbranch_interval_phys': 10.0,
         'branch_duration_phys': 15.0,
-        'num_branch_groups': 10,
-        'max_member_duration_phys': 20.0,
+        'num_branch_groups': 50,
+        'max_member_duration_phys': 60.0,
         })
     seed = 849582 # TODO make this a command-line argument
     param_abbrv_algo,param_label_algo = Lorenz96ODEPeriodicBranching.label_from_config(config_algo)
     algdir = join(scratch_dir, date_str, sub_date_str, param_abbrv_ode, param_abbrv_algo)
     makedirs(algdir, exist_ok=True)
+    root_dir = algdir
     alg_filename = join(algdir,'alg.pickle')
 
     if tododict['run_pebr']:
@@ -69,14 +70,14 @@ def periodic_branching_impulsive():
             alg = pickle.load(open(alg_filename, 'rb'))
         else:
             ode = Lorenz96ODE(config_ode)
-            ens = Ensemble(ode)
+            ens = Ensemble(ode,root_dir)
             alg = Lorenz96ODEPeriodicBranching(config_algo, ens, seed)
 
         mem = 0
         while not (alg.terminate):
             mem = alg.ens.memgraph.number_of_nodes()
             print(f'----------- Starting member {mem} ----------------')
-            saveinfo = dict(filename=join(algdir,f'mem{mem}.npz'))
+            saveinfo = dict(filename=f'mem{mem}.npz')
             alg.take_next_step(saveinfo)
             pickle.dump(alg, open(alg_filename, 'wb'))
 
@@ -88,14 +89,14 @@ def periodic_branching_impulsive():
         t_trunk = []
         x_trunk = []
         for mem in alg.branching_state['trunk_lineage']:
-            t,x = alg.ens.dynsys.load_trajectory(alg.ens.traj_metadata[mem])
+            t,x = alg.ens.dynsys.load_trajectory(alg.ens.traj_metadata[mem], alg.ens.root_dir)
             t_trunk.append(t)
             x_trunk.append(x)
         t_trunk = np.concatenate(tuple(t_trunk))
         x_trunk = np.concatenate(tuple(x_trunk))
         print(f'{t_trunk[[0,-1]] = }')
         for child in range(1,alg.ens.memgraph.number_of_nodes()):
-            t_child,x_child = alg.ens.dynsys.load_trajectory(alg.ens.traj_metadata[child])
+            t_child,x_child = alg.ens.dynsys.load_trajectory(alg.ens.traj_metadata[child], alg.ens.root_dir)
             print(f'{t_child[[0,-1]] = }')
             # Get the overlap time indices
             tmin,tmax = max(t_trunk[0],t_child[0]),min(t_trunk[-1],t_child[-1])

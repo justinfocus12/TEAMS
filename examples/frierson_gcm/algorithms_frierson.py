@@ -76,10 +76,10 @@ def test_periodic_branching(nproc):
     config_algo = dict({
         'seed_min': 1000,
         'seed_max': 100000,
-        'branches_per_group': 4, 
+        'branches_per_group': 16, 
         'interbranch_interval_phys': 10.0,
         'branch_duration_phys': 20.0,
-        'num_branch_groups': 10,
+        'num_branch_groups': 20,
         'max_member_duration_phys': 25.0,
         })
     seed = 849582 # TODO make this a command-line argument

@@ -319,7 +319,9 @@ class FriersonGCM(DynamicalSystem):
             nml['spectral_dynamics_nml']['perturbation_fraction'] = [self.pert_frac for ipert in range(numperts)]
 
         f90nml.namelist.Namelist(nml,default_start_index=1).write(join(wd,'input.nml'))
+        print(f'--------------- Starting MPIRUN --------')
         mpirun_output = subprocess.run(f'cd {wd}; /home/software/gcc/6.2.0/pkg/openmpi/4.0.4/bin/mpirun -np {self.nproc} fms.x', shell=True, executable='/bin/csh', capture_output=True)
+        print(f'--------------- Finished MPIRUN --------')
 
         # Move output files to output directory with informative names
         date_range_name = f'days{icandf["frc"].init_time}-{icandf["frc"].fin_time}'

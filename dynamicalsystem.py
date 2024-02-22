@@ -5,6 +5,7 @@ from scipy import sparse as sps
 import forcing
 import matplotlib
 import matplotlib.pyplot as plt
+from os.path import join, exists
 matplotlib.rcParams.update({
     "font.family": "monospace",
     "font.size": 15
