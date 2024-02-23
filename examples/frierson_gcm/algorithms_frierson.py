@@ -26,6 +26,7 @@ import copy as copylib
 
 import sys
 sys.path.append("../..")
+import utils
 from ensemble import Ensemble
 from dynamicalsystem import DynamicalSystem
 import forcing
@@ -63,8 +64,12 @@ class FriersonGCMPeriodicBranching(algorithms.PeriodicBranching):
 
 def test_periodic_branching(nproc):
     tododict = dict({
-        'run_pebr':                1,
-        'plot_pebr':               1,
+        'run_pebr':                0,
+        'plot_pebr': dict({
+            'observables':    1,
+            'divergence':     0,
+            'response':       0,
+            }),
         })
     base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
     scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/frierson_gcm"
@@ -116,84 +121,100 @@ def test_periodic_branching(nproc):
                 })
             alg.take_next_step(saveinfo)
             pickle.dump(alg, open(alg_filename, 'wb'))
-    if tododict['plot_pebr']:
-        plot_dir = join(algdir,'plots')
-        makedirs(plot_dir,exist_ok=True)
+    if utils.find_true_in_dict(tododict['plot_pebr']):
+        plotdir = join(algdir,'plots')
+        makedirs(plotdir,exist_ok=True)
 
         alg = pickle.load(open(join(algdir,'alg.pickle'),'rb'))
         print(f'{alg.trunk_duration = }')
         print(f'{alg.branching_state["trunk_lineage_fin_times"] = }')
-        ens = alg.ens
-        obslib = ens.dynsys.observable_props()
-        obs2plot = ['temperature','total_rain','column_water_vapor','surface_pressure'][1:2]
-        lat = 45.0
-        lon = 180.0
-        pfull = 500.0
+        if tododict['plot_pebr']['observables']:
+            obsprop = alg.ens.dynsys.observable_props()
+            obs_names = ['temperature','total_rain','column_water_vapor','surface_pressure']
+            lat = 45.0
+            lon = 180.0
+            pfull = 500.0
+            obs_funs = dict()
+            obs_abbrvs = dict()
+            obs_labels = dict()
+            for obs_name in obs_names:
+                def obs_fun(ds):
+                    field = getattr(alg.ens.dynsys, obs_name)(ds).sel(lat=lat, lon=lon, method='nearest')
+                    if 'pfull' in field.dims:
+                        field = field.sel(pfull=pfull, method='nearest')
+                    return field
+                obs_funs[obs_name] = obs_fun
+                obs_abbrvs[obs_name] = obsprop[obs_name]['abbrv']
+                obs_labels[obs_name] = obsprop[obs_name]['label']
+            for branch_group in range(alg.branching_state['next_branch_group']):
+                alg.plot_obs_spaghetti(obs_funs, branch_group, plotdir, labels=obs_labels, abbrvs=obs_abbrvs)
 
-        # Plot distance from trunk for all branches, in terms of (u,v) coordinates
-        trulin = alg.branching_state['trunk_lineage']
-        for mem in trulin:
-            print(f'{mem = } in trunk; {alg.ens.get_member_timespan(mem) = }')
-        dist_region = dict(lat=slice(lat-10,lat+10),lon=slice(lon-10,lon+10))
-        ds_trunk = (
-                xr.open_mfdataset([
-                    join(ens.root_dir,ens.traj_metadata[mem]['filename_traj'])
-                    for mem in alg.branching_state['trunk_lineage']],
-                    decode_times=False,
-                    data_vars=["ucomp","vcomp"])
-                .sel(dist_region)
-                .sel(pfull=pfull,method='nearest')
-                )
-        print(f'{ds_trunk.time.values = }')
-        dist2trunk = dict()
-        for mem in np.setdiff1d(np.arange(ens.memgraph.number_of_nodes()), alg.branching_state['trunk_lineage']):
-            dsmem = (
-                    xr.open_dataset(
-                        join(ens.root_dir,ens.traj_metadata[mem]['filename_traj']),
-                        decode_times=False)
+
+        if tododict['plot_pebr']['divergence']:
+            # Plot distance from trunk for all branches, in terms of (u,v) coordinates
+            trulin = alg.branching_state['trunk_lineage']
+            for mem in trulin:
+                print(f'{mem = } in trunk; {alg.ens.get_member_timespan(mem) = }')
+            dist_region = dict(lat=slice(lat-10,lat+10),lon=slice(lon-10,lon+10))
+            ds_trunk = (
+                    xr.open_mfdataset([
+                        join(ens.root_dir,ens.traj_metadata[mem]['filename_traj'])
+                        for mem in alg.branching_state['trunk_lineage']],
+                        decode_times=False,
+                        data_vars=["ucomp","vcomp"])
                     .sel(dist_region)
                     .sel(pfull=pfull,method='nearest')
                     )
-            dsmem.drop_vars(np.setdiff1d(list(dsmem.data_vars.keys()),['ucomp','vcomp']))
-            common_time = np.intersect1d(dsmem.time.to_numpy(), ds_trunk.time.to_numpy())
-            if len(common_time) > 0:
-                timesel = dict(time=common_time)
-                print(f'{ds_trunk["ucomp"].sel(timesel).shape = }')
-                print(f'{dsmem["ucomp"].sel(timesel).shape = }')
-                dist2trunk[mem] = np.sqrt((
-                    (dsmem['ucomp'].sel(timesel) - ds_trunk['ucomp'].sel(timesel))**2 + 
-                    (dsmem['vcomp'].sel(timesel) - ds_trunk['vcomp'].sel(timesel))**2
-                    )
-                    .sum(dim=['lat','lon']))
+            print(f'{ds_trunk.time.values = }')
+            dist2trunk = dict()
+            for mem in np.setdiff1d(np.arange(ens.memgraph.number_of_nodes()), alg.branching_state['trunk_lineage']):
+                dsmem = (
+                        xr.open_dataset(
+                            join(ens.root_dir,ens.traj_metadata[mem]['filename_traj']),
+                            decode_times=False)
+                        .sel(dist_region)
+                        .sel(pfull=pfull,method='nearest')
+                        )
+                dsmem.drop_vars(np.setdiff1d(list(dsmem.data_vars.keys()),['ucomp','vcomp']))
+                common_time = np.intersect1d(dsmem.time.to_numpy(), ds_trunk.time.to_numpy())
+                if len(common_time) > 0:
+                    timesel = dict(time=common_time)
+                    print(f'{ds_trunk["ucomp"].sel(timesel).shape = }')
+                    print(f'{dsmem["ucomp"].sel(timesel).shape = }')
+                    dist2trunk[mem] = np.sqrt((
+                        (dsmem['ucomp'].sel(timesel) - ds_trunk['ucomp'].sel(timesel))**2 + 
+                        (dsmem['vcomp'].sel(timesel) - ds_trunk['vcomp'].sel(timesel))**2
+                        )
+                        .sum(dim=['lat','lon']))
 
-        fig,ax = plt.subplots()
-        for (mem,dist) in dist2trunk.items():
-            xr.plot.plot(dist, x='time', label=f'm{mem}')
-        ax.set_yscale('log')
-        ax.set_title('Distance to trunk')
-        ax.set_xlabel('Time')
-        ax.set_ylabel('Euclidean distance')
-        fig.savefig(join(plot_dir,f'dist2trunk.png'), **pltkwargs)
-        plt.close(fig)
+            fig,ax = plt.subplots()
+            for (mem,dist) in dist2trunk.items():
+                xr.plot.plot(dist, x='time', label=f'm{mem}')
+            ax.set_yscale('log')
+            ax.set_title('Distance to trunk')
+            ax.set_xlabel('Time')
+            ax.set_ylabel('Euclidean distance')
+            fig.savefig(join(plotdir,f'dist2trunk.png'), **pltkwargs)
+            plt.close(fig)
 
-        # Plot local observables for all members
-        obs_vals = dict({obs: [] for obs in obs2plot})
-        for mem in range(ens.memgraph.number_of_nodes()):
-            dsmem = xr.open_mfdataset(join(ens.root_dir,ens.traj_metadata[mem]['filename_traj']), decode_times=False)
-            for obs in obs2plot:
-                memobs = getattr(ens.dynsys, obs)(dsmem).sel(dict(lat=lat,lon=lon),method='nearest').compute()
-                if 'pfull' in memobs.dims:
-                    memobs = memobs.sel(pfull=pfull,method='nearest')
-                obs_vals[obs].append(memobs)
-        for obs in obs2plot:
-            fig,ax = plt.subplots(figsize=(20,5))
-            handles = []
+            # Plot local observables for all members
+            obs_vals = dict({obs: [] for obs in obs2plot})
             for mem in range(ens.memgraph.number_of_nodes()):
-                h, = xr.plot.plot(obs_vals[obs][mem], x='time', label=f'm{mem}', marker='o')
-                handles.append(h)
-            ax.legend(handles=handles)
-            ax.set_title(obslib[obs]['label'])
-            fig.savefig(join(plot_dir,f'{obslib[obs]["abbrv"]}.png'),**pltkwargs)
+                dsmem = xr.open_mfdataset(join(ens.root_dir,ens.traj_metadata[mem]['filename_traj']), decode_times=False)
+                for obs in obs2plot:
+                    memobs = getattr(ens.dynsys, obs)(dsmem).sel(dict(lat=lat,lon=lon),method='nearest').compute()
+                    if 'pfull' in memobs.dims:
+                        memobs = memobs.sel(pfull=pfull,method='nearest')
+                    obs_vals[obs].append(memobs)
+            for obs in obs2plot:
+                fig,ax = plt.subplots(figsize=(20,5))
+                handles = []
+                for mem in range(ens.memgraph.number_of_nodes()):
+                    h, = xr.plot.plot(obs_vals[obs][mem], x='time', label=f'm{mem}', marker='o')
+                    handles.append(h)
+                ax.legend(handles=handles)
+                ax.set_title(obslib[obs]['label'])
+                fig.savefig(join(plotdir,f'{obslib[obs]["abbrv"]}.png'),**pltkwargs)
 
 
 

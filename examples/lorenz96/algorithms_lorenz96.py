@@ -94,10 +94,19 @@ def periodic_branching_impulsive():
         alg = pickle.load(open(alg_filename, 'rb'))
         tu = alg.ens.dynsys.dt_save
 
+        obsprop = alg.ens.dynsys.observable_props()
+
         if tododict['plot_pebr']['observables']:
             obs_names = ['x0','E0','E','Emax']
+            obs_funs = dict()
+            obs_abbrvs = dict()
+            obs_labels = dict()
+            for obs_name in obs_names:
+                obs_funs[obs_name] = getattr(alg.ens.dynsys, f'observable_{obs_name}')
+                obs_abbrvs[obs_name] = obsprop[obs_name]['abbrv']
+                obs_labels[obs_name] = obsprop[obs_name]['label']
             for branch_group in range(alg.branching_state['next_branch_group']):
-                alg.plot_obs_spaghetti(obs_names, branch_group, plotdir)
+                alg.plot_obs_spaghetti(obs_funs, branch_group, plotdir, labels=obs_labels, abbrvs=obs_abbrvs)
 
         # TODO implement methods for pairwise distances, maybe localized, and plot those divergences too 
 

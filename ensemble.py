@@ -38,13 +38,16 @@ class Ensemble(ABC):
         return self.memgraph.number_of_nodes()
     def get_member_timespan(self, member):
         return self.dynsys.get_timespan(self.traj_metadata[member])
-    def compute_observables(self, obs_names, mems, tspans=None):
+    def get_all_timespans(self):
+        all_timespans = np.array([np.array(self.get_member_timespan(mem)) for mem in range(self.get_nmem())])
+        return all_timespans[:,0],all_timespans[:,1]
+    def compute_observables(self, obs_funs, mems):
+        # args_dict and kwargs_dict should have a different value for each obs_name
+        obs_names = list(obs_funs.keys())
         obs_dict = dict({obs_name: [] for obs_name in obs_names})
-        if tspans is None:
-            tspans = [None]*len(mems)
         for i_mem,mem in enumerate(mems):
             metadata = self.traj_metadata[mem]
-            obs_dict_mem = self.dynsys.compute_observables(obs_names, metadata, self.root_dir, tspans[i_mem])
+            obs_dict_mem = self.dynsys.compute_observables(obs_funs, metadata, self.root_dir)
             for obs_name in obs_names:
                 obs_dict[obs_name].append(obs_dict_mem[obs_name])
         return obs_dict

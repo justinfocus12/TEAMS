@@ -403,6 +403,13 @@ class FriersonGCM(DynamicalSystem):
         runavg *= 1.0/steps_per_day
         return runavg
     # --------------- Observable functions ---------------------
+    def compute_observables(self, obs_funs, metadata, root_dir):
+        ds = xr.open_mfdataset(join(root_dir,metadata['filename_traj']), decode_times=False)
+        obs_name = list(obs_funs.keys())
+        obs_dict = dict()
+        for obs_name,obs_fun in obs_funs.items():
+            obs_dict[obs_name] = obs_fun(ds).compute()
+        return obs_dict
     def observable_props(self):
         obslib = dict()
         obslib["effective_static_stability"] = dict({

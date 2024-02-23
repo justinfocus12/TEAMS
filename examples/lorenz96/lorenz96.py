@@ -90,11 +90,12 @@ class Lorenz96ODE(ODESystem): # TODO make a superclass Lorenz96, and a sibling s
     def generate_default_init_cond(self, init_time):
         return self.F + 0.001*np.sin(2*np.pi*np.arange(self.K)/self.K)
     # --------------- Common observable functions --------
-    def compute_observables(self,obs_names, metadata, root_dir, tspan=None):
-        t,x = Lorenz96ODE.load_trajectory(metadata, root_dir, tspan=tspan)
+    def compute_observables(self, obs_funs, metadata, root_dir):
+        t,x = Lorenz96ODE.load_trajectory(metadata, root_dir)
         obs_dict = dict()
-        for obs_name in obs_names:
-            obs_dict[obs_name] = getattr(self, f'observable_{obs_name}')(t,x)
+        obs_names = list(obs_funs.keys())
+        for obs_name,obs_fun in obs_funs.items():
+            obs_dict[obs_name] = obs_fun(t,x)
         return obs_dict
     @staticmethod
     def observable_props():
@@ -115,12 +116,12 @@ class Lorenz96ODE(ODESystem): # TODO make a superclass Lorenz96, and a sibling s
                 }),
             'E': dict({
                 'abbrv': 'E',
-                'label': r'$\frac{1}{2}\sum_k x_k^2$',
+                'label': r'$\sum_k \frac{1}{2}x_k^2$',
                 'cmap': 'coolwarm',
                 }),
             'Emax': dict({
                 'abbrv': 'Emax',
-                'label': r'$\mathrm{max}_k x_k^2$',
+                'label': r'$\mathrm{max}_k \{\frac{1}{2}x_k^2\}$',
                 'cmap': 'coolwarm',
                 }),
             })

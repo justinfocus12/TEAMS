@@ -95,37 +95,40 @@ class PeriodicBranching(EnsembleAlgorithm):
         for name in self.obs_dict_names():
             self.obs_dict[name].append(obs_dict_new[name])
         return 
-    def plot_obs_spaghetti(self, obs_names, branch_group, plotdir):
+    def plot_obs_spaghetti(self, obs_funs, branch_group, plotdir, labels=None, abbrvs=None):
+        obs_names = list(obs_funs.keys())
+        if labels is None: labels = dict({obs_name: '' for obs_name in obs_names})
+        if abbrvs is None: abbrvs = dict({obs_name: obs_name for obs_name in obs_names})
         # Plot all the observables from a single group of branches, along with the control 
-        obs_names = set(obs_names) | {'t'}
+        # TODO recover split times from init_times. Better yet, track it in the algorithm to begin with
         # Get all timespans
-        all_timespans = np.array([np.array(self.ens.get_member_timespan(mem)) for mem in range(self.ens.memgraph.number_of_nodes())])
-        all_init_times = all_timespans[:,0]
-        all_fin_times = all_timespans[:,1]
+        all_init_times,all_fin_times = self.ens.get_all_timespans()
+        print(f'{all_init_times = }')
         split_time = self.init_time + self.ens.dynsys.t_burnin + branch_group*self.interbranch_interval
-        mems_branch = np.where(all_init_times == split_time)[0]
-        i_mem_trunk_init = np.searchsorted(self.branching_state['trunk_lineage_init_times'], split_time, side='left') - 1
-        i_mem_trunk_fin = np.searchsorted(self.branching_state['trunk_lineage_init_times'], split_time+self.branch_duration, side='left')
+        print(f'{split_time = }')
+        mems_branch = np.setdiff1d(np.where(all_init_times == split_time)[0], self.branching_state['trunk_lineage'])
+        i_mem_trunk_init = np.searchsorted(self.branching_state['trunk_lineage_init_times'], split_time, side='right') - 1
+        i_mem_trunk_fin = np.searchsorted(self.branching_state['trunk_lineage_fin_times'], split_time+self.branch_duration, side='right')
         mems_trunk = self.branching_state['trunk_lineage'][i_mem_trunk_init:i_mem_trunk_fin+1]
         print(f'{mems_trunk = }')
 
-        obs_dict_branch = self.ens.compute_observables(obs_names, mems_branch)
-        obs_dict_trunk = self.ens.compute_observables(obs_names, mems_trunk)
-        obslib = self.ens.dynsys.observable_props()
-        print(f'{obs_dict_trunk["t"] = }')
-        print(f'{obs_dict_branch["t"] = }')
+        obs_dict_branch = self.ens.compute_observables(obs_funs, mems_branch)
+        obs_dict_trunk = self.ens.compute_observables(obs_funs, mems_trunk)
 
-        for obs_name in obs_names - {'t'}:
+        time = split_time + np.arange(self.branch_duration)
+        tidx_trunk = split_time - all_init_times[mems_trunk[0]] + np.arange(self.branch_duration)
+        for obs_name in obs_names:
             print(f'============== Plotting observable {obs_name} ============= ')
             fig,ax = plt.subplots(figsize=(12,5))
-            hctrl, = ax.plot(np.concatenate(obs_dict_trunk['t']), np.concatenate(obs_dict_trunk[obs_name]), linestyle='--', color='black', linewidth=2, zorder=1, label='CTRL')
+            # For trunk, restrict to the times of interest
+            hctrl, = ax.plot(time, np.concatenate(obs_dict_trunk[obs_name])[tidx_trunk], linestyle='--', color='black', linewidth=2, zorder=1, label='CTRL')
             for i_mem,mem in enumerate(mems_branch):
-                hpert, = ax.plot(obs_dict_branch['t'][i_mem], obs_dict_branch[obs_name][i_mem], linestyle='-', color='tomato', linewidth=1, zorder=0, label='PERT')
+                hpert, = ax.plot(time, obs_dict_branch[obs_name][i_mem], linestyle='-', color='tomato', linewidth=1, zorder=0, label='PERT')
             ax.legend(handles=[hctrl,hpert])
             ax.set_xlabel('time')
-            ax.set_ylabel(obslib[obs_name]['label'])
-            ax.set_xlim(obs_dict_branch['t'][0][[0,-1]])
-            fig.savefig(join(plotdir,r'%s_group%d.png'%(obslib[obs_name]['abbrv'],branch_group)), **pltkwargs)
+            ax.set_ylabel(labels[obs_name])
+            ax.set_xlim([time[0],time[-1]+1])
+            fig.savefig(join(plotdir,r'%s_group%d.png'%(abbrvs[obs_name],branch_group)), **pltkwargs)
             plt.close(fig)
         return
     def take_next_step(self, saveinfo):
