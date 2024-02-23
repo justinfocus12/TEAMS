@@ -38,9 +38,16 @@ class Ensemble(ABC):
         return self.memgraph.number_of_nodes()
     def get_member_timespan(self, member):
         return self.dynsys.get_timespan(self.traj_metadata[member])
-    def get_all_timespans(self):
-        all_timespans = np.array([np.array(self.get_member_timespan(mem)) for mem in range(self.get_nmem())])
+    def get_all_timespans(self,mems=None):
+        if mems is None:
+            mems = np.arange(self.get_nmem())
+        all_timespans = np.array([np.array(self.get_member_timespan(mem)) for mem in mems])
         return all_timespans[:,0],all_timespans[:,1]
+    def get_first_forcing_times(self,mems=None):
+        # Assume all mems have at least one forcing time 
+        if mems is None:
+            mems = np.arange(self.get_nmem())
+        return np.array([self.traj_metadata[mem]['icandf']['frc'].get_forcing_times()[0] for mem in mems])
     def compute_observables(self, obs_funs, mems):
         # args_dict and kwargs_dict should have a different value for each obs_name
         obs_names = list(obs_funs.keys())

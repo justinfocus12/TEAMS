@@ -95,7 +95,7 @@ class ODESystem(DynamicalSystem):
     def get_timespan(metadata):
         frc = metadata['icandf']['frc']
         return frc.init_time,frc.fin_time
-        
+
     @staticmethod
     def load_trajectory(metadata, root_dir, tspan=None):
         traj = dict(np.load(join(root_dir,metadata['filename'])))

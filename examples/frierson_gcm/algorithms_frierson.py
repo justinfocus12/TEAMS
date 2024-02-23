@@ -55,16 +55,21 @@ class FriersonGCMPeriodicBranching(algorithms.PeriodicBranching):
             init_cond = self.ens.traj_metadata[parent]['filename_restart']
             init_time = fin_time_parent
         fin_time = branch_time + duration
-        seed = self.rng.integers(low=self.seed_min, high=self.seed_max)
+        if self.branching_state['on_trunk']:
+            reseed_times = []
+            seeds = []
+        else:
+            reseed_times = [branch_time]
+            seeds = [self.rng.integers(low=self.seed_min, high=self.seed_max)]
         icandf = dict({
             'init_cond': init_cond,
-            'frc': forcing.ContinuousTimeForcing(init_time, fin_time, [branch_time], [seed]),
+            'frc': forcing.ContinuousTimeForcing(init_time, fin_time, reseed_times, seeds),
             })
         return icandf
 
 def test_periodic_branching(nproc):
     tododict = dict({
-        'run_pebr':                0,
+        'run_pebr':                1,
         'plot_pebr': dict({
             'observables':    1,
             'divergence':     0,
@@ -74,17 +79,27 @@ def test_periodic_branching(nproc):
     base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
     scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/frierson_gcm"
     date_str = "2024-02-21"
-    sub_date_str = "0/PeBr"
+    sub_date_str = "1/PeBr"
     print(f'About to generate default config')
     config_gcm = FriersonGCM.default_config(base_dir_absolute,base_dir_absolute)
+    config_gcm['remove_temp'] = 0
     param_abbrv_gcm,param_label_gcm = FriersonGCM.label_from_config(config_gcm)
-    config_algo = dict({
+    config_algo_big = dict({
         'seed_min': 1000,
         'seed_max': 100000,
         'branches_per_group': 16, 
         'interbranch_interval_phys': 10.0,
         'branch_duration_phys': 20.0,
         'num_branch_groups': 20,
+        'max_member_duration_phys': 25.0,
+        })
+    config_algo = dict({
+        'seed_min': 1000,
+        'seed_max': 100000,
+        'branches_per_group': 1, 
+        'interbranch_interval_phys': 10.0,
+        'branch_duration_phys': 20.0,
+        'num_branch_groups': 5,
         'max_member_duration_phys': 25.0,
         })
     seed = 849582 # TODO make this a command-line argument
@@ -130,23 +145,23 @@ def test_periodic_branching(nproc):
         print(f'{alg.branching_state["trunk_lineage_fin_times"] = }')
         if tododict['plot_pebr']['observables']:
             obsprop = alg.ens.dynsys.observable_props()
-            obs_names = ['temperature','total_rain','column_water_vapor','surface_pressure']
+            obs_names = ['temperature','total_rain','column_water_vapor','surface_pressure'][1:2]
             lat = 45.0
             lon = 180.0
             pfull = 500.0
             obs_funs = dict()
             obs_abbrvs = dict()
             obs_labels = dict()
+            def obs_fun_parameterized(ds, obs_name_temp):
+                field = getattr(alg.ens.dynsys, obs_name_temp)(ds).sel(lat=lat, lon=lon, method='nearest')
+                if 'pfull' in field.dims:
+                    field = field.sel(pfull=pfull, method='nearest')
+                return field
             for obs_name in obs_names:
-                def obs_fun(ds):
-                    field = getattr(alg.ens.dynsys, obs_name)(ds).sel(lat=lat, lon=lon, method='nearest')
-                    if 'pfull' in field.dims:
-                        field = field.sel(pfull=pfull, method='nearest')
-                    return field
-                obs_funs[obs_name] = obs_fun
+                obs_funs[obs_name] = lambda ds: obs_fun_parameterized(ds, obs_name)
                 obs_abbrvs[obs_name] = obsprop[obs_name]['abbrv']
                 obs_labels[obs_name] = obsprop[obs_name]['label']
-            for branch_group in range(alg.branching_state['next_branch_group']):
+            for branch_group in range(alg.num_branch_groups): #range(alg.branching_state['next_branch_group']):
                 alg.plot_obs_spaghetti(obs_funs, branch_group, plotdir, labels=obs_labels, abbrvs=obs_abbrvs)
 
 
@@ -215,14 +230,6 @@ def test_periodic_branching(nproc):
                 ax.legend(handles=handles)
                 ax.set_title(obslib[obs]['label'])
                 fig.savefig(join(plotdir,f'{obslib[obs]["abbrv"]}.png'),**pltkwargs)
-
-
-
-
-
-        
-
-
     return
 
 if __name__ == "__main__":

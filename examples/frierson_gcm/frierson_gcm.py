@@ -96,7 +96,8 @@ class FriersonGCM(DynamicalSystem):
             'source_dir_absolute': source_dir_absolute, # where the original source code comes from. Don't modify! 
             'base_dir_absolute': base_dir_absolute, # Copied from source_dir and then modified, compiled etc. 
             'platform': 'gnu',
-            't_burnin': 5,
+            't_burnin': 0,
+            'remove_temp': 1,
             })
         return config
     @classmethod
@@ -211,6 +212,7 @@ class FriersonGCM(DynamicalSystem):
         # Directories containing source code and binaries
         self.base_dir_absolute = config['base_dir_absolute']
         self.platform = config['platform'] # probably gnu
+        self.remove_temp = config['remove_temp'] # Set to False for debugging 
 
         nml = f90nml.read(join(self.base_dir_absolute, 'input', 'jf_spectral_namelist')).todict()
         nml_default = self.default_namelist() # actually a dictionary
@@ -306,6 +308,7 @@ class FriersonGCM(DynamicalSystem):
         # Augment the namelist with forcing information
         nml['main_nml']['days'] = icandf['frc'].fin_time - icandf['frc'].init_time
         numperts = len(icandf['frc'].reseed_times)
+        assert numperts == len(icandf['frc'].seeds)
         nml['spectral_dynamics_nml']['num_perturbations_actual'] = numperts
         if numperts == 0:
             nml['spectral_dynamics_nml']['do_perturbation'] = False
@@ -319,6 +322,7 @@ class FriersonGCM(DynamicalSystem):
             nml['spectral_dynamics_nml']['perturbation_fraction'] = [self.pert_frac for ipert in range(numperts)]
 
         f90nml.namelist.Namelist(nml,default_start_index=1).write(join(wd,'input.nml'))
+        # TODO find out why mid-trajectory perturbations are being implemented at the init time instead of the reseed time
         print(f'--------------- Starting MPIRUN --------')
         mpirun_output = subprocess.run(f'cd {wd}; /home/software/gcc/6.2.0/pkg/openmpi/4.0.4/bin/mpirun -np {self.nproc} fms.x', shell=True, executable='/bin/csh', capture_output=True)
         print(f'--------------- Finished MPIRUN --------')
@@ -380,7 +384,8 @@ class FriersonGCM(DynamicalSystem):
         shutil.move(join(od,'restart',compressed_restart_tail),join(root_dir,saveinfo['filename_restart']))
 
         # Clean up the directories
-        shutil.rmtree(join(root_dir,saveinfo['temp_dir']))
+        if self.remove_temp:
+            shutil.rmtree(join(root_dir,saveinfo['temp_dir']))
         
         # TODO evaluate observable functions ...
         metadata = dict({

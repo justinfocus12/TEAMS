@@ -39,6 +39,70 @@ class EnsembleAlgorithm(ABC):
         pass
 
 # TODO make a global acquisition algorithm and a local acquisition algorithm, for some higher-level algorithm to manage in tandem
+class BranchingTest(EnsembleAlgorithm):
+    def derive_parameters(config):
+        self.seed_min,self.seed_max = config['seed_min'],config['seed_max']
+        tu = self.ens.dynsys.dt_save
+        self.interbranch_interval = int(config['interbranch_interval_phys']/tu) # How long to wait between consecutive splits
+        self.branch_duration = int(config['branch_duration_phys']/tu) # How long to run each branch
+        self.num_branch_groups = config['num_branch_groups'] # but include the possibility for extension
+        self.branches_per_group = config['branches_per_group'] # How many different members to spawn from the same initial condition
+        self.trunk_duration = self.ens.dynsys.t_burnin + self.interbranch_interval * (self.num_branch_groups) + self.branch_duration
+        self.init_cond = None
+        self.init_time = 0
+        return
+    def set_init_cond(self, init_time, init_cond):
+        self.init_time = init_time
+        self.init_cond = init_cond
+        return
+    @staticmethod
+    def label_from_config(config):
+        abbrv_population = (
+                r"bpg%d_ibi%.1f_bd%.1f"%(
+                    config["branches_per_group"],
+                    config["interbranch_interval_phys"],
+                    config["branch_duration_phys"],
+                    )
+                ).replace('.','p')
+        abbrv = '_'.join([
+            'BrTe',
+            abbrv_population,
+            ])
+        label = 'Branch Test'
+        return abbrv,label
+    def take_next_step(self, saveinfo):
+        if self.terminate:
+            return
+        if self.ens.get_nmem() == 0:
+            parent = None
+            icandf = self.ens.dynsys.generate_default_icandf(self.init_time,self.init_time+duration)
+            if self.init_cond is not None:
+                icandf['init_cond'] = self.init_cond
+            self.branching_state = dict({
+                'next_branch_time': self.init_time,
+                })
+
+        else:
+            # decide whom to branch off of 
+            parent = 0
+            icandf = self.generate_icandf_from_parent(parent, self.branching_state['next_branch_time'], self.branch_duration)
+            branching_state_update = dict()
+            if self.branching_state['next_branch'] < self.branches_per_group - 1:
+                branching_state_update['next_branch'] = self.branching_state['next_branch'] + 1
+            elif self.branching_state['next_branch_group'] < self.num_branch_groups - 1:
+                branching_state_update['next_branch_group'] = self.branching_state['next_branch_group'] + 1
+                branching_state_update['next_branch_time'] = self.branching_state['next_branch_time'] + self.interbranch_interval
+                branching_state_update['next_branch'] = 0
+                self.rng = default_rng(self.seed_init) # Every new branch point will receive the same sequence of random numbers
+            else:
+                self.terminate = True
+        obs_dict_new = self.ens.branch_or_plant(icandf, self.obs_fun, saveinfo, parent=parent)
+        self.append_obs_dict(obs_dict_new)
+        self.branching_state.update(branching_state_update)
+        return
+
+
+
 
 class PeriodicBranching(EnsembleAlgorithm):
     def derive_parameters(self, config):
@@ -96,6 +160,7 @@ class PeriodicBranching(EnsembleAlgorithm):
             self.obs_dict[name].append(obs_dict_new[name])
         return 
     def plot_obs_spaghetti(self, obs_funs, branch_group, plotdir, labels=None, abbrvs=None):
+        print(f'\n\nPlotting group {branch_group}')
         obs_names = list(obs_funs.keys())
         if labels is None: labels = dict({obs_name: '' for obs_name in obs_names})
         if abbrvs is None: abbrvs = dict({obs_name: obs_name for obs_name in obs_names})
@@ -103,10 +168,14 @@ class PeriodicBranching(EnsembleAlgorithm):
         # TODO recover split times from init_times. Better yet, track it in the algorithm to begin with
         # Get all timespans
         all_init_times,all_fin_times = self.ens.get_all_timespans()
-        print(f'{all_init_times = }')
+        print(f'\n{all_init_times = }')
         split_time = self.init_time + self.ens.dynsys.t_burnin + branch_group*self.interbranch_interval
         print(f'{split_time = }')
-        mems_branch = np.setdiff1d(np.where(all_init_times == split_time)[0], self.branching_state['trunk_lineage'])
+        nmem = self.ens.get_nmem()
+        mems_nontrunk = np.setdiff1d(np.arange(nmem), self.branching_state['trunk_lineage'])
+        split_times_nontrunk = self.ens.get_first_forcing_times(mems=mems_nontrunk)
+        print(f'{split_times_nontrunk = }')
+        mems_branch = mems_nontrunk[np.where(split_times_nontrunk==split_time)[0]] 
         i_mem_trunk_init = np.searchsorted(self.branching_state['trunk_lineage_init_times'], split_time, side='right') - 1
         i_mem_trunk_fin = np.searchsorted(self.branching_state['trunk_lineage_fin_times'], split_time+self.branch_duration, side='right')
         mems_trunk = self.branching_state['trunk_lineage'][i_mem_trunk_init:i_mem_trunk_fin+1]
@@ -115,19 +184,26 @@ class PeriodicBranching(EnsembleAlgorithm):
         obs_dict_branch = self.ens.compute_observables(obs_funs, mems_branch)
         obs_dict_trunk = self.ens.compute_observables(obs_funs, mems_trunk)
 
-        time = split_time + np.arange(self.branch_duration)
-        tidx_trunk = split_time - all_init_times[mems_trunk[0]] + np.arange(self.branch_duration)
+        time_trunk = np.arange(all_init_times[mems_trunk[0]], split_time + self.branch_duration, dtype=int)
+        tidx_trunk = np.arange(len(time_trunk), dtype=int) #split_time - all_init_times[mems_trunk[0]] + np.arange(self.branch_duration)
         for obs_name in obs_names:
             print(f'============== Plotting observable {obs_name} ============= ')
             fig,ax = plt.subplots(figsize=(12,5))
             # For trunk, restrict to the times of interest
-            hctrl, = ax.plot(time, np.concatenate(obs_dict_trunk[obs_name])[tidx_trunk], linestyle='--', color='black', linewidth=2, zorder=1, label='CTRL')
+            #hctrl, = ax.plot(time, np.concatenate(obs_dict_trunk[obs_name])[tidx_trunk], linestyle='--', color='black', linewidth=2, zorder=1, label='CTRL')
+            hctrl, = ax.plot(time_trunk, np.concatenate(obs_dict_trunk[obs_name])[tidx_trunk], linestyle='--', color='black', linewidth=2, zorder=1, label='CTRL')
             for i_mem,mem in enumerate(mems_branch):
-                hpert, = ax.plot(time, obs_dict_branch[obs_name][i_mem], linestyle='-', color='tomato', linewidth=1, zorder=0, label='PERT')
+                print(f'{mem = }, {next(self.ens.memgraph.predecessors(mem)) = }')
+                print(f'{self.ens.traj_metadata[mem]["icandf"]["init_cond"] = }')
+                time_branch = all_init_times[mem] + np.arange(split_time - all_init_times[mem] + self.branch_duration, dtype=int)
+                tidx_branch = np.arange(len(time_branch), dtype=int)
+                #tidx_branch = split_time - all_init_times[mem] + np.arange(self.branch_duration)
+                hpert, = ax.plot(time_branch, obs_dict_branch[obs_name][i_mem][tidx_branch], linestyle='-', color='tomato', linewidth=1, zorder=0, label='PERT')
+            ax.axvline(split_time, color='tomato')
             ax.legend(handles=[hctrl,hpert])
             ax.set_xlabel('time')
             ax.set_ylabel(labels[obs_name])
-            ax.set_xlim([time[0],time[-1]+1])
+            #ax.set_xlim([time[0],time[-1]+1])
             fig.savefig(join(plotdir,r'%s_group%d.png'%(abbrvs[obs_name],branch_group)), **pltkwargs)
             plt.close(fig)
         return
@@ -138,6 +214,7 @@ class PeriodicBranching(EnsembleAlgorithm):
             # Initialize the state of the branching algorithm
             # Assume that a branch duration is no longer than max_mem_duration
             self.branching_state = dict({
+                'on_trunk': True,
                 'next_branch_group': 0,
                 'next_branch': 0,
                 'next_branch_time': self.init_time + self.ens.dynsys.t_burnin,
@@ -173,6 +250,8 @@ class PeriodicBranching(EnsembleAlgorithm):
                 'trunk_lineage_init_times': self.branching_state['trunk_lineage_init_times'] + [parent_fin_time],
                 'trunk_lineage_fin_times': self.branching_state['trunk_lineage_fin_times'] + [parent_fin_time + duration],
                 })
+            if parent_fin_time + duration >= self.init_time + self.trunk_duration:
+                branching_state_update['on_trunk'] = False
         else:
             # decide whom to branch off of 
             trunk_segment_2branch = np.searchsorted(self.branching_state['trunk_lineage_fin_times'], self.branching_state['next_branch_time'], side='left')
@@ -199,11 +278,18 @@ class ODEPeriodicBranching(PeriodicBranching):
     # where the system of interest is an ODE
     def generate_icandf_from_parent(self, parent, branch_time, duration):
         init_time_parent,fin_time_parent = self.ens.get_member_timespan(parent)
-        assert init_time_parent < branch_time <= fin_time_parent
-        parent_t,parent_x = self.ens.dynsys.load_trajectory(self.ens.traj_metadata[parent], self.ens.root_dir, tspan=[branch_time]*2)
-        impulse = self.rng.normal(size=self.ens.dynsys.impulse_dim)
+        assert init_time_parent <= branch_time <= fin_time_parent
+        if branch_time == init_time_parent:
+            init_cond = self.ens.traj_metadata[parent]['icandf']['init_cond']
+        else:
+            parent_t,parent_x = self.ens.dynsys.load_trajectory(self.ens.traj_metadata[parent], self.ens.root_dir, tspan=[branch_time]*2)
+            init_cond = parent_x[0]
+        if self.branching_state['on_trunk']:
+            impulse = np.zeros(self.ens.dynsys.impulse_dim)
+        else:
+            impulse = self.rng.normal(size=self.ens.dynsys.impulse_dim)
         icandf = dict({
-            'init_cond': parent_x[0],
+            'init_cond': init_cond,
             'frc': forcing.ImpulsiveForcing([branch_time], [impulse], branch_time+duration)
             })
         return icandf
