@@ -26,10 +26,10 @@ class Lorenz96ODE(ODESystem): # TODO make a superclass Lorenz96, and a sibling s
         config['frc'] = dict({
             'type': 'impulsive',
             'impulsive': dict({
-                'wavenumbers': [],
-                'wavenumber_magnitudes': [],
-                'sites': [20],
-                'site_magnitudes': [0.01],
+                'wavenumbers': [4],
+                'wavenumber_magnitudes': [0.01],
+                'sites': [],
+                'site_magnitudes': [],
                 }),
             })
         return config

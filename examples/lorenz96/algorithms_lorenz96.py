@@ -53,21 +53,22 @@ def periodic_branching_impulsive():
     config_ode = Lorenz96ODE.default_config()
     tu = config_ode['dt_save'],
     scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/lorenz96"
-    date_str = "2024-02-21"
-    sub_date_str = "2"
+    date_str = "2024-02-24"
+    sub_date_str = "0"
     param_abbrv_ode,param_label_ode = Lorenz96ODE.label_from_config(config_ode)
     config_algo = dict({
         'seed_min': 1000,
         'seed_max': 100000,
         'branches_per_group': 8, 
-        'interbranch_interval_phys': 5.0,
+        'interbranch_interval_phys': 10.0,
         'branch_duration_phys': 15.0,
-        'num_branch_groups': 20,
+        'num_branch_groups': 2,
         'max_member_duration_phys': 60.0,
         })
     seed = 849582 # TODO make this a command-line argument
     param_abbrv_algo,param_label_algo = Lorenz96ODEPeriodicBranching.label_from_config(config_algo)
     algdir = join(scratch_dir, date_str, sub_date_str, param_abbrv_ode, param_abbrv_algo)
+    print(f'{algdir = }')
     makedirs(algdir, exist_ok=True)
     root_dir = algdir
     alg_filename = join(algdir,'alg.pickle')
@@ -97,6 +98,7 @@ def periodic_branching_impulsive():
         obsprop = alg.ens.dynsys.observable_props()
 
         if tododict['plot_pebr']['observables']:
+            print(f'plotting observables')
             obs_names = ['x0','E0','E','Emax']
             obs_funs = dict()
             obs_abbrvs = dict()
@@ -105,7 +107,7 @@ def periodic_branching_impulsive():
                 obs_funs[obs_name] = getattr(alg.ens.dynsys, f'observable_{obs_name}')
                 obs_abbrvs[obs_name] = obsprop[obs_name]['abbrv']
                 obs_labels[obs_name] = obsprop[obs_name]['label']
-            for branch_group in range(alg.branching_state['next_branch_group']):
+            for branch_group in range(alg.branching_state['next_branch_group']+1):
                 alg.plot_obs_spaghetti(obs_funs, branch_group, plotdir, labels=obs_labels, abbrvs=obs_abbrvs)
 
         # TODO implement methods for pairwise distances, maybe localized, and plot those divergences too 

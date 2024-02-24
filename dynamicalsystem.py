@@ -6,6 +6,7 @@ import forcing
 import matplotlib
 import matplotlib.pyplot as plt
 from os.path import join, exists
+import sys
 matplotlib.rcParams.update({
     "font.family": "monospace",
     "font.size": 15
@@ -72,15 +73,17 @@ class ODESystem(DynamicalSystem):
         pass
     def apply_impulse(self, t, x, imp):
         # apply the impulse perturbation from imp to the instantaneous state x, to get a perturbed state xpert
+        # But allow imp to be the 'OccasionalVectorForcing' type
         return x + self.impulse_matrix @ imp
     @abstractmethod
     def generate_default_init_cond(self,init_time): # for spinup
         pass
     def generate_default_forcing_sequence(self,init_time,fin_time): 
-        f = forcing.ImpulsiveForcing([init_time], [np.zeros(self.impulse_dim)], fin_time)
+        f = forcing.OccasionalVectorForcing(init_time, fin_time, [], [])
         return f
     def generate_default_icandf(self,init_time,fin_time):
         init_cond = self.generate_default_init_cond(init_time)
+        print(f'{init_cond = }')
         f = self.generate_default_forcing_sequence(init_time,fin_time)
         icandf = dict({'init_cond': init_cond, 'frc': f})
         return icandf
@@ -154,23 +157,35 @@ class ODESystem(DynamicalSystem):
         method = 'rk4'
         # run one segment at a time, undisturbed, from one impulse to the next
         init_cond_temp = init_cond_nopert.copy()
+        # Set up the beginning and end of each segment
+        ftimes = f.get_forcing_times()
+        nfrc = len(ftimes)
+        if nfrc == 0:
+            seg_starts = [f.init_time]
+            seg_ends = [f.fin_time]
+        elif ftimes[0] == f.init_time:
+            seg_starts = ftimes
+            seg_ends = ftimes[1:] + [f.fin_time]
+        else:
+            seg_starts = [f.init_time] + ftimes
+            seg_ends = ftimes + [f.fin_time]
+        print(f'{seg_starts = }; {seg_ends = }; ftimes = {ftimes}')
+        nseg = len(seg_starts)
+        i_frc = 0
         i_save = 0
-        nimp = len(f.impulse_times)
-        for i_imp in range(nimp):
-            init_cond_temp = self.apply_impulse(init_time_temp, init_cond_temp, f.impulses[i_imp])
-            if i_imp+1 < len(f.impulse_times):
-                fin_time_temp = f.impulse_times[i_imp+1]
-            else:
-                fin_time_temp = f.fin_time
-            print(f'{init_time_temp = }; {fin_time_temp = }')
-            t_temp,x_temp = self.run_trajectory_unperturbed(init_cond_temp, init_time_temp, fin_time_temp, method)
+        for i_seg in range(nseg):
+            if i_frc < nfrc and ftimes[i_frc] == seg_starts[i_seg]:
+                print(f'Applying a forcing of \n{f.forces[i_frc]}')
+                init_cond_temp = self.apply_impulse(seg_starts[i_seg], init_cond_temp, f.forces[i_frc])
+                i_frc += 1
+            t_temp,x_temp = self.run_trajectory_unperturbed(init_cond_temp, seg_starts[i_seg], seg_ends[i_seg], method)
             x[i_save:i_save+len(t_temp)] = x_temp
-            init_time_temp = fin_time_temp
             init_cond_temp = x_temp[-1]
             i_save += len(t_temp) 
         # Return metadata and observables
         metadata = self.assemble_metadata(icandf, method, saveinfo)
         observables = obs_fun(t,x)
+        print(f'{x[0] = }\n{x[-1] = }')
         # save full state out to saveinfo
         np.savez(join(root_dir, saveinfo['filename']), t=t, x=x)
         return metadata,observables
@@ -244,7 +259,7 @@ class SDESystem(DynamicalSystem):
             for i_comp,fcomp in enumerate(f.frc_list):
                 if frc_change_times[i_df] in fcomp.get_forcing_times():
                     if isinstance(fcomp, forcing.ImpulsiveForcing):
-                        init_cond_temp = self.ode.apply_impulse(init_time_temp, init_cond_temp, fcomp.impulses[i_df_bytype[i_comp]])
+                        init_cond_temp = self.ode.apply_impulse(init_time_temp, init_cond_temp, fcomp.forces[i_df_bytype[i_comp]])
                     elif isinstance(fcomp, forcing.WhiteNoiseForcing):
                         rng = default_rng(fcomp.seeds[i_df_bytype[i_comp]])
                     i_df_bytype[i_comp] += 1

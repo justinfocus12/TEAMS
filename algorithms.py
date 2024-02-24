@@ -38,72 +38,6 @@ class EnsembleAlgorithm(ABC):
         # Based on the current state of the ensemble, provide the arguments (icandf, obs_fun, parent) to give to ens.branch_or_plant. Don't modify ens right here.
         pass
 
-# TODO make a global acquisition algorithm and a local acquisition algorithm, for some higher-level algorithm to manage in tandem
-class BranchingTest(EnsembleAlgorithm):
-    def derive_parameters(config):
-        self.seed_min,self.seed_max = config['seed_min'],config['seed_max']
-        tu = self.ens.dynsys.dt_save
-        self.interbranch_interval = int(config['interbranch_interval_phys']/tu) # How long to wait between consecutive splits
-        self.branch_duration = int(config['branch_duration_phys']/tu) # How long to run each branch
-        self.num_branch_groups = config['num_branch_groups'] # but include the possibility for extension
-        self.branches_per_group = config['branches_per_group'] # How many different members to spawn from the same initial condition
-        self.trunk_duration = self.ens.dynsys.t_burnin + self.interbranch_interval * (self.num_branch_groups) + self.branch_duration
-        self.init_cond = None
-        self.init_time = 0
-        return
-    def set_init_cond(self, init_time, init_cond):
-        self.init_time = init_time
-        self.init_cond = init_cond
-        return
-    @staticmethod
-    def label_from_config(config):
-        abbrv_population = (
-                r"bpg%d_ibi%.1f_bd%.1f"%(
-                    config["branches_per_group"],
-                    config["interbranch_interval_phys"],
-                    config["branch_duration_phys"],
-                    )
-                ).replace('.','p')
-        abbrv = '_'.join([
-            'BrTe',
-            abbrv_population,
-            ])
-        label = 'Branch Test'
-        return abbrv,label
-    def take_next_step(self, saveinfo):
-        if self.terminate:
-            return
-        if self.ens.get_nmem() == 0:
-            parent = None
-            icandf = self.ens.dynsys.generate_default_icandf(self.init_time,self.init_time+duration)
-            if self.init_cond is not None:
-                icandf['init_cond'] = self.init_cond
-            self.branching_state = dict({
-                'next_branch_time': self.init_time,
-                })
-
-        else:
-            # decide whom to branch off of 
-            parent = 0
-            icandf = self.generate_icandf_from_parent(parent, self.branching_state['next_branch_time'], self.branch_duration)
-            branching_state_update = dict()
-            if self.branching_state['next_branch'] < self.branches_per_group - 1:
-                branching_state_update['next_branch'] = self.branching_state['next_branch'] + 1
-            elif self.branching_state['next_branch_group'] < self.num_branch_groups - 1:
-                branching_state_update['next_branch_group'] = self.branching_state['next_branch_group'] + 1
-                branching_state_update['next_branch_time'] = self.branching_state['next_branch_time'] + self.interbranch_interval
-                branching_state_update['next_branch'] = 0
-                self.rng = default_rng(self.seed_init) # Every new branch point will receive the same sequence of random numbers
-            else:
-                self.terminate = True
-        obs_dict_new = self.ens.branch_or_plant(icandf, self.obs_fun, saveinfo, parent=parent)
-        self.append_obs_dict(obs_dict_new)
-        self.branching_state.update(branching_state_update)
-        return
-
-
-
-
 class PeriodicBranching(EnsembleAlgorithm):
     def derive_parameters(self, config):
         self.seed_min,self.seed_max = config['seed_min'],config['seed_max']
@@ -225,10 +159,13 @@ class PeriodicBranching(EnsembleAlgorithm):
                 'trunk_lineage_init_times': [self.init_time],
                 'trunk_lineage_fin_times': [self.init_time + duration],
                 })
+            if duration >= self.trunk_duration:
+                branching_state_update['on_trunk'] = False
 
             # Keep track of trunk length
             parent = None
             icandf = self.ens.dynsys.generate_default_icandf(self.init_time,self.init_time+duration)
+            print(f'In first if stateemnt: {icandf["init_cond"] = }')
             if self.init_cond is not None:
                 icandf['init_cond'] = self.init_cond
         elif self.branching_state['trunk_lineage_fin_times'][-1] < self.init_time + self.trunk_duration: # TODO make this more flexible; we could start branching as soon as the burnin time is exceeded
@@ -287,7 +224,7 @@ class ODEPeriodicBranching(PeriodicBranching):
             impulse = self.rng.normal(size=self.ens.dynsys.impulse_dim)
         icandf = dict({
             'init_cond': init_cond,
-            'frc': forcing.ImpulsiveForcing([branch_time], [impulse], branch_time+duration)
+            'frc': forcing.OccasionalVectorForcing(branch_time, branch_time+duration, [branch_time], [impulse])
             })
         return icandf
 
