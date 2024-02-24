@@ -184,21 +184,18 @@ class PeriodicBranching(EnsembleAlgorithm):
         obs_dict_branch = self.ens.compute_observables(obs_funs, mems_branch)
         obs_dict_trunk = self.ens.compute_observables(obs_funs, mems_trunk)
 
-        time_trunk = np.arange(all_init_times[mems_trunk[0]], split_time + self.branch_duration, dtype=int)
-        tidx_trunk = np.arange(len(time_trunk), dtype=int) #split_time - all_init_times[mems_trunk[0]] + np.arange(self.branch_duration)
+        time = split_time + np.arange(self.branch_duration, dtype=int)
+        tidx_trunk = split_time - all_init_times[mems_trunk[0]] + np.arange(self.branch_duration)
         for obs_name in obs_names:
             print(f'============== Plotting observable {obs_name} ============= ')
             fig,ax = plt.subplots(figsize=(12,5))
             # For trunk, restrict to the times of interest
-            #hctrl, = ax.plot(time, np.concatenate(obs_dict_trunk[obs_name])[tidx_trunk], linestyle='--', color='black', linewidth=2, zorder=1, label='CTRL')
-            hctrl, = ax.plot(time_trunk, np.concatenate(obs_dict_trunk[obs_name])[tidx_trunk], linestyle='--', color='black', linewidth=2, zorder=1, label='CTRL')
+            hctrl, = ax.plot(time, np.concatenate(obs_dict_trunk[obs_name])[tidx_trunk], linestyle='--', color='black', linewidth=2, zorder=1, label='CTRL')
             for i_mem,mem in enumerate(mems_branch):
                 print(f'{mem = }, {next(self.ens.memgraph.predecessors(mem)) = }')
                 print(f'{self.ens.traj_metadata[mem]["icandf"]["init_cond"] = }')
-                time_branch = all_init_times[mem] + np.arange(split_time - all_init_times[mem] + self.branch_duration, dtype=int)
-                tidx_branch = np.arange(len(time_branch), dtype=int)
-                #tidx_branch = split_time - all_init_times[mem] + np.arange(self.branch_duration)
-                hpert, = ax.plot(time_branch, obs_dict_branch[obs_name][i_mem][tidx_branch], linestyle='-', color='tomato', linewidth=1, zorder=0, label='PERT')
+                tidx_branch = split_time - all_init_times[mem] + np.arange(self.branch_duration)
+                hpert, = ax.plot(time, obs_dict_branch[obs_name][i_mem][tidx_branch], linestyle='-', color='tomato', linewidth=1, zorder=0, label='PERT')
             ax.axvline(split_time, color='tomato')
             ax.legend(handles=[hctrl,hpert])
             ax.set_xlabel('time')

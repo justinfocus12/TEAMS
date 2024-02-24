@@ -25,7 +25,7 @@ class Lorenz96ODEPeriodicBranching(algorithms.ODEPeriodicBranching):
         return ['x0','E0','E','Emax']
     def obs_fun(self, t, x):
         obs_dict = dict({
-            name: self.ens.dynsys.observable(t, x, name)
+            name: getattr(self.ens.dynsys, f'observable_{name}')(t,x)
             for name in self.obs_dict_names()
             })
         return obs_dict
@@ -43,7 +43,7 @@ class Lorenz96SDEPeriodicBranching(algorithms.SDEPeriodicBranching):
 
 def periodic_branching_impulsive():
     tododict = dict({
-        'run_pebr':                0,
+        'run_pebr':                1,
         'plot_pebr': dict({
             'observables':    1,
             'divergence':     0,
@@ -54,15 +54,15 @@ def periodic_branching_impulsive():
     tu = config_ode['dt_save'],
     scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/lorenz96"
     date_str = "2024-02-21"
-    sub_date_str = "1"
+    sub_date_str = "2"
     param_abbrv_ode,param_label_ode = Lorenz96ODE.label_from_config(config_ode)
     config_algo = dict({
         'seed_min': 1000,
         'seed_max': 100000,
-        'branches_per_group': 16, 
-        'interbranch_interval_phys': 10.0,
+        'branches_per_group': 8, 
+        'interbranch_interval_phys': 5.0,
         'branch_duration_phys': 15.0,
-        'num_branch_groups': 50,
+        'num_branch_groups': 20,
         'max_member_duration_phys': 60.0,
         })
     seed = 849582 # TODO make this a command-line argument

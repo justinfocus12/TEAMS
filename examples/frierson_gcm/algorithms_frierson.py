@@ -63,7 +63,7 @@ class FriersonGCMPeriodicBranching(algorithms.PeriodicBranching):
             seeds = [self.rng.integers(low=self.seed_min, high=self.seed_max)]
         icandf = dict({
             'init_cond': init_cond,
-            'frc': forcing.ContinuousTimeForcing(init_time, fin_time, reseed_times, seeds),
+            'frc': forcing.OccasionalReseedForcing(init_time, fin_time, reseed_times, seeds),
             })
         return icandf
 
@@ -82,25 +82,16 @@ def test_periodic_branching(nproc):
     sub_date_str = "1/PeBr"
     print(f'About to generate default config')
     config_gcm = FriersonGCM.default_config(base_dir_absolute,base_dir_absolute)
-    config_gcm['remove_temp'] = 0
+    config_gcm['remove_temp'] = 1
     param_abbrv_gcm,param_label_gcm = FriersonGCM.label_from_config(config_gcm)
-    config_algo_big = dict({
+    config_algo = dict({
         'seed_min': 1000,
         'seed_max': 100000,
         'branches_per_group': 16, 
         'interbranch_interval_phys': 10.0,
-        'branch_duration_phys': 20.0,
-        'num_branch_groups': 20,
-        'max_member_duration_phys': 25.0,
-        })
-    config_algo = dict({
-        'seed_min': 1000,
-        'seed_max': 100000,
-        'branches_per_group': 1, 
-        'interbranch_interval_phys': 10.0,
-        'branch_duration_phys': 20.0,
-        'num_branch_groups': 5,
-        'max_member_duration_phys': 25.0,
+        'branch_duration_phys': 30.0,
+        'num_branch_groups': 30,
+        'max_member_duration_phys': 50.0,
         })
     seed = 849582 # TODO make this a command-line argument
     param_abbrv_algo,param_label_algo = FriersonGCMPeriodicBranching.label_from_config(config_algo)

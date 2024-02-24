@@ -13,6 +13,36 @@ class Forcing(ABC):
     def get_forcing_times(self):
         pass
 
+class OccasionalVectorForcing(Forcing):
+    # For when the integrator transforms a vector of real numbers into a perturbation at a point in time
+    def __init__(self, init_time, fin_time, force_times, forces):
+        assert len(force_times) == len(forces)
+        if len(forces) > 0:
+            assert init_time <= min(force_times)
+            assert max(force_times) < fin_time
+        self.force_times = force_times
+        self.forces = forces
+        super().__init__(init_time, fin_time)
+        return
+    def get_forcing_times(self):
+        return self.force_times
+
+class OccasionalReseedForcing(Forcing):
+    # For when the integrator performs its own random number generation based on input seeds
+    # For when the integrator transforms a vector of real numbers into a perturbation at a point in time
+    def __init__(self, init_time, fin_time, reseed_times, seeds):
+        assert len(reseed_times) == len(seeds)
+        if len(seeds) > 0:
+            assert init_time <= min(reseed_times)
+            assert max(reseed_times) < fin_time
+        self.reseed_times = reseed_times
+        self.seeds = seeds
+        super().__init__(init_time, fin_time)
+        return
+    def get_forcing_times(self):
+        return self.reseed_times
+
+
 # Need a composite forcing, a summation of a white noise and impulsive term
 
 class ImpulsiveForcing(Forcing):
