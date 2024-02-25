@@ -43,10 +43,13 @@ class Lorenz96SDEPeriodicBranching(algorithms.SDEPeriodicBranching):
 
 def periodic_branching(systype):
     tododict = dict({
-        'run_pebr':                1,
+        'run_pebr':                0,
+        'analyze_pebr': dict({
+            'rmse':           1,
+            }),
         'plot_pebr': dict({
-            'observables':    1,
-            'divergence':     1,
+            'observables':    0,
+            'pert_growth':    1,
             'response':       0,
             }),
         })
@@ -66,17 +69,40 @@ def periodic_branching(systype):
         'num_branch_groups': 50,
         'max_member_duration_phys': 20.0,
         })
-    seed = 849582 # TODO make this a command-line argument
     param_abbrv_algo,param_label_algo = AlgClass.label_from_config(config_algo)
-    algdir = join(scratch_dir, date_str, sub_date_str, param_abbrv_dynsys, param_abbrv_algo)
-    print(f'{algdir = }')
-    makedirs(algdir, exist_ok=True)
-    root_dir = algdir
-    alg_filename = join(algdir,'alg.pickle')
+    seed = 849582 # TODO make this a command-line argument
+
+    # Set up directories
+    dirdict = dict({
+        'alg': join(scratch_dir, date_str, sub_date_str, param_abbrv_dynsys, param_abbrv_algo)
+        })
+    dirdict['analysis'] = join(dirdict['alg'],'analysis')
+    dirdict['plots'] = join(dirdict['alg'],'plots')
+    for dirname in list(dirdict.values()):
+        makedirs(dirname, exist_ok=True)
+
+    # Enumerate filenames
+    dist_names = ['euclidean']
+    fndict = dict({
+        'alg': dict({
+            'alg': join(dirdict['alg'],'alg.pickle'),
+            }),
+        'analysis': dict({
+            'pert_growth': join(dirdict['analysis'],'pert_growth.pickle'),
+            })
+        })
+    fndict['plots'] = dict()
+    for dist_name in dist_names:
+        fndict['plots'][dist_name] = dict({'rmse': join(dirdict['plots'],f'rmse_dist{dist_name}')})
+        for branch_group in range(config_algo['num_branch_groups']):
+            fndict['plots'][dist_name][branch_group] = join(dirdict['plots'],f'pert_growth_bg{branch_group}_dist{dist_name}.png')
+
+
+    root_dir = dirdict['alg']
 
     if tododict['run_pebr']:
-        if exists(alg_filename):
-            alg = pickle.load(open(alg_filename, 'rb'))
+        if exists(fndict['alg']['alg']):
+            alg = pickle.load(open(fndict['alg']['alg'], 'rb'))
         else:
             dynsys = DynSysClass(config_dynsys)
             ens = Ensemble(dynsys,root_dir)
@@ -88,16 +114,26 @@ def periodic_branching(systype):
             print(f'----------- Starting member {mem} ----------------')
             saveinfo = dict(filename=f'mem{mem}.npz')
             alg.take_next_step(saveinfo)
-            pickle.dump(alg, open(alg_filename, 'wb'))
+            pickle.dump(alg, open(fndict['alg']['alg'], 'wb'))
+
+    if utils.find_true_in_dict(tododict['analyze_pebr']):
+        alg = pickle.load(open(fndict['alg']['alg'], 'rb'))
+        def dist_fun_euclidean(t0,x0,t1,x1):
+            trange = np.array([max(t0[0],t1[0]),min(t0[-1],t1[-1])+1])
+            tidx0 = np.arange(trange[0],trange[1])-t0[0]
+            tidx1 = np.arange(trange[0],trange[1])-t1[0]
+            return np.sqrt(np.sum((x0[tidx0] - x1[tidx1])**2, axis=1))
+        dist_funs = dict({'euclidean': dist_fun_euclidean})
+        alg.measure_pert_growth(dist_funs, fndict['analysis']['pert_growth'])
+
 
     if utils.find_true_in_dict(tododict['plot_pebr']):
-        plotdir = join(algdir, 'plots')
-        makedirs(plotdir, exist_ok=1)
-        alg = pickle.load(open(alg_filename, 'rb'))
+        alg = pickle.load(open(fndict['alg']['alg'], 'rb'))
         tu = alg.ens.dynsys.dt_save
-
         obsprop = alg.ens.dynsys.observable_props()
-
+        if tododict['plot_pebr']['pert_growth']:
+            pert_growth_dict = pickle.load(open(fndict['analysis']['pert_growth'],'rb'))
+            alg.plot_pert_growth(pert_growth_dict, fndict['plots'])
         if tododict['plot_pebr']['observables']:
             print(f'plotting observables')
             obs_names = ['x0','E0','E','Emax']
@@ -109,22 +145,7 @@ def periodic_branching(systype):
                 obs_abbrvs[obs_name] = obsprop[obs_name]['abbrv']
                 obs_labels[obs_name] = obsprop[obs_name]['label']
             for branch_group in range(alg.branching_state['next_branch_group']+1):
-                alg.plot_obs_spaghetti(obs_funs, branch_group, plotdir, labels=obs_labels, abbrvs=obs_abbrvs)
-        if tododict['plot_pebr']['divergence']:
-            print(f'plotting observables')
-            dist_names = ['euclidean']
-            dist_funs = dict()
-            dist_abbrvs = dict()
-            dist_labels = dict()
-            def dist_fun_euclidean(t0,x0,t1,x1):
-                trange = np.array([max(t0[0],t1[0]),min(t0[-1],t1[-1])+1])
-                tidx0 = np.arange(trange[0],trange[1])-t0[0]
-                tidx1 = np.arange(trange[0],trange[1])-t1[0]
-                return np.sqrt(np.sum((x0[tidx0] - x1[tidx1])**2, axis=1))
-            dist_funs['euclidean'] = dist_fun_euclidean
-            for branch_group in range(alg.branching_state['next_branch_group']+1):
-                alg.plot_rmse_growth(dist_funs, branch_group, plotdir)
-            return
+                alg.plot_obs_spaghetti(obs_funs, branch_group, dirdict['plots'], labels=obs_labels, abbrvs=obs_abbrvs)
 
         # TODO implement methods for pairwise distances, maybe localized, and plot those divergences too 
 
@@ -132,4 +153,5 @@ def periodic_branching(systype):
 if __name__ == "__main__":
     systypes = ['ODE','SDE']
     systype = systypes[int(sys.argv[1])]
+    print(f'{systype = }')
     periodic_branching(systype)

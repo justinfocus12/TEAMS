@@ -116,30 +116,64 @@ class PeriodicBranching(EnsembleAlgorithm):
         time = split_time + np.arange(self.branch_duration, dtype=int)
         tidx_trunk = split_time - all_init_times[mems_trunk[0]] + np.arange(self.branch_duration)
         return time,mems_trunk,tidx_trunk,mems_branch,tidxs_branch
-    def plot_rmse_growth(self, dist_funs, branch_group, plotdir, labels=None, abbrvs=None):
+    def compute_pairwise_funs_local(self, pair_funs, branch_group):
+        time,mems_trunk,tidx_trunk,mems_branch,tidxs_branch = self.get_tree_subset(branch_group)
+        pair_list = []
+        for mem0 in mems_trunk:
+            pair_list.append(self.ens.compute_pairwise_observables(pair_funs, mem0, mems_branch))
+        pairs = dict()
+        pair_names = list(pair_funs.keys())
+        for pair_name in pair_names:
+            pairs[pair_name] = np.zeros((len(mems_branch), len(time)))
+            for i_mem1,mem1 in enumerate(mems_branch):
+                print(f'{pair_list[0][pair_name][i_mem1] = }')
+                pairs[pair_name][i_mem1,:] = np.concatenate([d[pair_name][i_mem1] for d in pair_list])
+        return time,pairs
+    def measure_pert_growth(self, dist_funs, fnout):
+        # Save a statistical analysis of RMSE growth to a specified directory
         dist_names = list(dist_funs.keys())
+        ngroups = self.branching_state['next_branch_group']+1
+        split_times = np.zeros(ngroups, dtype=int)
+        print(f'{split_times = }')
+        dists = dict({dist_name: np.zeros((ngroups, self.branches_per_group, self.branch_duration)) for dist_name in dist_names})
+        rmses = dict({dist_name: np.zeros((ngroups, self.branch_duration)) for dist_name in dist_names})
+        for branch_group in range(ngroups):
+            print(f'About to compute distances for {branch_group = }')
+            time,dists_local = self.compute_pairwise_funs_local(dist_funs, branch_group)
+            split_times[branch_group] = time[0]
+            rmse_local = dict({key: np.sqrt(np.mean(val**2, axis=0)) for (key,val) in dists_local.items()})
+            for dist_name in dist_names:
+                dists[dist_name][branch_group,:,:] = dists_local[dist_name].copy()
+                rmses[dist_name][branch_group,:] = np.sqrt(np.mean(dists_local[dist_name]**2, axis=0))
+        # Also compute other summary stats besides RMSE, like Lyapunov exponents and changeover times from exponential to diffusive growth. 
+        pert_growth = dict({'split_times': split_times, 'rmses': rmses, 'dists': dists})
+        pickle.dump(pert_growth, open(fnout, 'wb'))
+        return pert_growth
+
+    def plot_pert_growth(self, pert_growth_dict, fndict, labels=None, abbrvs=None):
+        split_times,rmses,dists = [pert_growth_dict[key] for key in ['split_times','rmses','dists']]
+
+        dist_names = list(rmses.keys())
+        ngroups,nbranches,ntimes = dists[dist_names[0]].shape
+        tu = self.ens.dynsys.dt_save
         if labels is None: labels = dict({dist_name: f'Dist(CTRL,PERT) ({dist_name})' for dist_name in dist_names})
         if abbrvs is None: abbrvs = dict({dist_name: dist_name for dist_name in dist_names})
-        time,mems_trunk,tidx_trunk,mems_branch,tidxs_branch = self.get_tree_subset(branch_group)
-        tu = self.ens.dynsys.dt_save
-        dists_t2b = []
-        for mem0 in mems_trunk:
-            dists_t2b.append(self.ens.compute_pairwise_observables(dist_funs, mem0, mems_branch))
-        for dist_name in dist_names:
-            fig,ax = plt.subplots(figsize=(12,5))
-            for i_mem1,mem1 in enumerate(mems_branch):
-                ax.plot(
-                        time*tu,
-                        np.concatenate([d[dist_name][i_mem1] for d in dists_t2b]),
-                        color='tomato',
-                        )
-            ax.set_xlabel("Time")
-            ax.set_ylabel(labels[dist_name])
-            ax.set_xlabel('time')
-            ax.set_yscale('log')
-            #ax.set_xlim([time[0],time[-1]+1])
-            fig.savefig(join(plotdir,r'dist_%s_group%d.png'%(abbrvs[dist_name],branch_group)), **pltkwargs)
-            plt.close(fig)
+        for branch_group in range(ngroups):
+            time = split_times[branch_group] + np.arange(rmses[dist_names[0]].shape[1])
+            for dist_name in dist_names:
+                fig,ax = plt.subplots(figsize=(12,5))
+                for i_mem1 in range(nbranches):
+                    ax.plot(time, dists[dist_name][branch_group,i_mem1,:], color='tomato',)
+                hrmse, = ax.plot(time, rmses[dist_name][branch_group,:], color='black', label='RMSE')
+                ax.legend(handles=[hrmse])
+                ax.set_ylabel(labels[dist_name])
+                ax.set_xlabel('time')
+                ax.set_yscale('log')
+                fig.savefig(fndict[dist_name][branch_group], **pltkwargs)
+                plt.close(fig)
+        # TODO
+        # 1. Aggregate the RMSE into one plot to measure error growth averaged and separately 
+        # 2. Make this a classmethod
         return
     def plot_obs_spaghetti(self, obs_funs, branch_group, plotdir, labels=None, abbrvs=None):
         print(f'\n\nPlotting group {branch_group}')
@@ -290,7 +324,6 @@ class SDEPeriodicBranching(PeriodicBranching):
             })
         return icandf
 
-# TODO analysis of spreading rates
 
 
     
