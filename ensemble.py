@@ -48,6 +48,11 @@ class Ensemble(ABC):
         if mems is None:
             mems = np.arange(self.get_nmem())
         return np.array([self.traj_metadata[mem]['icandf']['frc'].get_forcing_times()[0] for mem in mems])
+    def compute_pairwise_observables(self, pair_funs, mem0, mem1list):
+        md0 = self.traj_metadata[mem0]
+        md1list = [self.traj_metadata[mem1] for mem1 in mem1list]
+        return self.dynsys.compute_pairwise_observables(pair_funs, md0, md1list, self.root_dir)
+        
     def compute_observables(self, obs_funs, mems):
         # args_dict and kwargs_dict should have a different value for each obs_name
         obs_names = list(obs_funs.keys())

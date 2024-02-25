@@ -17,8 +17,8 @@ import forcing
 
 class Lorenz96ODE(ODESystem): # TODO make a superclass Lorenz96, and a sibling subclass Lorenz96SDE
     def __init__(self, config):
-        state_dim = config['K']
-        super().__init__(state_dim, config)
+        self.state_dim = config['K']
+        super().__init__(config)
     @staticmethod
     def default_config():
         config = dict({'K': 40, 'F': 6.0, 'dt_step': 0.001, 'dt_save': 0.05,})
@@ -89,6 +89,18 @@ class Lorenz96ODE(ODESystem): # TODO make a superclass Lorenz96, and a sibling s
         return np.roll(x,1) * (np.roll(x, -1) - np.roll(x,2)) - x + self.F
     def generate_default_init_cond(self, init_time):
         return self.F + 0.001*np.sin(2*np.pi*np.arange(self.K)/self.K)
+    # --------------- Pairwise functions (e.g., distance) -----------------
+    def compute_pairwise_observables(self, pair_funs, md0, md1list, root_dir):
+        # Compute distances between one trajectory and many others
+        pair_names = list(pair_funs.keys())
+        pair_dict = dict({pn: [] for pn in pair_names})
+        t0,x0 = self.load_trajectory(md0, root_dir)
+        for i_md1,md1 in enumerate(md1list):
+            t1,x1 = self.load_trajectory(md1, root_dir)
+            for i_pn,pn in enumerate(pair_names):
+                pair_dict[pn].append(pair_funs[pn](t0,x0,t1,x1))
+        return pair_dict
+            
     # --------------- Common observable functions --------
     def compute_observables(self, obs_funs, metadata, root_dir):
         t,x = Lorenz96ODE.load_trajectory(metadata, root_dir)
@@ -168,6 +180,10 @@ class Lorenz96ODE(ODESystem): # TODO make a superclass Lorenz96, and a sibling s
 
 
 class Lorenz96SDE(SDESystem):
+    def __init__(self, config):
+        ode = Lorenz96ODE(config['ode'])
+        super().__init__(ode, config)
+        return
     @staticmethod
     def default_config():
         config = dict({'ode': Lorenz96ODE.default_config()})
@@ -184,14 +200,14 @@ class Lorenz96SDE(SDESystem):
             })
         return config
     @staticmethod
-    def label_from_config(config_ode, config_sde):
+    def label_from_config(config):
         # config needs a separate sub-config dictionary pertaining to the ODE
-        abbrv_ode,label_ode = Lorenz96ODE.label_from_config(config_ode)
+        abbrv_ode,label_ode = Lorenz96ODE.label_from_config(config['ode'])
         # Now append any new things
-        if config_sde['frc']['type'] == 'white':
+        if config['frc']['type'] == 'white':
             abbrv_noise_type = "whitenoise"
             label_noise_type = "White noise: "
-        w = config_sde['frc'][config_sde['frc']['type']]
+        w = config['frc'][config['frc']['type']]
         abbrv_noise_wave = ""
         label_noise_wave = ""
         abbrv_noise_site = ""
@@ -222,6 +238,8 @@ class Lorenz96SDE(SDESystem):
         # These config parameters are specific to the SDE 
         self.config = config
         self.sqrt_dt_step = np.sqrt(self.ode.dt_step)
+        self.dt_step = self.ode.dt_step
+        self.dt_save = self.ode.dt_save
         self.seed_min = config['seed_min']
         self.seed_max = config['seed_max']
         self.t_burnin = self.ode.t_burnin
@@ -242,10 +260,28 @@ class Lorenz96SDE(SDESystem):
         return
     def diffusion(self, t, x):
         return self.diffusion_matrix
-    def observable(self, t, x, name):
-        return self.ode.observable(t, x, name)
     def distance(self, t0, x0, t1, x1, name):
         return self.ode.distance(t0, x0, t1, x1, name)
+    def compute_observables(self, obs_funs, metadata, root_dir):
+        return self.ode.compute_observables(obs_funs, metadata, root_dir)
+    def compute_pairwise_observables(self, pair_funs, md0, md1list, root_dir):
+        return self.ode.compute_pairwise_observables(pair_funs, md0, md1list, root_dir)
+    @staticmethod
+    def observable_props():
+        return Lorenz96ODE.observable_props() 
+    def observable_t(self, t, x):
+        return self.ode.observable_t(t,x)
+    def observable_x(self, t, x):
+        return self.ode.observable_x(t,x)
+    def observable_x0(self, t, x):
+        return self.ode.observable_x0(t,x)
+    def observable_E0(self, t, x):
+        return self.ode.observable_E0(t,x)
+    def observable_E(self, t, x):
+        return self.ode.observable_E(t,x)
+    def observable_Emax(self, t, x):
+        return self.ode.observable_Emax(t,x)
+
 
 
 

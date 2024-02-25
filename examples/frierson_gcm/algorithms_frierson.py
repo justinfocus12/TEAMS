@@ -78,8 +78,8 @@ def test_periodic_branching(nproc):
         })
     base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
     scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/frierson_gcm"
-    date_str = "2024-02-21"
-    sub_date_str = "1/PeBr"
+    date_str = "2024-02-24"
+    sub_date_str = "0/PeBr"
     print(f'About to generate default config')
     config_gcm = FriersonGCM.default_config(base_dir_absolute,base_dir_absolute)
     config_gcm['remove_temp'] = 1
@@ -87,7 +87,7 @@ def test_periodic_branching(nproc):
     config_algo = dict({
         'seed_min': 1000,
         'seed_max': 100000,
-        'branches_per_group': 16, 
+        'branches_per_group': 3, 
         'interbranch_interval_phys': 10.0,
         'branch_duration_phys': 30.0,
         'num_branch_groups': 30,

@@ -93,14 +93,8 @@ class PeriodicBranching(EnsembleAlgorithm):
         for name in self.obs_dict_names():
             self.obs_dict[name].append(obs_dict_new[name])
         return 
-    def plot_obs_spaghetti(self, obs_funs, branch_group, plotdir, labels=None, abbrvs=None):
-        print(f'\n\nPlotting group {branch_group}')
-        obs_names = list(obs_funs.keys())
-        if labels is None: labels = dict({obs_name: '' for obs_name in obs_names})
-        if abbrvs is None: abbrvs = dict({obs_name: obs_name for obs_name in obs_names})
-        # Plot all the observables from a single group of branches, along with the control 
-        # TODO recover split times from init_times. Better yet, track it in the algorithm to begin with
-        # Get all timespans
+    # --------------- Post-analysis functions --------------------
+    def get_tree_subset(self, branch_group):
         all_init_times,all_fin_times = self.ens.get_all_timespans()
         print(f'\n{all_init_times = }')
         split_time = self.init_time + self.ens.dynsys.t_burnin + branch_group*self.interbranch_interval
@@ -110,27 +104,67 @@ class PeriodicBranching(EnsembleAlgorithm):
         split_times_nontrunk = self.ens.get_first_forcing_times(mems=mems_nontrunk)
         print(f'{split_times_nontrunk = }')
         mems_branch = mems_nontrunk[np.where(split_times_nontrunk==split_time)[0]] 
+        tidxs_branch = []
+        for i_mem,mem in enumerate(mems_branch):
+            print(f'{mem = }, {next(self.ens.memgraph.predecessors(mem)) = }')
+            print(f'{self.ens.traj_metadata[mem]["icandf"]["init_cond"] = }')
+            tidxs_branch.append(split_time - all_init_times[mem] + np.arange(self.branch_duration))
+
         i_mem_trunk_init = np.searchsorted(self.branching_state['trunk_lineage_init_times'], split_time, side='right') - 1
         i_mem_trunk_fin = np.searchsorted(self.branching_state['trunk_lineage_fin_times'], split_time+self.branch_duration, side='right')
         mems_trunk = self.branching_state['trunk_lineage'][i_mem_trunk_init:i_mem_trunk_fin+1]
-        print(f'{mems_trunk = }')
+        time = split_time + np.arange(self.branch_duration, dtype=int)
+        tidx_trunk = split_time - all_init_times[mems_trunk[0]] + np.arange(self.branch_duration)
+        return time,mems_trunk,tidx_trunk,mems_branch,tidxs_branch
+    def plot_rmse_growth(self, dist_funs, branch_group, plotdir, labels=None, abbrvs=None):
+        dist_names = list(dist_funs.keys())
+        if labels is None: labels = dict({dist_name: f'Dist(CTRL,PERT) ({dist_name})' for dist_name in dist_names})
+        if abbrvs is None: abbrvs = dict({dist_name: dist_name for dist_name in dist_names})
+        time,mems_trunk,tidx_trunk,mems_branch,tidxs_branch = self.get_tree_subset(branch_group)
+        tu = self.ens.dynsys.dt_save
+        dists_t2b = []
+        for mem0 in mems_trunk:
+            dists_t2b.append(self.ens.compute_pairwise_observables(dist_funs, mem0, mems_branch))
+        for dist_name in dist_names:
+            fig,ax = plt.subplots(figsize=(12,5))
+            for i_mem1,mem1 in enumerate(mems_branch):
+                ax.plot(
+                        time*tu,
+                        np.concatenate([d[dist_name][i_mem1] for d in dists_t2b]),
+                        color='tomato',
+                        )
+            ax.set_xlabel("Time")
+            ax.set_ylabel(labels[dist_name])
+            ax.set_xlabel('time')
+            ax.set_yscale('log')
+            #ax.set_xlim([time[0],time[-1]+1])
+            fig.savefig(join(plotdir,r'dist_%s_group%d.png'%(abbrvs[dist_name],branch_group)), **pltkwargs)
+            plt.close(fig)
+        return
+    def plot_obs_spaghetti(self, obs_funs, branch_group, plotdir, labels=None, abbrvs=None):
+        print(f'\n\nPlotting group {branch_group}')
+        obs_names = list(obs_funs.keys())
+        if labels is None: labels = dict({obs_name: '' for obs_name in obs_names})
+        if abbrvs is None: abbrvs = dict({obs_name: obs_name for obs_name in obs_names})
+        # Plot all the observables from a single group of branches, along with the control 
+        # TODO recover split times from init_times. Better yet, track it in the algorithm to begin with
+        # Get all timespans
+        time,mems_trunk,tidx_trunk,mems_branch,tidxs_branch = self.get_tree_subset(branch_group)
+        tu = self.ens.dynsys.dt_save
 
         obs_dict_branch = self.ens.compute_observables(obs_funs, mems_branch)
         obs_dict_trunk = self.ens.compute_observables(obs_funs, mems_trunk)
 
-        time = split_time + np.arange(self.branch_duration, dtype=int)
-        tidx_trunk = split_time - all_init_times[mems_trunk[0]] + np.arange(self.branch_duration)
         for obs_name in obs_names:
             print(f'============== Plotting observable {obs_name} ============= ')
             fig,ax = plt.subplots(figsize=(12,5))
             # For trunk, restrict to the times of interest
-            hctrl, = ax.plot(time, np.concatenate(obs_dict_trunk[obs_name])[tidx_trunk], linestyle='--', color='black', linewidth=2, zorder=1, label='CTRL')
+            hctrl, = ax.plot(time*tu, np.concatenate(obs_dict_trunk[obs_name])[tidx_trunk], linestyle='--', color='black', linewidth=2, zorder=1, label='CTRL')
             for i_mem,mem in enumerate(mems_branch):
                 print(f'{mem = }, {next(self.ens.memgraph.predecessors(mem)) = }')
                 print(f'{self.ens.traj_metadata[mem]["icandf"]["init_cond"] = }')
-                tidx_branch = split_time - all_init_times[mem] + np.arange(self.branch_duration)
-                hpert, = ax.plot(time, obs_dict_branch[obs_name][i_mem][tidx_branch], linestyle='-', color='tomato', linewidth=1, zorder=0, label='PERT')
-            ax.axvline(split_time, color='tomato')
+                hpert, = ax.plot(time*tu, obs_dict_branch[obs_name][i_mem][tidxs_branch[i_mem]], linestyle='-', color='tomato', linewidth=1, zorder=0, label='PERT')
+            #ax.axvline(split_time*tu, color='tomato')
             ax.legend(handles=[hctrl,hpert])
             ax.set_xlabel('time')
             ax.set_ylabel(labels[obs_name])
@@ -234,14 +268,25 @@ class SDEPeriodicBranching(PeriodicBranching):
     # where the system of interest is an SDE driven by white noise
     def generate_icandf_from_parent(self, parent, branch_time, duration):
         init_time_parent,fin_time_parent = self.ens.get_member_timespan(parent)
-        assert init_time_parent < branch_time <= fin_time_parent
-        parent_t,parent_x = self.ens.dynsys.load_trajectory(self.ens.traj_metadata[parent], self.ens.root_dir, tspan=[branch_time]*2)
-        seed = self.rng.integers(low=self.seed_min,high=self.seed_max)
-        frc_imp = forcing.ImpulsiveForcing([branch_time], [np.zeros(self.ens.dynsys.ode.impulse_dim)], branch_time+self.branch_duration)
-        frc_white = forcing.WhiteNoiseForcing([branch_time], [seed], branch_time+self.branch_duration)
+        assert init_time_parent <= branch_time <= fin_time_parent
+        mdp = self.ens.traj_metadata[parent]
+        if branch_time == init_time_parent:
+            init_cond = mdp['icandf']['init_cond']
+        else:
+            parent_t,parent_x = self.ens.dynsys.load_trajectory(mdp, self.ens.root_dir, tspan=[branch_time]*2)
+            init_cond = parent_x[0]
+        if self.branching_state['on_trunk']:
+            init_rngstate = mdp['fin_rngstate']
+            frc_reseed = forcing.OccasionalReseedForcing(branch_time, branch_time+duration, [], [])
+        else:
+            seed = self.rng.integers(low=self.seed_min,high=self.seed_max)
+            init_rngstate = default_rng(seed=seed).bit_generator.state 
+            frc_reseed = forcing.OccasionalReseedForcing(branch_time, branch_time+duration, [branch_time], [seed])
+        frc_vector = forcing.OccasionalVectorForcing(branch_time, branch_time+duration, [], [])
         icandf = dict({
             'init_cond': parent_x[0],
-            'frc': forcing.SuperposedForcing([frc_imp,frc_white]),
+            'init_rngstate': init_rngstate,
+            'frc': forcing.SuperposedForcing([frc_vector,frc_reseed]),
             })
         return icandf
 

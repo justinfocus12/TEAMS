@@ -73,7 +73,7 @@ class FriersonGCM(DynamicalSystem):
     def generate_default_icandf(self, init_time, fin_time):
         icandf = dict({
             'init_cond': None,
-            'frc': forcing.ContinuousTimeForcing(init_time, fin_time, [], []),
+            'frc': forcing.OccasionalReseedForcing(init_time, fin_time, [], []),
             })
         return icandf
     @staticmethod
@@ -911,7 +911,7 @@ def small_branching_ensemble(nproc):
             init_time = mdp['icandf']['frc'].fin_time
             icandf = dict({
                 'init_cond': mdp['filename_restart'],
-                'frc': forcing.ContinuousTimeForcing(init_time, init_time+child_duration, [init_time], [seed_vals[mem]])
+                'frc': forcing.OccasionalReseedForcing(init_time, init_time+child_duration, [init_time], [seed_vals[mem]])
                 })
             saveinfo = dict({
                 'temp_dir': join(expt_dir,f'mem{mem}'),
@@ -926,7 +926,7 @@ def small_branching_ensemble(nproc):
         fin_time = parent_duration
         icandf = dict({
             'init_cond': None,
-            'frc': forcing.ContinuousTimeForcing(init_time, fin_time, [init_time], [seed_vals[mem]])
+            'frc': forcing.OccasionalReseedForcing(init_time, fin_time, [init_time], [seed_vals[mem]])
             })
         saveinfo = dict({
             # Temporary folder
@@ -945,7 +945,7 @@ def small_branching_ensemble(nproc):
             init_time = mdp['icandf']['frc'].fin_time
             icandf = dict({
                 'init_cond': mdp['filename_restart'],
-                'frc': forcing.ContinuousTimeForcing(init_time, init_time+child_duration, [init_time], [seed_vals[mem]])
+                'frc': forcing.OccasionalReseedForcing(init_time, init_time+child_duration, [init_time], [seed_vals[mem]])
                 })
             saveinfo = dict({
                 'temp_dir': join(expt_dir,f'mem{mem}'),

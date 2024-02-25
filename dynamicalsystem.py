@@ -31,7 +31,10 @@ class DynamicalSystem(ABC):
         # Should return a dictionary whose keys correspond to class methods and whose values correspond to plotting arguments
         pass
     @abstractmethod
-    def compute_observables(self,obs_names, metadata, root_dir):
+    def compute_pairwise_observables(self, pair_funs, md0, md1list, root_dir):
+        pass
+    @abstractmethod
+    def compute_observables(self, obs_funs, metadata, root_dir):
         # obs_names must correspond to class methods
         pass
     @abstractmethod
@@ -50,8 +53,7 @@ class DynamicalSystem(ABC):
 
 class ODESystem(DynamicalSystem):
     # This is only SMALL systems --- small enough to fit a full-state trajectory in memory, avoiding the need for restart files. 
-    def __init__(self, state_dim, config):
-        self.state_dim = state_dim
+    def __init__(self, config):
         self.config = config
         self.derive_parameters(config) # This includes both physical and simulation parameters
         return
@@ -83,7 +85,6 @@ class ODESystem(DynamicalSystem):
         return f
     def generate_default_icandf(self,init_time,fin_time):
         init_cond = self.generate_default_init_cond(init_time)
-        print(f'{init_cond = }')
         f = self.generate_default_forcing_sequence(init_time,fin_time)
         icandf = dict({'init_cond': init_cond, 'frc': f})
         return icandf
@@ -153,11 +154,8 @@ class ODESystem(DynamicalSystem):
         Nt = len(t)
         x = np.zeros((Nt, self.state_dim))
         # Need to set up three things: init_time, init_cond, fin_time
-        init_time_temp = f.init_time
         method = 'rk4'
-        # run one segment at a time, undisturbed, from one impulse to the next
         init_cond_temp = init_cond_nopert.copy()
-        # Set up the beginning and end of each segment
         ftimes = f.get_forcing_times()
         nfrc = len(ftimes)
         if nfrc == 0:
@@ -240,64 +238,83 @@ class SDESystem(DynamicalSystem):
             tp = tpnew
         return t_save,x_save
     def run_trajectory(self, icandf, obs_fun, saveinfo, root_dir):
-        init_cond_nopert,f = icandf['init_cond'],icandf['frc']
+        init_cond_nopert,f,rngstate = icandf['init_cond'],icandf['frc'],icandf['init_rngstate']
+        rng = default_rng()
+        rng.bit_generator.state = rngstate
         t = np.arange(f.init_time+1, f.fin_time+1)
         Nt = len(t)
         x = np.zeros((Nt, self.ode.state_dim))
         # Need to set up three things: init_time, init_cond, fin_time
-        init_time_temp = f.init_time
         method = 'euler_maruyama'
         init_cond_temp = init_cond_nopert.copy()
+        ftimes = f.get_forcing_times()
+        ftimes_bytype = [frc.get_forcing_times() for frc in f.frc_list]
+        nfrc_bytype = [len(frc.get_forcing_times()) for frc in f.frc_list]
+        nfrc = len(ftimes)
+        print(f'{ftimes = }')
+        if nfrc == 0:
+            seg_starts = [f.init_time]
+            seg_ends = [f.fin_time]
+            print(f'case 0: {seg_starts = }, {seg_ends = }')
+        elif ftimes[0] == f.init_time:
+            seg_starts = ftimes
+            seg_ends = ftimes[1:] + [f.fin_time]
+            print(f'case 1: {seg_starts = }, {seg_ends = }')
+            print(f'{f.fin_time = }')
+        else:
+            seg_starts = [f.init_time] + ftimes
+            seg_ends = ftimes + [f.fin_time]
+            print(f'case 2: {seg_starts = }, {seg_ends = }')
+        i_frc_bytype = np.zeros(len(f.frc_list), dtype=int) 
+        print(f'{ftimes = }')
+        print(f'{seg_starts = }')
+        print(f'{seg_ends = }')
+        nseg = len(seg_starts)
         i_save = 0
-        frc_change_times = f.get_forcing_times()
-        i_df_bytype = np.zeros(len(f.frc_list), dtype=int)
-        for i_df in range(len(frc_change_times)):
-            if i_df+1 < len(frc_change_times):
-                fin_time_temp = frc_change_times[i_df+1]
-            else:
-                fin_time_temp = f.fin_time
-            for i_comp,fcomp in enumerate(f.frc_list):
-                if frc_change_times[i_df] in fcomp.get_forcing_times():
-                    if isinstance(fcomp, forcing.ImpulsiveForcing):
-                        init_cond_temp = self.ode.apply_impulse(init_time_temp, init_cond_temp, fcomp.forces[i_df_bytype[i_comp]])
-                    elif isinstance(fcomp, forcing.WhiteNoiseForcing):
-                        rng = default_rng(fcomp.seeds[i_df_bytype[i_comp]])
-                    i_df_bytype[i_comp] += 1
-            print(f'{init_time_temp = }, {fin_time_temp = }')
-            t_temp,x_temp = self.run_trajectory_unperturbed(init_cond_temp, init_time_temp, fin_time_temp, method, rng)
+        for i_seg in range(nseg):
+            for i_type,i_frc in enumerate(i_frc_bytype):
+                if i_frc < nfrc_bytype[i_type] and ftimes_bytype[i_frc] == seg_starts[i_seg]:
+                    if isinstance(f.frc_list[i_type], forcing.OccasionalVectorForcing):
+                        init_cond_temp = self.apply_impulse(seg_starts[i_seg], init_cond_temp, f.frc_list[i_type].forces[i_frc])
+                    elif isinstance(f.frc_list[i_type], forcing.OccasionalReseedForcing):
+                        rng = default_rng(f.frc_list[i_type].seeds[i_frc])
+                    i_frc_bytype[i_type] += 1
+            t_temp,x_temp = self.run_trajectory_unperturbed(init_cond_temp, seg_starts[i_seg], seg_ends[i_seg], method, rng)
             x[i_save:i_save+len(t_temp)] = x_temp
-            init_time_temp = fin_time_temp
             init_cond_temp = x_temp[-1]
             i_save += len(t_temp) 
-        metadata = self.assemble_metadata(icandf, method, saveinfo)
+        metadata = self.assemble_metadata(icandf, method, rng, saveinfo)
         observables = obs_fun(t,x)
         # save full state out to saveinfo
         np.savez(join(root_dir,saveinfo['filename']), t=t, x=x)
         return metadata,observables
+    def generate_default_init_cond(self, init_time):
+        return self.ode.generate_default_init_cond(init_time)
     def generate_default_forcing_sequence(self,init_time,fin_time):
-        f = forcing.WhiteNoiseForcing([init_time], [self.seed_min], fin_time)
+        f_reseed = forcing.OccasionalReseedForcing(init_time, fin_time, [], [])
+        f_vector = forcing.OccasionalVectorForcing(init_time, fin_time, [], [])
+        f = forcing.SuperposedForcing([f_reseed, f_vector])
         return f
     def generate_default_icandf(self,init_time,fin_time):
-        f_white = self.generate_default_forcing_sequence(init_time, fin_time)
-        icandf_imp = self.ode.generate_default_icandf(init_time,fin_time)
         icandf = dict({
-            'init_cond': icandf_imp['init_cond'], 
+            'init_cond': self.generate_default_init_cond(init_time),
+            'init_rngstate': default_rng(seed=self.seed_min).bit_generator.state,
 
-            'frc': forcing.SuperposedForcing([icandf_imp['frc'],f_white]),
+            'frc': self.generate_default_forcing_sequence(init_time, fin_time),
             })
         return icandf
-    def assemble_metadata(self, icandf, method, saveinfo):
+    def assemble_metadata(self, icandf, method, rng, saveinfo):
         md = dict({
             'icandf': icandf,
             'method': method,
+            'fin_rngstate': rng.bit_generator.state,
             'filename': saveinfo['filename'],
             })
         return md
-    @staticmethod
-    def get_timespan(metadata):
+    def get_timespan(self,metadata):
         return self.ode.get_timespan(metadata)
-    def load_trajectory(self, metadata, tspan=None):
-        return self.ode.load_trajectory(metadata, tspan)
+    def load_trajectory(self, metadata, rootdir, tspan=None):
+        return self.ode.load_trajectory(metadata, rootdir, tspan)
 
 class CoupledSystem(DynamicalSystem):
     # drive an ODE x with an SDE y (meaning an Ito diffusion)
