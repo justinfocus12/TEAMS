@@ -45,7 +45,8 @@ def periodic_branching(systype):
     tododict = dict({
         'run_pebr':                0,
         'analyze_pebr': dict({
-            'rmse':           1,
+            'measure_pert_growth':           0,
+            'analyze_pert_growth':           1,
             }),
         'plot_pebr': dict({
             'observables':    0,
@@ -89,11 +90,13 @@ def periodic_branching(systype):
             }),
         'analysis': dict({
             'pert_growth': join(dirdict['analysis'],'pert_growth.pickle'),
+            'lyap_exp': join(dirdict['analysis'],'lyap_exp.pickle')
             })
         })
     fndict['plots'] = dict()
     for dist_name in dist_names:
         fndict['plots'][dist_name] = dict({'rmse': join(dirdict['plots'],f'rmse_dist{dist_name}')})
+        fndict['plots'][dist_name]['lyap_exp'] = join(dirdict['plots'], f'lyap_exp_dist{dist_name}')
         for branch_group in range(config_algo['num_branch_groups']):
             fndict['plots'][dist_name][branch_group] = join(dirdict['plots'],f'pert_growth_bg{branch_group}_dist{dist_name}.png')
 
@@ -118,13 +121,31 @@ def periodic_branching(systype):
 
     if utils.find_true_in_dict(tododict['analyze_pebr']):
         alg = pickle.load(open(fndict['alg']['alg'], 'rb'))
-        def dist_fun_euclidean(t0,x0,t1,x1):
-            trange = np.array([max(t0[0],t1[0]),min(t0[-1],t1[-1])+1])
-            tidx0 = np.arange(trange[0],trange[1])-t0[0]
-            tidx1 = np.arange(trange[0],trange[1])-t1[0]
-            return np.sqrt(np.sum((x0[tidx0] - x1[tidx1])**2, axis=1))
-        dist_funs = dict({'euclidean': dist_fun_euclidean})
-        alg.measure_pert_growth(dist_funs, fndict['analysis']['pert_growth'])
+        if tododict['analyze_pebr']['measure_pert_growth']:
+            def dist_euclidean_tdep(t0,x0,t1,x1):
+                trange = np.array([max(t0[0],t1[0]),min(t0[-1],t1[-1])+1])
+                tidx0 = np.arange(trange[0],trange[1])-t0[0]
+                tidx1 = np.arange(trange[0],trange[1])-t1[0]
+                return np.sqrt(np.sum((x0[tidx0] - x1[tidx1])**2, axis=1))
+            def rmsd_euclidean(t0,x0,t1,x1):
+                D2mat = np.add.outer(np.sum(x0**2, axis=1), np.sum(x1**2, axis=1)) - 2*x0.dot(x1.T)
+                return np.sqrt(np.mean(D2mat))
+            dist_funs = dict({
+                'tdep': dict({
+                    'euclidean': dist_euclidean_tdep,
+                    }),
+                'rmsd': dict({
+                    'euclidean': rmsd_euclidean,
+                    })
+                })
+            pert_growth = alg.measure_pert_growth(dist_funs, )
+            pickle.dump(pert_growth, open(fndict['analysis']['pert_growth'], 'wb'))
+        else:
+            pert_growth = pickle.load(open(fndict['analysis']['pert_growth'], 'rb'))
+        if tododict['analyze_pebr']['analyze_pert_growth']:
+            lyapunov_exponents = alg.analyze_pert_growth(pert_growth)
+            pickle.dump(lyapunov_exponents, open(fndict['analysis']['lyap_exp'], 'wb'))
+
 
 
     if utils.find_true_in_dict(tododict['plot_pebr']):
@@ -133,7 +154,8 @@ def periodic_branching(systype):
         obsprop = alg.ens.dynsys.observable_props()
         if tododict['plot_pebr']['pert_growth']:
             pert_growth_dict = pickle.load(open(fndict['analysis']['pert_growth'],'rb'))
-            alg.plot_pert_growth(pert_growth_dict, fndict['plots'])
+            lyap_dict = pickle.load(open(fndict['analysis']['lyap_exp'],'rb'))
+            alg.plot_pert_growth(pert_growth_dict, lyap_dict, fndict['plots'], logscale=(systype=='ODE'))
         if tododict['plot_pebr']['observables']:
             print(f'plotting observables')
             obs_names = ['x0','E0','E','Emax']
