@@ -41,6 +41,11 @@ class OccasionalReseedForcing(Forcing):
         return
     def get_forcing_times(self):
         return self.reseed_times
+    @classmethod
+    def reseed_from_start(cls, reseed_times, seeds, fin_time):
+        return cls(reseed_times[0], fin_time, reseed_times, seeds)
+
+
 
 class SuperposedForcing(Forcing):
     def __init__(self,frc_list):

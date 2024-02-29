@@ -24,6 +24,7 @@ import subprocess
 import resource
 import pickle
 import copy as copylib
+import pprint
 
 import sys
 sys.path.append("../..")
@@ -71,10 +72,17 @@ class FriersonGCM(DynamicalSystem):
         return
 
     def generate_default_icandf(self, init_time, fin_time):
-        icandf = dict({
-            'init_cond': None,
-            'frc': forcing.OccasionalReseedForcing(init_time, fin_time, [], []),
-            })
+        if self.pert_type == 'IMP':
+            icandf = dict({
+                'init_cond': None,
+                'frc': forcing.OccasionalReseedForcing(init_time, fin_time, [], []),
+                })
+        elif self.pert_type == 'SPPT':
+            # The time units here are in days, but will be converted to seconds for the namelist file. This basically restricts reseeding times to day boundaries.
+            icandf = dict({
+                'init_cond': None,
+                'frc': forcing.OccasionalReseedForcing.reseed_from_start([init_time], [self.seed_min], fin_time),
+                })
         return icandf
     @staticmethod
     def configure_os_environment():
@@ -83,7 +91,7 @@ class FriersonGCM(DynamicalSystem):
         return
     @classmethod
     def label_from_config(cls, config):
-        abbrv = (r"res%s_abs%g_pert%g"%(config['resolution'],config['abs'],config['pert_frac'])).replace('.','p')
+        abbrv = (r"res%s_abs%g_frc%s"%(config['resolution'],config['abs'],config['pert_type'])).replace('.','p')
         label = r"%s, $A=%g$"%(config['resolution'],config['abs'])
         return abbrv,label
     @classmethod
@@ -91,13 +99,25 @@ class FriersonGCM(DynamicalSystem):
         config = dict({
             'resolution': 'T21',
             'abs': 1.0, # atmospheric absorption coefficient (larger means more greenhouse) 
-            'pert_frac': 0.001,
             'nml_patches_misc': dict(),
             'source_dir_absolute': source_dir_absolute, # where the original source code comes from. Don't modify! 
             'base_dir_absolute': base_dir_absolute, # Copied from source_dir and then modified, compiled etc. 
             'platform': 'gnu',
             't_burnin': 0,
             'remove_temp': 1,
+            'seed_min': 1000,
+            'seed_max': 10000,
+            # Stochastic perturbation parameters
+            'pert_type': 'IMP', # options: SPPT, IMP
+            })
+        # sub-configs specific to perturbation type 
+        config['SPPT'] = dict({
+            'std_sppt_s': 0.5, # spectral standard deviation
+            'tau_sppt': 6.0 * 3600.0, # decorrelation timescale
+            'L_sppt': 500000.0,
+            })
+        config['IMP'] = dict({
+            'pert_frac': 0.001,
             })
         return config
     @classmethod
@@ -105,18 +125,12 @@ class FriersonGCM(DynamicalSystem):
         # TODO integrate this namelist more flexibly with the default namelist
         # This goes on top of the base namelist
         nml = dict({
-            "spectral_dynamics_nml": dict({
-                #"do_perturbation": True,
-                #"do_perturbation_eachday": False,
-                #"num_perturbations_actual": 0,
-                #"days_to_perturb": [0], 
-                #"seed_values": [1234],
-                #"perturbation_fraction": [1.0e-3],
-                "lon_max": 64,
-                "lat_max": 32,
-                "num_fourier": 21,
-                "num_spherical": 22,
-                }),
+            "spectral_dynamics_nml": dict(
+                lon_max = 64,
+                lat_max = 32,
+                num_fourier = 21,
+                num_spherical = 22,
+                ),
             "main_nml": dict(
                 hours =  0,
                 dt_atmos =  600
@@ -171,7 +185,7 @@ class FriersonGCM(DynamicalSystem):
         # Step 1: make the Makefile via mkmf
         print('About to mkmf')
         mkmf = join(self.base_dir_absolute,"bin","mkmf")
-        template = join(self.base_dir_absolute,'bin','mkmf.template.{self.platform}')
+        template = join(self.base_dir_absolute,'bin',f'mkmf.template.{self.platform}')
         source = join(self.base_dir_absolute,'src')
         execdir = join(self.base_dir_absolute, f'exec_spectral.{self.platform}')
         print(f'{os.listdir(execdir) = }')
@@ -204,6 +218,8 @@ class FriersonGCM(DynamicalSystem):
         return
 
     def derive_parameters(self, config):
+        # Off the bat, save the whole config
+        self.config = config
 
         # Basic dynamical systems attributes
         self.dt_save = 1.0 # days are the fundamental time unit
@@ -255,7 +271,9 @@ class FriersonGCM(DynamicalSystem):
         self.nml_const = nml # Because this namelist only includes physical parameters, not duration and timestep as will 
 
         # Perturbation parameters
-        self.pert_frac = config['pert_frac']
+        self.pert_type = config['pert_type']
+        self.seed_min = config['seed_min']
+        self.seed_max = config['seed_max']
 
         return
         
@@ -309,22 +327,42 @@ class FriersonGCM(DynamicalSystem):
         nml['main_nml']['days'] = icandf['frc'].fin_time - icandf['frc'].init_time
         numperts = len(icandf['frc'].reseed_times)
         assert numperts == len(icandf['frc'].seeds)
-        nml['spectral_dynamics_nml']['num_perturbations_actual'] = numperts
-        if numperts == 0:
-            nml['spectral_dynamics_nml']['do_perturbation'] = False
-            nml['spectral_dynamics_nml']['days_to_perturb'] = [-1]
-            nml['spectral_dynamics_nml']['seed_values'] = [-1]
-            nml['spectral_dynamics_nml']['perturbation_fraction'] = [0.0]
-        else:
-            nml['spectral_dynamics_nml']['do_perturbation'] = True
-            nml['spectral_dynamics_nml']['days_to_perturb'] = icandf['frc'].reseed_times
-            nml['spectral_dynamics_nml']['seed_values'] = icandf['frc'].seeds
-            nml['spectral_dynamics_nml']['perturbation_fraction'] = [self.pert_frac for ipert in range(numperts)]
+        if self.pert_type == 'IMP':
+            nml['spectral_dynamics_nml']['num_perturbations_actual'] = numperts
+            if numperts == 0:
+                nml['spectral_dynamics_nml']['do_perturbation'] = False
+                nml['spectral_dynamics_nml']['days_to_perturb'] = [-1]
+                nml['spectral_dynamics_nml']['seed_values'] = [-1]
+                nml['spectral_dynamics_nml']['perturbation_fraction'] = [0.0]
+            else:
+                nml['spectral_dynamics_nml']['do_perturbation'] = True
+                nml['spectral_dynamics_nml']['days_to_perturb'] = icandf['frc'].reseed_times
+                nml['spectral_dynamics_nml']['seed_values'] = icandf['frc'].seeds
+                nml['spectral_dynamics_nml']['perturbation_fraction'] = [self.config['IMP']['pert_frac'] for ipert in range(numperts)]
+        elif self.pert_type == 'SPPT':
+            assert numperts > 0
+            nml['spectral_dynamics_nml'].update(dict({ # TODO specify parameters from config
+                'std_sppt_s': self.config['SPPT']['std_sppt_s'],
+                'tau_sppt': self.config['SPPT']['tau_sppt'], 
+                'L_sppt': self.config['SPPT']['L_sppt'],
+                'num_reseeds_sppt_actual': numperts,
+                'reseed_times_sppt': [t*86400 for t in icandf['frc'].reseed_times],
+                'seed_seq_sppt': icandf['frc'].seeds,
+                }))
+            # Also nullify the old kind of perturbation
+            nml['spectral_dynamics_nml'].update(dict({
+                'do_perturbation': False,
+                'days_to_perturb': [-1],
+                'seed_values': [-1],
+                'perturbation_fraction': [0.0],
+                }))
 
+        print(f'nml = ')
+        pprint.pprint(nml)
         f90nml.namelist.Namelist(nml,default_start_index=1).write(join(wd,'input.nml'))
-        # TODO find out why mid-trajectory perturbations are being implemented at the init time instead of the reseed time
         print(f'--------------- Starting MPIRUN --------')
         mpirun_output = subprocess.run(f'cd {wd}; /home/software/gcc/6.2.0/pkg/openmpi/4.0.4/bin/mpirun -np {self.nproc} fms.x', shell=True, executable='/bin/csh', capture_output=True)
+        print(mpirun_output)
         print(f'--------------- Finished MPIRUN --------')
 
         # Move output files to output directory with informative names
@@ -415,6 +453,15 @@ class FriersonGCM(DynamicalSystem):
         for obs_name,obs_fun in obs_funs.items():
             obs_dict[obs_name] = obs_fun(ds).compute()
         return obs_dict
+    def compute_pairwise_observables(self, pair_funs, md0, md1list, root_dir):
+        pair_names = list(pair_funs.keys())
+        pair_dict = dict({pn: [] for pn in pair_names})
+        ds0 = xr.open_mfdataset(join(root_dir,md0['filename_traj']), decode_times=False)
+        for i_md1,md1 in enumerate(md1list):
+            ds1 = xr.open_mfdataset(join(root_dir,md1['filename_traj']), decode_times=False)
+            for i_pn,pn in enumerate(pair_names):
+                pair_dict[pn].append(pair_funs[pn](ds0,ds1))
+        return pair_dict
     def observable_props(self):
         obslib = dict()
         obslib["effective_static_stability"] = dict({
@@ -764,20 +811,21 @@ def dns_short_chain(nproc):
         init_time = fin_time 
     return
 
-def dns_moderate(nproc):
+def dns_moderate(nproc,pert_type):
     tododict = dict({
-        'run':            0,
+        'run':            1,
         'plot':           1,
         })
     # Create a small ensemble
     # Run three trajectories, each one picking up where the previous one left off
     base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
     scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/frierson_gcm"
-    date_str = "2024-02-21"
+    date_str = "2024-02-29"
     sub_date_str = "0/DNS"
     print(f'About to generate default config')
     config = FriersonGCM.default_config(base_dir_absolute,base_dir_absolute)
     config['resolution'] = 'T21'
+    config['pert_type'] = pert_type
     label,display = FriersonGCM.label_from_config(config)
     expt_dir = join(scratch_dir,date_str,sub_date_str,label)
     makedirs(expt_dir,exist_ok=True)
@@ -805,7 +853,7 @@ def dns_moderate(nproc):
         ens.dynsys.set_nproc(nproc)
         for mem in range(n_mem,n_mem+num_chunks):
             fin_time = init_time + days_per_chunk
-            icandf = ens.dynsys.generate_default_icandf(init_time,fin_time)
+            icandf = ens.dynsys.generate_default_icandf(init_time,fin_time) # For SPPT, this will restart the random seed. 
             icandf['init_cond'] = init_cond
             # saveinfo will have RELATIVE paths 
             saveinfo = dict({
@@ -824,10 +872,8 @@ def dns_moderate(nproc):
         plot_dir = join(expt_dir,'plots')
         makedirs(plot_dir,exist_ok=True)
 
-        ens = pickle.load(open(ens_filename,'rb'))
-        ens.set_root_dir(root_dir)
-        obslib = ens.dynsys.observable_props()
         ens = pickle.load(open(join(expt_dir,'ens.pickle'),'rb'))
+        obslib = ens.dynsys.observable_props()
         obs2plot = ['temperature','total_rain','column_water_vapor','surface_pressure'][1:2]
         lat = 45.0
         lon = 180.0
@@ -861,7 +907,7 @@ def dns_moderate(nproc):
     return
 
 
-def small_branching_ensemble(nproc):
+def small_branching_ensemble(nproc,pert_type):
     tododict = dict({
         'run':            1,
         'plot':           1,
@@ -870,10 +916,11 @@ def small_branching_ensemble(nproc):
     # Run three trajectories, each one picking up where the previous one left off
     base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
     scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/frierson_gcm"
-    date_str = "2024-02-20"
+    date_str = "2024-02-28"
     sub_date_str = "0"
     print(f'About to generate default config')
     config = FriersonGCM.default_config(base_dir_absolute,base_dir_absolute)
+    config['pert_type'] = pert_type
     label,display = FriersonGCM.label_from_config(config)
     expt_dir = join(scratch_dir,date_str,sub_date_str,label)
 
@@ -886,8 +933,8 @@ def small_branching_ensemble(nproc):
         ens = Ensemble(gcm)
 
         seed_vals = [-1,29183,48271,39183,38383,88822,77612,22345]
-        parent_duration = 15
-        child_duration = 10
+        parent_duration = 5 #15
+        child_duration = 3 #10
 
         # Parent member
         mem = 0
@@ -920,7 +967,7 @@ def small_branching_ensemble(nproc):
                 })
             _ = ens.branch_or_plant(icandf, obs_fun, saveinfo, parent=parent)
 
-        # Another Parent member: run for 8 days
+        # Another Parent member:
         mem = 3
         init_time = 0
         fin_time = parent_duration
@@ -1033,5 +1080,6 @@ def score_fun_instantaneous(ds):
 if __name__ == "__main__":
     print(f'Got into Main')
     nproc = int(sys.argv[1])
+    pert_type = ['IMP','SPPT'][int(sys.argv[2])]
     print(f'{nproc = }')
-    dns_moderate(nproc)
+    dns_moderate(nproc,pert_type)
