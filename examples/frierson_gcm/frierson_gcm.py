@@ -813,7 +813,7 @@ def dns_short_chain(nproc):
 
 def dns_moderate(nproc,pert_type):
     tododict = dict({
-        'run':            1,
+        'run':            0,
         'plot':           1,
         })
     # Create a small ensemble
@@ -874,36 +874,46 @@ def dns_moderate(nproc,pert_type):
 
         ens = pickle.load(open(join(expt_dir,'ens.pickle'),'rb'))
         obslib = ens.dynsys.observable_props()
-        obs2plot = ['temperature','total_rain','column_water_vapor','surface_pressure'][1:2]
         lat = 45.0
         lon = 180.0
         pfull = 1000.0
+        obs_funs = dict()
+        for obs_name in ['temperature']:
+            obs_funs[obs_name] = lambda dsmem,obs_name=obs_name: getattr(ens.dynsys, obs_name)(dsmem).sel(pfull=pfull,method='nearest')
+        for obs_name in ['total_rain','column_water_vapor','surface_pressure']:
+            obs_funs[obs_name] = lambda dsmem,obs_name=obs_name: getattr(ens.dynsys, obs_name)(dsmem)
+        mems2plot = [ens.get_nmem()-1]
+        obs_vals = ens.compute_observables(obs_funs, mems2plot)
 
-        # Plot full fields
-        for mem in np.arange(ens.memgraph.number_of_nodes())[-1:]:
-            dsmem = xr.open_mfdataset(join(ens.root_dir,ens.traj_metadata[mem]['filename_traj']), decode_times=False)
-            print(f'{dsmem.coords = }')
-            for obs in obs2plot:
-                memobs = getattr(ens.dynsys, obs)(dsmem) #.sel(dict(lat=lat,lon=lon),method='nearest')
-                if 'pfull' in memobs.dims:
-                    memobs = memobs.sel(pfull=pfull,method='nearest')
-                memobs = memobs.compute()
-                print(f'{memobs.time = }')
-                for day in memobs.time.to_numpy(): #.astype(int):
-                    print(f'{day = }')
+        for i_mem,mem in enumerate(mems2plot):
+            for obs_name in list(obs_funs.keys()):
+                memobs = obs_vals[obs_name][i_mem].compute()
+                # Plot a few daily snapshots
+                for day in memobs.time.to_numpy()[:2]: #.astype(int):
                     fig,axes = plt.subplots(figsize=(12,5),ncols=2,sharey=True)
                     ax = axes[0]
-                    xr.plot.pcolormesh(memobs.sel(time=day), x='lon', y='lat', cmap=obslib[obs]['cmap'], ax=ax)
-                    ax.set_title(r'%s [%s], mem. %d, day %d'%(obslib[obs]['label'], obslib[obs]['unit_symbol'], mem, day))
+                    xr.plot.pcolormesh(memobs.sel(time=day), x='lon', y='lat', cmap=obslib[obs_name]['cmap'], ax=ax)
+                    ax.set_title(r'%s [%s], mem. %d, day %d'%(obslib[obs_name]['label'], obslib[obs_name]['unit_symbol'], mem, day))
                     ax.set_xlabel('Longitude')
                     ax.set_ylabel('Latitude')
                     ax = axes[1]
                     hday, = xr.plot.plot(memobs.mean(dim=['time','lon']),y='lat',color='black',ax=ax,label=r'(zonal,time) avg')
                     havg, = xr.plot.plot(memobs.sel(time=day).mean(dim='lon'),y='lat',color='red',ax=ax,label=r'zonal avg')
+                    ax.set_title("")
+                    ax.set_xlabel(r'%s [%s]'%(obslib[obs_name]['label'],obslib[obs_name]['unit_symbol']))
+                    ax.set_ylabel('')
                     ax.legend(handles=[hday,havg])
 
-                    fig.savefig(join(plot_dir,r'%s_mem%d_day%d'%(obslib[obs]['abbrv'],mem,day)),**pltkwargs)
+                    fig.savefig(join(plot_dir,r'%s_mem%d_day%d'%(obslib[obs_name]['abbrv'],mem,day)),**pltkwargs)
                     plt.close(fig)
+                # Plot timeseries
+                fig,ax = plt.subplots()
+                xr.plot.plot(memobs.sel(lat=lat,lon=lon,method='nearest'), x='time', color='black')
+                ax.set_xlabel("time")
+                ax.set_ylabel(r'%s [%s]'%(obslib[obs_name]['label'],obslib[obs_name]['unit_symbol']))
+                ax.set_title(r'$(\lambda,\phi)=(%g,%g)$'%(lon,lat))
+                fig.savefig(join(plot_dir,r'%s_mem%d'%(obslib[obs_name]['abbrv'],mem)),**pltkwargs)
+                plt.close(fig)
     return
 
 

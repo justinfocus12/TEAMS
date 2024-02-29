@@ -249,7 +249,7 @@ class PeriodicBranching(EnsembleAlgorithm):
     def take_next_step(self, saveinfo):
         if self.terminate:
             return
-        if self.ens.memgraph.number_of_nodes() == 0:
+        if self.ens.get_nmem() == 0:
             # Initialize the state of the branching algorithm
             # Assume that a branch duration is no longer than max_mem_duration
             self.branching_state = dict({

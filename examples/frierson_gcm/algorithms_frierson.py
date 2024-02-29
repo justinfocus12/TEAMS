@@ -55,7 +55,7 @@ class FriersonGCMPeriodicBranching(algorithms.PeriodicBranching):
             init_cond = self.ens.traj_metadata[parent]['filename_restart']
             init_time = fin_time_parent
         fin_time = branch_time + duration
-        if self.branching_state['on_trunk']:
+        if self.branching_state['on_trunk'] and self.ens.dynsys.pert_type == 'IMP': # TODO fix this clug, probably by generating all the random numbers in Python 
             reseed_times = []
             seeds = []
         else:
@@ -67,21 +67,22 @@ class FriersonGCMPeriodicBranching(algorithms.PeriodicBranching):
             })
         return icandf
 
-def test_periodic_branching(nproc):
+def test_periodic_branching(nproc,pert_type):
     tododict = dict({
         'run_pebr':                1,
         'plot_pebr': dict({
-            'observables':    1,
+            'observables':    0,
             'divergence':     0,
             'response':       0,
             }),
         })
     base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
     scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/frierson_gcm"
-    date_str = "2024-02-24"
+    date_str = "2024-02-29"
     sub_date_str = "0/PeBr"
     print(f'About to generate default config')
     config_gcm = FriersonGCM.default_config(base_dir_absolute,base_dir_absolute)
+    config_gcm['pert_type'] = pert_type
     config_gcm['remove_temp'] = 1
     param_abbrv_gcm,param_label_gcm = FriersonGCM.label_from_config(config_gcm)
     config_algo = dict({
@@ -89,9 +90,9 @@ def test_periodic_branching(nproc):
         'seed_max': 100000,
         'branches_per_group': 3, 
         'interbranch_interval_phys': 10.0,
-        'branch_duration_phys': 30.0,
-        'num_branch_groups': 30,
-        'max_member_duration_phys': 50.0,
+        'branch_duration_phys': 20.0,
+        'num_branch_groups': 10,
+        'max_member_duration_phys': 20.0,
         })
     seed = 849582 # TODO make this a command-line argument
     param_abbrv_algo,param_label_algo = FriersonGCMPeriodicBranching.label_from_config(config_algo)
@@ -99,10 +100,12 @@ def test_periodic_branching(nproc):
     root_dir = algdir
     makedirs(algdir, exist_ok=True)
     alg_filename = join(algdir,'alg.pickle')
+    # TODO write config to file, too 
 
-    init_cond_dir = '/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/frierson_gcm/2024-02-21/0/DNS/resT21_abs1_pert0p001'
-    init_time = int(xr.open_mfdataset(join(init_cond_dir,'mem24.nc'),decode_times=False)['time'].load()[-1].item())
-    init_cond = relpath(join(init_cond_dir,'restart_mem24.cpio'), root_dir)
+
+    init_cond_dir = f'/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/frierson_gcm/2024-02-29/0/DNS/resT21_abs1_frc{pert_type}'
+    init_time = int(xr.open_mfdataset(join(init_cond_dir,'mem20.nc'),decode_times=False)['time'].load()[-1].item())
+    init_cond = relpath(join(init_cond_dir,'restart_mem20.cpio'), root_dir)
         
     if tododict['run_pebr']:
         if exists(alg_filename):
@@ -116,7 +119,7 @@ def test_periodic_branching(nproc):
         alg.ens.dynsys.set_nproc(nproc)
         alg.ens.set_root_dir(root_dir)
         while not alg.terminate:
-            mem = alg.ens.memgraph.number_of_nodes()
+            mem = alg.ens.get_nmem()
             print(f'----------- Starting member {mem} ----------------')
             saveinfo = dict({
                 # Temporary folder
@@ -149,7 +152,7 @@ def test_periodic_branching(nproc):
                     field = field.sel(pfull=pfull, method='nearest')
                 return field
             for obs_name in obs_names:
-                obs_funs[obs_name] = lambda ds: obs_fun_parameterized(ds, obs_name)
+                obs_funs[obs_name] = lambda ds,obs_name=obs_name: obs_fun_parameterized(ds, obs_name)
                 obs_abbrvs[obs_name] = obsprop[obs_name]['abbrv']
                 obs_labels[obs_name] = obsprop[obs_name]['label']
             for branch_group in range(alg.num_branch_groups): #range(alg.branching_state['next_branch_group']):
@@ -226,5 +229,6 @@ def test_periodic_branching(nproc):
 if __name__ == "__main__":
     print(f'Got into Main')
     nproc = int(sys.argv[1])
+    pert_type = ['IMP','SPPT'][int(sys.argv[2])]
     print(f'{nproc = }')
-    test_periodic_branching(nproc)
+    test_periodic_branching(nproc,pert_type)
