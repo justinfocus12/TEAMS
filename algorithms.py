@@ -101,10 +101,9 @@ class PeriodicBranching(EnsembleAlgorithm):
         split_time = self.init_time + self.ens.dynsys.t_burnin + branch_group*self.interbranch_interval
         print(f'{split_time = }')
         nmem = self.ens.get_nmem()
-        mems_nontrunk = np.setdiff1d(np.arange(nmem), self.branching_state['trunk_lineage'])
-        split_times_nontrunk = self.ens.get_first_forcing_times(mems=mems_nontrunk)
-        print(f'{split_times_nontrunk = }')
-        mems_branch = mems_nontrunk[np.where(split_times_nontrunk==split_time)[0]] 
+        mems_nontrunk = np.setdiff1d(range(nmem), self.branching_state['trunk_lineage'])
+        mems_branch = [mem for mem in mems_nontrunk if self.branch_times[mem] == split_time]
+        #mems_branch = len(self.branching_state['trunk_lineage']) + branch_group*self.branches_per_group + np.arange(self.branches_per_group)
         tidxs_branch = []
         for i_mem,mem in enumerate(mems_branch):
             print(f'{mem = }, {next(self.ens.memgraph.predecessors(mem)) = }')
@@ -215,15 +214,17 @@ class PeriodicBranching(EnsembleAlgorithm):
             plt.close(fig)
         # 2. Make this a classmethod
         return
-    def plot_obs_spaghetti(self, obs_funs, branch_group, plotdir, labels=None, abbrvs=None):
+    def plot_obs_spaghetti(self, obs_funs, branch_group, plotdir, ylabels=None, titles=None, abbrvs=None):
         print(f'\n\nPlotting group {branch_group}')
         obs_names = list(obs_funs.keys())
-        if labels is None: labels = dict({obs_name: '' for obs_name in obs_names})
+        if titles is None: titles = dict({obs_name: '' for obs_name in obs_names})
+        if ylabels is None: ylabels = dict({obs_name: '' for obs_name in obs_names})
         if abbrvs is None: abbrvs = dict({obs_name: obs_name for obs_name in obs_names})
         # Plot all the observables from a single group of branches, along with the control 
         # TODO recover split times from init_times. Better yet, track it in the algorithm to begin with
         # Get all timespans
         time,mems_trunk,tidx_trunk,mems_branch,tidxs_branch = self.get_tree_subset(branch_group)
+        print(f'{mems_branch = }')
         tu = self.ens.dynsys.dt_save
 
         obs_dict_branch = self.ens.compute_observables(obs_funs, mems_branch)
@@ -241,7 +242,8 @@ class PeriodicBranching(EnsembleAlgorithm):
             #ax.axvline(split_time*tu, color='tomato')
             ax.legend(handles=[hctrl,hpert])
             ax.set_xlabel('time')
-            ax.set_ylabel(labels[obs_name])
+            ax.set_ylabel(ylabels[obs_name])
+            ax.set_title(titles[obs_name])
             #ax.set_xlim([time[0],time[-1]+1])
             fig.savefig(join(plotdir,r'%s_group%d.png'%(abbrvs[obs_name],branch_group)), **pltkwargs)
             plt.close(fig)
@@ -251,6 +253,8 @@ class PeriodicBranching(EnsembleAlgorithm):
             return
         if self.ens.get_nmem() == 0:
             # Initialize the state of the branching algorithm
+            # Initialize a list of splitting times for each member
+            self.branch_times = []
             # Assume that a branch duration is no longer than max_mem_duration
             self.branching_state = dict({
                 'on_trunk': True,
@@ -269,6 +273,7 @@ class PeriodicBranching(EnsembleAlgorithm):
                 })
             if duration >= self.trunk_duration:
                 branching_state_update['on_trunk'] = False
+            branch_times_update = self.init_time
 
             # Keep track of trunk length
             parent = None
@@ -294,6 +299,7 @@ class PeriodicBranching(EnsembleAlgorithm):
                 })
             if parent_fin_time + duration >= self.init_time + self.trunk_duration:
                 branching_state_update['on_trunk'] = False
+            branch_times_update = parent_fin_time
         else:
             # decide whom to branch off of 
             trunk_segment_2branch = np.searchsorted(self.branching_state['trunk_lineage_fin_times'], self.branching_state['next_branch_time'], side='left')
@@ -308,12 +314,16 @@ class PeriodicBranching(EnsembleAlgorithm):
                 branching_state_update['next_branch_group'] = self.branching_state['next_branch_group'] + 1
                 branching_state_update['next_branch_time'] = self.branching_state['next_branch_time'] + self.interbranch_interval
                 branching_state_update['next_branch'] = 0
-                self.rng = default_rng(self.seed_init) # Every new branch point will receive the same sequence of random numbers
+                self.rng = default_rng(self.seed_init+1) # Every new branch point will receive the same sequence of random numbers
             else:
                 self.terminate = True
+            branch_times_update = self.branching_state['next_branch_time']
+        # --------------- Run the trajectory -----------
         obs_dict_new = self.ens.branch_or_plant(icandf, self.obs_fun, saveinfo, parent=parent)
+        # ----------------------------------------------
         self.append_obs_dict(obs_dict_new)
         self.branching_state.update(branching_state_update)
+        self.branch_times.append(branch_times_update)
         return
         
 class ODEPeriodicBranching(PeriodicBranching):

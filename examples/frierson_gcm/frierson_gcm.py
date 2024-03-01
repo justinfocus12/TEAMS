@@ -91,7 +91,23 @@ class FriersonGCM(DynamicalSystem):
         return
     @classmethod
     def label_from_config(cls, config):
-        abbrv = (r"res%s_abs%g_frc%s"%(config['resolution'],config['abs'],config['pert_type'])).replace('.','p')
+        abbrv_physconst = r'abs%g'%(config['abs'])
+        abbrv_domain = r'res%s'%(config['resolution'])
+        abbrv_pert = r'pert%s'%(config['pert_type'])
+        if config['pert_type'] == 'SPPT':
+            abbrv_pert = r'%s_std%g_clip%g_tau%g_L%g'%(
+                    abbrv_pert,
+                    config['SPPT']['std_sppt'],
+                    config['SPPT']['clip_sppt'],
+                    config['SPPT']['tau_sppt'],
+                    config['SPPT']['L_sppt'],
+                    )
+        elif config['pert_type'] == 'IMP':
+            abbrv_pert = r'%s_frac%g'%(
+                    abbrv_pert,
+                    config['IMP']['pert_frac'],
+                    )
+        abbrv = (r'%s_%s_%s'%(abbrv_physconst,abbrv_domain,abbrv_pert)).replace('.','p')
         label = r"%s, $A=%g$"%(config['resolution'],config['abs'])
         return abbrv,label
     @classmethod
@@ -112,7 +128,8 @@ class FriersonGCM(DynamicalSystem):
             })
         # sub-configs specific to perturbation type 
         config['SPPT'] = dict({
-            'std_sppt_s': 0.5, # spectral standard deviation
+            'std_sppt': 0.5, # spectral standard deviation
+            'clip_sppt': 2.0, # Number of standard deviations to clip
             'tau_sppt': 6.0 * 3600.0, # decorrelation timescale
             'L_sppt': 500000.0,
             })
@@ -342,11 +359,12 @@ class FriersonGCM(DynamicalSystem):
         elif self.pert_type == 'SPPT':
             assert numperts > 0
             nml['spectral_dynamics_nml'].update(dict({ # TODO specify parameters from config
-                'std_sppt_s': self.config['SPPT']['std_sppt_s'],
+                'std_sppt': self.config['SPPT']['std_sppt'],
+                'clip_sppt': self.config['SPPT']['clip_sppt'],
                 'tau_sppt': self.config['SPPT']['tau_sppt'], 
                 'L_sppt': self.config['SPPT']['L_sppt'],
                 'num_reseeds_sppt_actual': numperts,
-                'reseed_times_sppt': [t*86400 for t in icandf['frc'].reseed_times],
+                'reseed_times_sppt': [t for t in icandf['frc'].reseed_times],
                 'seed_seq_sppt': icandf['frc'].seeds,
                 }))
             # Also nullify the old kind of perturbation
@@ -439,7 +457,10 @@ class FriersonGCM(DynamicalSystem):
     @staticmethod
     def resample_to_daily(da):
         day_end_tidx = np.where(np.mod(da["time"].to_numpy(), 1.0) == 0)[0]
-        steps_per_day = day_end_tidx[1] - day_end_tidx[0]
+        if len(day_end_tidx) > 1:
+            steps_per_day = day_end_tidx[1] - day_end_tidx[0]
+        else:
+            steps_per_day = da.time.size 
         runavg = da.isel(time=day_end_tidx)
         for i_delay in range(1,steps_per_day):
             runavg += da.shift(time=i_delay).isel(time=day_end_tidx)
@@ -873,7 +894,7 @@ def dns_moderate(nproc,pert_type):
         makedirs(plot_dir,exist_ok=True)
 
         ens = pickle.load(open(join(expt_dir,'ens.pickle'),'rb'))
-        obslib = ens.dynsys.observable_props()
+        obsprop = ens.dynsys.observable_props()
         lat = 45.0
         lon = 180.0
         pfull = 1000.0
@@ -892,27 +913,27 @@ def dns_moderate(nproc,pert_type):
                 for day in memobs.time.to_numpy()[:2]: #.astype(int):
                     fig,axes = plt.subplots(figsize=(12,5),ncols=2,sharey=True)
                     ax = axes[0]
-                    xr.plot.pcolormesh(memobs.sel(time=day), x='lon', y='lat', cmap=obslib[obs_name]['cmap'], ax=ax)
-                    ax.set_title(r'%s [%s], mem. %d, day %d'%(obslib[obs_name]['label'], obslib[obs_name]['unit_symbol'], mem, day))
+                    xr.plot.pcolormesh(memobs.sel(time=day), x='lon', y='lat', cmap=obsprop[obs_name]['cmap'], ax=ax)
+                    ax.set_title(r'%s [%s], mem. %d, day %d'%(obsprop[obs_name]['label'], obsprop[obs_name]['unit_symbol'], mem, day))
                     ax.set_xlabel('Longitude')
                     ax.set_ylabel('Latitude')
                     ax = axes[1]
                     hday, = xr.plot.plot(memobs.mean(dim=['time','lon']),y='lat',color='black',ax=ax,label=r'(zonal,time) avg')
                     havg, = xr.plot.plot(memobs.sel(time=day).mean(dim='lon'),y='lat',color='red',ax=ax,label=r'zonal avg')
                     ax.set_title("")
-                    ax.set_xlabel(r'%s [%s]'%(obslib[obs_name]['label'],obslib[obs_name]['unit_symbol']))
+                    ax.set_xlabel(r'%s [%s]'%(obsprop[obs_name]['label'],obsprop[obs_name]['unit_symbol']))
                     ax.set_ylabel('')
                     ax.legend(handles=[hday,havg])
 
-                    fig.savefig(join(plot_dir,r'%s_mem%d_day%d'%(obslib[obs_name]['abbrv'],mem,day)),**pltkwargs)
+                    fig.savefig(join(plot_dir,r'%s_mem%d_day%d'%(obsprop[obs_name]['abbrv'],mem,day)),**pltkwargs)
                     plt.close(fig)
                 # Plot timeseries
                 fig,ax = plt.subplots()
                 xr.plot.plot(memobs.sel(lat=lat,lon=lon,method='nearest'), x='time', color='black')
                 ax.set_xlabel("time")
-                ax.set_ylabel(r'%s [%s]'%(obslib[obs_name]['label'],obslib[obs_name]['unit_symbol']))
+                ax.set_ylabel(r'%s [%s]'%(obsprop[obs_name]['label'],obsprop[obs_name]['unit_symbol']))
                 ax.set_title(r'$(\lambda,\phi)=(%g,%g)$'%(lon,lat))
-                fig.savefig(join(plot_dir,r'%s_mem%d'%(obslib[obs_name]['abbrv'],mem)),**pltkwargs)
+                fig.savefig(join(plot_dir,r'%s_mem%d'%(obsprop[obs_name]['abbrv'],mem)),**pltkwargs)
                 plt.close(fig)
     return
 

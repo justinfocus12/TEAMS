@@ -55,12 +55,21 @@ class FriersonGCMPeriodicBranching(algorithms.PeriodicBranching):
             init_cond = self.ens.traj_metadata[parent]['filename_restart']
             init_time = fin_time_parent
         fin_time = branch_time + duration
-        if self.branching_state['on_trunk'] and self.ens.dynsys.pert_type == 'IMP': # TODO fix this clug, probably by generating all the random numbers in Python 
-            reseed_times = []
-            seeds = []
+        new_seed = self.rng.integers(low=self.seed_min, high=self.seed_max)
+        if self.ens.dynsys.pert_type == 'SPPT':
+            if init_time_parent < branch_time < fin_time_parent:
+                reseed_times = [init_time,branch_time]
+                seeds = [self.ens.traj_metadata[parent]['icandf']['frc'].seeds[0], new_seed]
+            else:
+                reseed_times = [branch_time]
+                seeds = [new_seed] # TODO if possible, when on trunk, continue the random number generator
         else:
-            reseed_times = [branch_time]
-            seeds = [self.rng.integers(low=self.seed_min, high=self.seed_max)]
+            if self.branching_state['on_trunk']:
+                reseed_times = []
+                seeds = []
+            else:
+                reseed_times = [branch_time]
+                seeds = [new_seed]
         icandf = dict({
             'init_cond': init_cond,
             'frc': forcing.OccasionalReseedForcing(init_time, fin_time, reseed_times, seeds),
@@ -71,28 +80,30 @@ def test_periodic_branching(nproc,pert_type):
     tododict = dict({
         'run_pebr':                1,
         'plot_pebr': dict({
-            'observables':    0,
+            'observables':    1,
             'divergence':     0,
             'response':       0,
             }),
         })
     base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
     scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/frierson_gcm"
-    date_str = "2024-02-29"
+    date_str = "2024-03-01"
     sub_date_str = "0/PeBr"
     print(f'About to generate default config')
     config_gcm = FriersonGCM.default_config(base_dir_absolute,base_dir_absolute)
     config_gcm['pert_type'] = pert_type
+    if pert_type == 'SPPT':
+        config_gcm['SPPT']['tau_sppt'] = 6.0 * 3600.0
     config_gcm['remove_temp'] = 1
     param_abbrv_gcm,param_label_gcm = FriersonGCM.label_from_config(config_gcm)
     config_algo = dict({
         'seed_min': 1000,
         'seed_max': 100000,
-        'branches_per_group': 3, 
-        'interbranch_interval_phys': 10.0,
-        'branch_duration_phys': 20.0,
-        'num_branch_groups': 10,
-        'max_member_duration_phys': 20.0,
+        'branches_per_group': 8, 
+        'interbranch_interval_phys': 5.0,
+        'branch_duration_phys': 10.0,
+        'num_branch_groups': 12,
+        'max_member_duration_phys': 30.0,
         })
     seed = 849582 # TODO make this a command-line argument
     param_abbrv_algo,param_label_algo = FriersonGCMPeriodicBranching.label_from_config(config_algo)
@@ -135,28 +146,31 @@ def test_periodic_branching(nproc,pert_type):
         makedirs(plotdir,exist_ok=True)
 
         alg = pickle.load(open(join(algdir,'alg.pickle'),'rb'))
-        print(f'{alg.trunk_duration = }')
-        print(f'{alg.branching_state["trunk_lineage_fin_times"] = }')
         if tododict['plot_pebr']['observables']:
             obsprop = alg.ens.dynsys.observable_props()
-            obs_names = ['temperature','total_rain','column_water_vapor','surface_pressure'][1:2]
             lat = 45.0
             lon = 180.0
             pfull = 500.0
             obs_funs = dict()
+            for obs_name in ['temperature']:
+                obs_funs[obs_name] = lambda dsmem,obs_name=obs_name: getattr(alg.ens.dynsys, obs_name)(dsmem).sel(lat=lat,lon=lon,pfull=pfull,method='nearest')
+            for obs_name in ['total_rain','column_water_vapor','surface_pressure']:
+                obs_funs[obs_name] = lambda dsmem,obs_name=obs_name: getattr(alg.ens.dynsys, obs_name)(dsmem).sel(lat=lat,lon=lon,method='nearest')
+            obs_names = list(obs_funs.keys())
             obs_abbrvs = dict()
             obs_labels = dict()
-            def obs_fun_parameterized(ds, obs_name_temp):
-                field = getattr(alg.ens.dynsys, obs_name_temp)(ds).sel(lat=lat, lon=lon, method='nearest')
-                if 'pfull' in field.dims:
-                    field = field.sel(pfull=pfull, method='nearest')
-                return field
+            obs_units = dict()
             for obs_name in obs_names:
-                obs_funs[obs_name] = lambda ds,obs_name=obs_name: obs_fun_parameterized(ds, obs_name)
                 obs_abbrvs[obs_name] = obsprop[obs_name]['abbrv']
-                obs_labels[obs_name] = obsprop[obs_name]['label']
+                if obs_name == 'temperature':
+                    locstr = r'$(\lambda,\phi,p)=(%g^\circ,%g^\circ,%g hPa)$'%(lon,lat,pfull)
+                else:
+                    locstr = r'$(\lambda,\phi)=(%g^\circ,%g^\circ)$'%(lon,lat)
+                obs_labels[obs_name] = r'%s at %s'%(obsprop[obs_name]['label'],locstr)
+                obs_abbrvs[obs_name] = obsprop[obs_name]['abbrv']
+                obs_units[obs_name] = r'[%s]'%(obsprop[obs_name]['unit_symbol'])
             for branch_group in range(alg.num_branch_groups): #range(alg.branching_state['next_branch_group']):
-                alg.plot_obs_spaghetti(obs_funs, branch_group, plotdir, labels=obs_labels, abbrvs=obs_abbrvs)
+                alg.plot_obs_spaghetti(obs_funs, branch_group, plotdir, ylabels=obs_units, titles=obs_labels, abbrvs=obs_abbrvs)
 
 
         if tododict['plot_pebr']['divergence']:
