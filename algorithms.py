@@ -117,17 +117,20 @@ class PeriodicBranching(EnsembleAlgorithm):
         tidx_trunk = split_time - all_init_times[mems_trunk[0]] + np.arange(self.branch_duration)
         return time,mems_trunk,tidx_trunk,mems_branch,tidxs_branch
     def compute_pairwise_funs_local(self, pair_funs, branch_group):
+        # These should be time-dependent functions
         time,mems_trunk,tidx_trunk,mems_branch,tidxs_branch = self.get_tree_subset(branch_group)
+        print(f'{time = }')
         pair_list = []
         for mem0 in mems_trunk:
             pair_list.append(self.ens.compute_pairwise_observables(pair_funs, mem0, mems_branch))
+            print(f'{pair_list[-1]["temperature"][0].shape = }')
         pairs = dict()
         pair_names = list(pair_funs.keys())
         for pair_name in pair_names:
             pairs[pair_name] = np.zeros((len(mems_branch), len(time)))
             for i_mem1,mem1 in enumerate(mems_branch):
                 print(f'{pair_list[0][pair_name][i_mem1] = }')
-                pairs[pair_name][i_mem1,:] = np.concatenate([d[pair_name][i_mem1] for d in pair_list])
+                pairs[pair_name][i_mem1,:] = np.concatenate([d[pair_name][i_mem1] for d in pair_list])[tidx_trunk]
         return time,pairs
     def analyze_pert_growth(self, pert_growth_dict):
         split_times,rmses,rmsds,dists = [pert_growth_dict[key] for key in ['split_times','rmses','rmsds','dists']]
@@ -137,9 +140,13 @@ class PeriodicBranching(EnsembleAlgorithm):
         for dist_name in dist_names:
             lyapunov_exponents[dist_name] = np.zeros(ngroups)
             for group in range(ngroups):
-                tmax = np.where(rmses[dist_name][group] >= 0.25*rmsds[dist_name])[0][0]
-                linmod = linregress(np.arange(tmax), np.log(rmses[dist_name][group][:tmax]))
+                if np.max(rmses[dist_name][group]) >= 0.25*rmsds[dist_name]:
+                    tmax = np.where(rmses[dist_name][group] >= 0.25*rmsds[dist_name])[0][0]
+                else:
+                    tmax = len(rmses[dist_name][group])-1
+                linmod = linregress(np.arange(1,tmax), np.log(rmses[dist_name][group][1:tmax]))
                 lyapunov_exponents[dist_name][group] = linmod.slope/self.ens.dynsys.dt_save
+        print(f'{lyapunov_exponents = }')
         return lyapunov_exponents
     def measure_pert_growth(self, dist_funs):
         # Save a statistical analysis of RMSE growth to a specified directory
@@ -186,7 +193,7 @@ class PeriodicBranching(EnsembleAlgorithm):
                     ax.plot(time*tu, dists[dist_name][branch_group,i_mem1,:], color='tomato',)
                 hrmse, = ax.plot(time*tu, rmses[dist_name][branch_group,:], color='black', label='RMSE')
                 hrmsd = ax.axhline(rmsds[dist_name],label='RMSD', color='black', linestyle='--')
-                hlyap, = ax.plot(time*tu, np.minimum(rmsds[dist_name], rmses[dist_name][branch_group,0]*np.exp(lyap_dict[dist_name][branch_group]*(time-time[0])*tu)), color='dodgerblue')
+                hlyap, = ax.plot(time[1:]*tu, np.minimum(rmsds[dist_name], rmses[dist_name][branch_group,1]*np.exp(lyap_dict[dist_name][branch_group]*(time[1:]-time[1])*tu)), color='dodgerblue')
                 ax.legend(handles=[hrmse,hrmsd,hlyap])
                 ax.set_ylabel(labels[dist_name])
                 ax.set_xlabel('time')

@@ -345,17 +345,24 @@ class FriersonGCM(DynamicalSystem):
         numperts = len(icandf['frc'].reseed_times)
         assert numperts == len(icandf['frc'].seeds)
         if self.pert_type == 'IMP':
-            nml['spectral_dynamics_nml']['num_perturbations_actual'] = numperts
+            nml['spectral_dynamics_nml'].update(dict({
+                'do_sppt': False,
+                'num_perturbations_actual': numperts,
+                }))
             if numperts == 0:
-                nml['spectral_dynamics_nml']['do_perturbation'] = False
-                nml['spectral_dynamics_nml']['days_to_perturb'] = [-1]
-                nml['spectral_dynamics_nml']['seed_values'] = [-1]
-                nml['spectral_dynamics_nml']['perturbation_fraction'] = [0.0]
+                nml['spectral_dynamics_nml'].update(dict({
+                    'do_perturbation': False,
+                    'days_to_perturb': [-1],
+                    'seed_values': [-1],
+                    'perturbation_fraction': [0.0],
+                    }))
             else:
-                nml['spectral_dynamics_nml']['do_perturbation'] = True
-                nml['spectral_dynamics_nml']['days_to_perturb'] = icandf['frc'].reseed_times
-                nml['spectral_dynamics_nml']['seed_values'] = icandf['frc'].seeds
-                nml['spectral_dynamics_nml']['perturbation_fraction'] = [self.config['IMP']['pert_frac'] for ipert in range(numperts)]
+                nml['spectral_dynamics_nml'].update(dict({
+                    'do_perturbation': True,
+                    'days_to_perturb': icandf['frc'].reseed_times,
+                    'seed_values': icandf['frc'].seeds,
+                    'perturbation_fraction': [self.config['IMP']['pert_frac'] for ipert in range(numperts)],
+                    }))
         elif self.pert_type == 'SPPT':
             assert numperts > 0
             nml['spectral_dynamics_nml'].update(dict({ # TODO specify parameters from config

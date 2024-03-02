@@ -78,10 +78,14 @@ class FriersonGCMPeriodicBranching(algorithms.PeriodicBranching):
 
 def test_periodic_branching(nproc,pert_type):
     tododict = dict({
-        'run_pebr':                1,
+        'run_pebr':                0,
+        'analyze_pebr': dict({
+            'measure_pert_growth':           1,
+            'analyze_pert_growth':           1,
+            }),
         'plot_pebr': dict({
-            'observables':    1,
-            'divergence':     0,
+            'observables':    0,
+            'pert_growth':    1,
             'response':       0,
             }),
         })
@@ -93,7 +97,8 @@ def test_periodic_branching(nproc,pert_type):
     config_gcm = FriersonGCM.default_config(base_dir_absolute,base_dir_absolute)
     config_gcm['pert_type'] = pert_type
     if pert_type == 'SPPT':
-        config_gcm['SPPT']['tau_sppt'] = 6.0 * 3600.0
+        config_gcm['SPPT']['tau_sppt'] = 6.0 * 3600.0 # units are seconds
+        config_gcm['SPPT']['std_sppt'] = 0.1
     config_gcm['remove_temp'] = 1
     param_abbrv_gcm,param_label_gcm = FriersonGCM.label_from_config(config_gcm)
     config_algo = dict({
@@ -105,12 +110,38 @@ def test_periodic_branching(nproc,pert_type):
         'num_branch_groups': 12,
         'max_member_duration_phys': 30.0,
         })
-    seed = 849582 # TODO make this a command-line argument
     param_abbrv_algo,param_label_algo = FriersonGCMPeriodicBranching.label_from_config(config_algo)
-    algdir = join(scratch_dir, date_str, sub_date_str, param_abbrv_gcm, param_abbrv_algo)
-    root_dir = algdir
-    makedirs(algdir, exist_ok=True)
-    alg_filename = join(algdir,'alg.pickle')
+    seed = 849582 # TODO make this a command-line argument
+
+    # Set up directories
+    dirdict = dict({
+        'alg': join(scratch_dir, date_str, sub_date_str, param_abbrv_gcm, param_abbrv_algo)
+        })
+    dirdict['analysis'] = join(dirdict['alg'],'analysis')
+    dirdict['plots'] = join(dirdict['alg'],'plots')
+    for dirname in list(dirdict.values()):
+        makedirs(dirname, exist_ok=True)
+
+    # Enumerate filenames
+    fndict = dict({
+        'alg': dict({
+            'alg': join(dirdict['alg'],'alg.pickle'),
+            }),
+        'analysis': dict({
+            'pert_growth': join(dirdict['analysis'],'pert_growth.pickle'),
+            'lyap_exp': join(dirdict['analysis'],'lyap_exp.pickle')
+            })
+        })
+    fndict['plots'] = dict()
+    dist_names = ['temperature','column_water_vapor','surface_pressure','total_rain']
+    for dist_name in dist_names:
+        fndict['plots'][dist_name] = dict({'rmse': join(dirdict['plots'],f'rmse_dist{dist_name}')})
+        fndict['plots'][dist_name]['lyap_exp'] = join(dirdict['plots'], f'lyap_exp_dist{dist_name}')
+        for branch_group in range(config_algo['num_branch_groups']):
+            fndict['plots'][dist_name][branch_group] = join(dirdict['plots'],f'pert_growth_bg{branch_group}_dist{dist_name}.png')
+
+    root_dir = dirdict['alg']
+    alg_filename = join(dirdict['alg'],'alg.pickle')
     # TODO write config to file, too 
 
 
@@ -141,11 +172,51 @@ def test_periodic_branching(nproc,pert_type):
                 })
             alg.take_next_step(saveinfo)
             pickle.dump(alg, open(alg_filename, 'wb'))
+    if utils.find_true_in_dict(tododict['analyze_pebr']):
+        alg = pickle.load(open(fndict['alg']['alg'], 'rb'))
+        if tododict['analyze_pebr']['measure_pert_growth']:
+            obsprop = alg.ens.dynsys.observable_props()
+            lat = 45.0
+            lon = 180.0
+            pfull = 500.0
+            latlonsel = dict(lat=slice(lat-10,lat+10),lon=slice(lon-30,lon+30))
+            def dist_euclidean(ds0,ds1,field_name):
+                t0 = ds0.time.to_numpy()
+                t1 = ds1.time.to_numpy()
+                tsel = dict(time=slice(max(t0[0],t1[0]),min(t0[-1],t1[-1])+1))
+                f0 = getattr(alg.ens.dynsys, field_name)(ds0).sel(tsel).sel(latlonsel)
+                f1 = getattr(alg.ens.dynsys, field_name)(ds1).sel(tsel).sel(latlonsel)
+                if 'pfull' in f0.dims:
+                    f0 = f0.sel(pfull=pfull,method='nearest')
+                    f1 = f1.sel(pfull=pfull,method='nearest')
+                # TODO add a cosine weighting 
+                return np.sqrt(((f0-f1)**2).sum(dim=set(f0.dims)-{'time'})).compute().to_numpy()
+            def rmsd_euclidean(ds0,ds1,field_name):
+                f0 = getattr(alg.ens.dynsys, field_name)(ds0).sel(latlonsel)#.compute().to_numpy()
+                f1 = getattr(alg.ens.dynsys, field_name)(ds1).sel(latlonsel)#.compute().to_numpy()
+                if 'pfull' in f0.dims:
+                    f0 = f0.sel(pfull=pfull,method='nearest')
+                    f1 = f1.sel(pfull=pfull,method='nearest')
+                f0 = f0.stack(latlon=['lat','lon']).transpose('time','latlon').to_numpy()
+                f1 = f1.stack(latlon=['lat','lon']).transpose('time','latlon').to_numpy()
+                D2mat = np.add.outer(np.sum(f0**2, axis=1), np.sum(f1**2, axis=1)) - 2*f0.dot(f1.T)
+                return np.sqrt(np.mean(D2mat))
+            dist_funs = dict({'tdep': dict(), 'rmsd': dict()})
+            for field_name in ['temperature','total_rain','column_water_vapor','surface_pressure']:
+                dist_funs['tdep'][field_name] = lambda ds0,ds1,field_name=field_name: dist_euclidean(ds0,ds1,field_name)
+                dist_funs['rmsd'][field_name] = lambda ds0,ds1,field_name=field_name: rmsd_euclidean(ds0,ds1,field_name)
+            pert_growth = alg.measure_pert_growth(dist_funs)
+            pickle.dump(pert_growth, open(fndict['analysis']['pert_growth'], 'wb'))
+        else:
+            pert_growth = pickle.load(open(fndict['analysis']['pert_growth'], 'rb'))
+        if tododict['analyze_pebr']['analyze_pert_growth']:
+            lyapunov_exponents = alg.analyze_pert_growth(pert_growth)
+            pickle.dump(lyapunov_exponents, open(fndict['analysis']['lyap_exp'], 'wb'))
     if utils.find_true_in_dict(tododict['plot_pebr']):
-        plotdir = join(algdir,'plots')
+        plotdir = join(dirdict['alg'],'plots')
         makedirs(plotdir,exist_ok=True)
 
-        alg = pickle.load(open(join(algdir,'alg.pickle'),'rb'))
+        alg = pickle.load(open(join(dirdict['alg'],'alg.pickle'),'rb'))
         if tododict['plot_pebr']['observables']:
             obsprop = alg.ens.dynsys.observable_props()
             lat = 45.0
@@ -173,7 +244,11 @@ def test_periodic_branching(nproc,pert_type):
                 alg.plot_obs_spaghetti(obs_funs, branch_group, plotdir, ylabels=obs_units, titles=obs_labels, abbrvs=obs_abbrvs)
 
 
-        if tododict['plot_pebr']['divergence']:
+        if tododict['plot_pebr']['pert_growth']:
+            pert_growth_dict = pickle.load(open(fndict['analysis']['pert_growth'],'rb'))
+            lyap_dict = pickle.load(open(fndict['analysis']['lyap_exp'],'rb'))
+            alg.plot_pert_growth(pert_growth_dict, lyap_dict, fndict['plots'], logscale=True)
+        if False:
             # Plot distance from trunk for all branches, in terms of (u,v) coordinates
             trulin = alg.branching_state['trunk_lineage']
             for mem in trulin:

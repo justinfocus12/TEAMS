@@ -10,4 +10,4 @@
 
 module load anaconda3/2021.11
 source activate teamsenv
-python -u algorithms_frierson.py 4 1 > progress_"$SLURM_JOB_ID".out
+python -u algorithms_frierson.py 4 0 > progress_"$SLURM_JOB_ID".out
