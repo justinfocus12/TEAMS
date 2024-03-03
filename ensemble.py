@@ -4,9 +4,8 @@ import networkx as nx
 import pickle
 from os.path import join, exists
 from os import makedirs
-import matplotlib
-import matplotlib.pyplot as plt
-matplotlib.rcParams.update({
+from matplotlib import pyplot as plt, rcParams
+rcParams.update({
     "font.family": "monospace",
     "font.size": 15
 })

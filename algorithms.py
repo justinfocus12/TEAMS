@@ -7,9 +7,8 @@ from scipy.stats import linregress
 from os.path import join, exists
 from os import makedirs
 import copy as copylib
-import matplotlib
-import matplotlib.pyplot as plt
-matplotlib.rcParams.update({
+from matplotlib import pyplot as plt, rcParams
+rcParams.update({
     "font.family": "monospace",
     "font.size": 15
 })
@@ -113,7 +112,7 @@ class PeriodicBranching(EnsembleAlgorithm):
         i_mem_trunk_init = np.searchsorted(self.branching_state['trunk_lineage_init_times'], split_time, side='right') - 1
         i_mem_trunk_fin = np.searchsorted(self.branching_state['trunk_lineage_fin_times'], split_time+self.branch_duration, side='right')
         mems_trunk = self.branching_state['trunk_lineage'][i_mem_trunk_init:i_mem_trunk_fin+1]
-        time = split_time + np.arange(self.branch_duration, dtype=int)
+        time = 1 + split_time + np.arange(self.branch_duration, dtype=int)
         tidx_trunk = split_time - all_init_times[mems_trunk[0]] + np.arange(self.branch_duration)
         return time,mems_trunk,tidx_trunk,mems_branch,tidxs_branch
     def compute_pairwise_funs_local(self, pair_funs, branch_group):

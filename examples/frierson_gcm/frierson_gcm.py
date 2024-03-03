@@ -1,15 +1,10 @@
 # Instantiation of EnsembleMember class on Frierson GCM
 
 import numpy as np
-from numpy.random import default_rng
-from scipy.special import softmax
 import xarray as xr
-import dask
 import f90nml
-from netCDF4 import Dataset
-import matplotlib.pyplot as plt
-import matplotlib
-matplotlib.rcParams.update({
+from matplotlib import pyplot as plt, rcParams 
+rcParams.update({
     "font.family": "monospace",
     "font.size": 15
 })
@@ -59,11 +54,12 @@ def print_comp_proc(compproc):
     return 
 
 class FriersonGCM(DynamicalSystem):
-    def __init__(self, config):
+    def __init__(self, config, recompile=True):
         self.derive_parameters(config)
         self.configure_os_environment()
-        self.compile_mppnccombine()
-        self.compile_model()
+        if recompile:
+            self.compile_mppnccombine()
+            self.compile_model()
         self.nproc = 1
         return
 
@@ -95,12 +91,12 @@ class FriersonGCM(DynamicalSystem):
         abbrv_domain = r'res%s'%(config['resolution'])
         abbrv_pert = r'pert%s'%(config['pert_type'])
         if config['pert_type'] == 'SPPT':
-            abbrv_pert = r'%s_std%g_clip%g_tau%g_L%g'%(
+            abbrv_pert = r'%s_std%g_clip%g_tau%gh_L%gkm'%(
                     abbrv_pert,
                     config['SPPT']['std_sppt'],
                     config['SPPT']['clip_sppt'],
-                    config['SPPT']['tau_sppt'],
-                    config['SPPT']['L_sppt'],
+                    config['SPPT']['tau_sppt']/3600,
+                    config['SPPT']['L_sppt']/1000,
                     )
         elif config['pert_type'] == 'IMP':
             abbrv_pert = r'%s_frac%g'%(
@@ -366,6 +362,7 @@ class FriersonGCM(DynamicalSystem):
         elif self.pert_type == 'SPPT':
             assert numperts > 0
             nml['spectral_dynamics_nml'].update(dict({ # TODO specify parameters from config
+                'do_sppt': True,
                 'std_sppt': self.config['SPPT']['std_sppt'],
                 'clip_sppt': self.config['SPPT']['clip_sppt'],
                 'tau_sppt': self.config['SPPT']['tau_sppt'], 
@@ -492,6 +489,16 @@ class FriersonGCM(DynamicalSystem):
         return pair_dict
     def observable_props(self):
         obslib = dict()
+        obslib['r_sppt_g'] = dict({
+            "abbrv": "RSPPT",
+            "unit_symbol": "",
+            "label": r"$r_{\mathrm{SPPT}}$",
+            "cmap": "coolwarm",
+            "cmin": None,
+            "cmax": None,
+            "clo": "gray",
+            "chi": "yellow",
+            })
         obslib["effective_static_stability"] = dict({
             "abbrv": "ESS",
             "unit_symbol": "s$^{-2}$",
@@ -708,6 +715,10 @@ class FriersonGCM(DynamicalSystem):
         print(f"Nsq_eff coords = {Nsq_eff.coords}")
         return Nsq_eff 
     
+    @staticmethod
+    def r_sppt_g(ds):
+        return ds['r_sppt_g']
+
     @staticmethod
     def column_water_vapor(ds):
         g = 9.806 

@@ -1,38 +1,52 @@
 # Instantiation of EnsembleMember class on Frierson GCM
-
+i = 0
+print(f'--------------Beginning imports-------------')
 import numpy as np
+print(f'{i = }'); i += 1
 from numpy.random import default_rng
-from scipy.special import softmax
+print(f'{i = }'); i += 1
 import xarray as xr
-import dask
-from netCDF4 import Dataset
-import matplotlib.pyplot as plt
-import matplotlib
-matplotlib.rcParams.update({
+print(f'{i = }'); i += 1
+from matplotlib import pyplot as plt, rcParams 
+print(f'{i = }'); i += 1
+rcParams.update({
     "font.family": "monospace",
     "font.size": 15
 })
 pltkwargs = dict(bbox_inches="tight",pad_inches=0.2)
 import os
+print(f'{i = }'); i += 1
 from os.path import join, exists, basename, relpath
+print(f'{i = }'); i += 1
 from os import mkdir, makedirs
+print(f'{i = }'); i += 1
 import sys
+print(f'{i = }'); i += 1
 import shutil
+print(f'{i = }'); i += 1
 import glob
+print(f'{i = }'); i += 1
 import subprocess
+print(f'{i = }'); i += 1
 import resource
+print(f'{i = }'); i += 1
 import pickle
+print(f'{i = }'); i += 1
 import copy as copylib
+print(f'{i = }'); i += 1
 
-import sys
 sys.path.append("../..")
+print(f'Now starting to import my own modules')
 import utils
+print(f'{i = }'); i += 1
 from ensemble import Ensemble
-from dynamicalsystem import DynamicalSystem
+print(f'{i = }'); i += 1
 import forcing
+print(f'{i = }'); i += 1
 import algorithms
-import frierson_observables as frobs
+print(f'{i = }'); i += 1
 from frierson_gcm import FriersonGCM
+print(f'{i = }'); i += 1
 
 class FriersonGCMPeriodicBranching(algorithms.PeriodicBranching):
     def obs_dict_names(self):
@@ -76,38 +90,50 @@ class FriersonGCMPeriodicBranching(algorithms.PeriodicBranching):
             })
         return icandf
 
-def test_periodic_branching(nproc,pert_type):
+def test_periodic_branching(nproc,i_param):
     tododict = dict({
-        'run_pebr':                0,
+        'run_pebr':                1,
         'analyze_pebr': dict({
             'measure_pert_growth':           1,
             'analyze_pert_growth':           1,
             }),
         'plot_pebr': dict({
-            'observables':    0,
+            'observables':    1,
+            'fields':         1,
             'pert_growth':    1,
             'response':       0,
             }),
         })
     base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
     scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/frierson_gcm"
-    date_str = "2024-03-01"
+    date_str = "2024-03-02"
     sub_date_str = "0/PeBr"
     print(f'About to generate default config')
     config_gcm = FriersonGCM.default_config(base_dir_absolute,base_dir_absolute)
+
+    # Parameters to branch over
+    pert_type_list = ['IMP'] + ['SPPT']*5
+    std_sppt_list = [0.5,0.5,0.25,0.1,0.05,0.01]
+    tau_sppt_list = [6.0 * 3600] * 6
+
+    pert_type = pert_type_list[i_param]
+    std_sppt = std_sppt_list[i_param]
+    tau_sppt = tau_sppt_list[i_param]
+
+
     config_gcm['pert_type'] = pert_type
     if pert_type == 'SPPT':
-        config_gcm['SPPT']['tau_sppt'] = 6.0 * 3600.0 # units are seconds
-        config_gcm['SPPT']['std_sppt'] = 0.1
+        config_gcm['SPPT']['tau_sppt'] = tau_sppt
+        config_gcm['SPPT']['std_sppt'] = std_sppt
     config_gcm['remove_temp'] = 1
     param_abbrv_gcm,param_label_gcm = FriersonGCM.label_from_config(config_gcm)
     config_algo = dict({
         'seed_min': 1000,
         'seed_max': 100000,
-        'branches_per_group': 8, 
-        'interbranch_interval_phys': 5.0,
-        'branch_duration_phys': 10.0,
-        'num_branch_groups': 12,
+        'branches_per_group': 12, 
+        'interbranch_interval_phys': 10.0,
+        'branch_duration_phys': 30.0,
+        'num_branch_groups': 20,
         'max_member_duration_phys': 30.0,
         })
     param_abbrv_algo,param_label_algo = FriersonGCMPeriodicBranching.label_from_config(config_algo)
@@ -133,7 +159,7 @@ def test_periodic_branching(nproc,pert_type):
             })
         })
     fndict['plots'] = dict()
-    dist_names = ['temperature','column_water_vapor','surface_pressure','total_rain']
+    dist_names = ['temperature','column_water_vapor','surface_pressure','total_rain',]
     for dist_name in dist_names:
         fndict['plots'][dist_name] = dict({'rmse': join(dirdict['plots'],f'rmse_dist{dist_name}')})
         fndict['plots'][dist_name]['lyap_exp'] = join(dirdict['plots'], f'lyap_exp_dist{dist_name}')
@@ -153,7 +179,7 @@ def test_periodic_branching(nproc,pert_type):
         if exists(alg_filename):
             alg = pickle.load(open(alg_filename, 'rb'))
         else:
-            gcm = FriersonGCM(config_gcm)
+            gcm = FriersonGCM(config_gcm, recompile=recompile)
             ens = Ensemble(gcm, root_dir=root_dir)
             alg = FriersonGCMPeriodicBranching(config_algo, ens, seed)
             alg.set_init_cond(init_time,init_cond)
@@ -213,19 +239,62 @@ def test_periodic_branching(nproc,pert_type):
             lyapunov_exponents = alg.analyze_pert_growth(pert_growth)
             pickle.dump(lyapunov_exponents, open(fndict['analysis']['lyap_exp'], 'wb'))
     if utils.find_true_in_dict(tododict['plot_pebr']):
-        plotdir = join(dirdict['alg'],'plots')
-        makedirs(plotdir,exist_ok=True)
-
+        lat = 45.0
+        lon = 180.0
+        pfull = 500.0
         alg = pickle.load(open(join(dirdict['alg'],'alg.pickle'),'rb'))
+        if tododict['plot_pebr']['fields']:
+            # Plot a panel of ensemble members each day 
+            obsprop = alg.ens.dynsys.observable_props()
+            obs_funs = dict()
+            for obs_name in ['temperature']:
+                obs_funs[obs_name] = lambda dsmem,obs_name=obs_name: getattr(alg.ens.dynsys, obs_name)(dsmem).sel(lat=slice(lat-20,lat+20),lon=slice(lon-45,lon+45)).sel(pfull=pfull,method='nearest')
+            for obs_name in ['r_sppt_g','total_rain','column_water_vapor','surface_pressure']:
+                obs_funs[obs_name] = lambda dsmem,obs_name=obs_name: getattr(alg.ens.dynsys, obs_name)(dsmem).sel(lat=slice(lat-20,lat+20),lon=slice(lon-45,lon+45))
+            obs_names = list(obs_funs.keys())
+            tu = alg.ens.dynsys.dt_save
+            for branch_group in range(min(5,alg.num_branch_groups)): #range(alg.branching_state['next_branch_group']):
+                time,mems_trunk,tidx_trunk,mems_branch,tidxs_branch = alg.get_tree_subset(branch_group)
+                print(f'{time = }')
+                obs_dict_branch = alg.ens.compute_observables(obs_funs, mems_branch)
+                obs_dict_trunk = alg.ens.compute_observables(obs_funs, mems_trunk)
+                for obs_name in obs_names:
+                    obs_dict_trunk[obs_name] = xr.concat(obs_dict_trunk[obs_name],dim='time')
+                    print(f'{obs_dict_trunk[obs_name].time.values = }')
+                print(f'{mems_branch = }')
+                for obs_name in obs_names:
+                    print(f'----------Plotting {obs_name}-----------')
+                    for i_time,t in enumerate(time):
+                        fig,axes = plt.subplots(nrows=1+len(mems_branch),ncols=2,figsize=(12,(1+len(mems_branch))*4))
+                        axes[0,1].axis('off')
+                        ax = axes[0,0]
+                        xr.plot.pcolormesh(obs_dict_trunk[obs_name].sel(time=t), x='lon', y='lat', ax=ax, cmap=obsprop[obs_name]['cmap'])
+                        ax.set_title('CTRL')
+                        for i_mem,mem in enumerate(mems_branch[:min(4,len(mems_branch)]):
+                            print(f'{i_mem = }, {mem = }')
+                            ax = axes[i_mem+1,0]
+                            field2plot = obs_dict_branch[obs_name][i_mem].sel(time=t)
+                            print(f'{field2plot.min().item() = }, {field2plot.max().item() = }')
+                            xr.plot.pcolormesh(obs_dict_branch[obs_name][i_mem].sel(time=t), x='lon', y='lat', ax=ax, cmap=obsprop[obs_name]['cmap'])
+                            ax.set_title(r'PERT %d'%(i_mem))
+                            ax = axes[i_mem+1,1]
+                            xr.plot.pcolormesh(obs_dict_branch[obs_name][i_mem].sel(time=t)-obs_dict_trunk[obs_name].sel(time=t), x='lon', y='lat', ax=ax, cmap='PiYG')
+                            ax.set_title(r'(PERT %d) $-$ CTRL'%(i_mem))
+                        for i_row in range(axes.shape[0]):
+                            for i_col in range(axes.shape[1]):
+                                axes[i_row,i_col].set_ylabel('Latitude' if i_col==0 else '')
+                                axes[i_row,i_col].set_xlabel('Longitude' if i_row==axes.shape[0]-1 else '')
+                        fig.suptitle(r'%s at $t=%g$'%(obs_name,t*tu))
+                        filename = join(dirdict['plots'],r'field%s_bg%d_mem%d_t%d'%(obs_name,branch_group,i_mem,i_time))
+                        if exists(filename): os.remove(filename)
+                        fig.savefig(filename, **pltkwargs)
+                        plt.close(fig)
         if tododict['plot_pebr']['observables']:
             obsprop = alg.ens.dynsys.observable_props()
-            lat = 45.0
-            lon = 180.0
-            pfull = 500.0
             obs_funs = dict()
             for obs_name in ['temperature']:
                 obs_funs[obs_name] = lambda dsmem,obs_name=obs_name: getattr(alg.ens.dynsys, obs_name)(dsmem).sel(lat=lat,lon=lon,pfull=pfull,method='nearest')
-            for obs_name in ['total_rain','column_water_vapor','surface_pressure']:
+            for obs_name in ['r_sppt_g','total_rain','column_water_vapor','surface_pressure']:
                 obs_funs[obs_name] = lambda dsmem,obs_name=obs_name: getattr(alg.ens.dynsys, obs_name)(dsmem).sel(lat=lat,lon=lon,method='nearest')
             obs_names = list(obs_funs.keys())
             obs_abbrvs = dict()
@@ -241,9 +310,7 @@ def test_periodic_branching(nproc,pert_type):
                 obs_abbrvs[obs_name] = obsprop[obs_name]['abbrv']
                 obs_units[obs_name] = r'[%s]'%(obsprop[obs_name]['unit_symbol'])
             for branch_group in range(alg.num_branch_groups): #range(alg.branching_state['next_branch_group']):
-                alg.plot_obs_spaghetti(obs_funs, branch_group, plotdir, ylabels=obs_units, titles=obs_labels, abbrvs=obs_abbrvs)
-
-
+                alg.plot_obs_spaghetti(obs_funs, branch_group, dirdict['plots'], ylabels=obs_units, titles=obs_labels, abbrvs=obs_abbrvs)
         if tododict['plot_pebr']['pert_growth']:
             pert_growth_dict = pickle.load(open(fndict['analysis']['pert_growth'],'rb'))
             lyap_dict = pickle.load(open(fndict['analysis']['lyap_exp'],'rb'))
@@ -318,6 +385,6 @@ def test_periodic_branching(nproc,pert_type):
 if __name__ == "__main__":
     print(f'Got into Main')
     nproc = int(sys.argv[1])
-    pert_type = ['IMP','SPPT'][int(sys.argv[2])]
-    print(f'{nproc = }')
-    test_periodic_branching(nproc,pert_type)
+    recompile = bool(int(sys.argv[2]))
+    i_param = int(sys.argv[3])
+    test_periodic_branching(nproc,recompile,i_param)
