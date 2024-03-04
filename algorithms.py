@@ -131,22 +131,61 @@ class PeriodicBranching(EnsembleAlgorithm):
                 print(f'{pair_list[0][pair_name][i_mem1] = }')
                 pairs[pair_name][i_mem1,:] = np.concatenate([d[pair_name][i_mem1] for d in pair_list])[tidx_trunk]
         return time,pairs
-    def analyze_pert_growth(self, pert_growth_dict):
-        split_times,rmses,rmsds,dists = [pert_growth_dict[key] for key in ['split_times','rmses','rmsds','dists']]
+    def analyze_pert_growth(self, pert_growth):
+        split_times,rmses,rmsds,dists = [pert_growth[key] for key in ['split_times','rmses','rmsds','dists']]
         dist_names = list(rmses.keys())
         ngroups,nbranches,ntimes = dists[dist_names[0]].shape
         lyapunov_exponents = dict()
         for dist_name in dist_names:
             lyapunov_exponents[dist_name] = np.zeros(ngroups)
+            tmin = 1
             for group in range(ngroups):
                 if np.max(rmses[dist_name][group]) >= 0.25*rmsds[dist_name]:
                     tmax = np.where(rmses[dist_name][group] >= 0.25*rmsds[dist_name])[0][0]
                 else:
-                    tmax = len(rmses[dist_name][group])-1
-                linmod = linregress(np.arange(1,tmax), np.log(rmses[dist_name][group][1:tmax]))
+                    tmax = max(tmin+1,len(rmses[dist_name][group])) - 1
+                print(f'{tmin = }, {tmax = }')
+                linmod = linregress(np.arange(tmin,tmax+1), np.log(rmses[dist_name][group][tmin:tmax+1]))
                 lyapunov_exponents[dist_name][group] = linmod.slope/self.ens.dynsys.dt_save
         print(f'{lyapunov_exponents = }')
         return lyapunov_exponents
+    @classmethod
+    def analyze_pert_growth_meta(cls, pert_growth_list, indep_var_list):
+        # Compare characteristics of perturbation growth as a function of various independent variables
+        fracs = np.array([1/8,1/4,3/8,1/2])
+        nfrac = len(fracs)
+        nexpt = len(pert_growth_list)
+        dist_names = list(pert_growth_list[0]['rmsds'].keys())
+        print(f'{dist_names = }')
+        t2fracsat = dict() 
+        for dist_name in dist_names:
+            t2fracsat[dist_name] = np.nan*np.ones((nexpt,nfrac))
+            for i_pg,pg in enumerate(pert_growth_list):
+                rmse = pg['rmses'][dist_name] # dims (group,time)
+                rmsd = pg['rmsds'][dist_name] 
+                ngroups,ntimes = rmse.shape
+                for i_frac,frac in enumerate(fracs):
+                    t2fracsat[dist_name][i_pg,i_frac] = np.mean(np.argmax(rmse/rmsd > frac, axis=1))
+        return fracs,t2fracsat
+    @classmethod 
+    def plot_pert_growth_meta(cls, indep_var_list, fracsat, t2fracsat, savefile, ivlabel, tu=1):
+        fig,axes = plt.subplots(nrows=len(fracsat),figsize=(6,3*len(fracsat)),sharex=True,gridspec_kw={'hspace': 0.25})
+        handles = []
+        for dist_name,t in t2fracsat.items():
+            print(f'{dist_name = }')
+            print(f'{t = }')
+            order = np.argsort(indep_var_list)
+            for i_frac,frac in enumerate(fracsat):
+                ax = axes[i_frac]
+                h, = ax.plot(np.array(indep_var_list)[order], t[order,i_frac]*tu, label=dist_name, marker='o')
+                if i_frac == 0: handles.append(h)
+                ax.set_title(f'Time to {frac:g} of saturation')
+                ax.set_xlabel('')
+        axes[0].legend(handles=handles)
+        axes[-1].set_xlabel(ivlabel)
+        fig.savefig(savefile, **pltkwargs)
+        plt.close(fig)
+        return
     def measure_pert_growth(self, dist_funs):
         # Save a statistical analysis of RMSE growth to a specified directory
         dist_names = list(dist_funs['tdep'].keys())
@@ -176,15 +215,15 @@ class PeriodicBranching(EnsembleAlgorithm):
         pert_growth = dict({'split_times': split_times, 'rmses': rmses, 'rmsds': rmsds, 'dists': dists})
         return pert_growth
 
-    def plot_pert_growth(self, pert_growth_dict, lyap_dict, fndict, labels=None, abbrvs=None, logscale=True):
-        split_times,rmses,rmsds,dists = [pert_growth_dict[key] for key in ['split_times','rmses','rmsds','dists']]
+    def plot_pert_growth(self, pert_growth, lyap, fndict, labels=None, abbrvs=None, logscale=True):
+        split_times,rmses,rmsds,dists = [pert_growth[key] for key in ['split_times','rmses','rmsds','dists']]
 
         dist_names = list(rmses.keys())
         ngroups,nbranches,ntimes = dists[dist_names[0]].shape
         tu = self.ens.dynsys.dt_save
         if labels is None: labels = dict({dist_name: f'Dist(CTRL,PERT) ({dist_name})' for dist_name in dist_names})
         if abbrvs is None: abbrvs = dict({dist_name: dist_name for dist_name in dist_names})
-        for branch_group in range(ngroups):
+        for branch_group in range(min(3,ngroups)):
             time = split_times[branch_group] + np.arange(rmses[dist_names[0]].shape[1])
             for dist_name in dist_names:
                 fig,ax = plt.subplots(figsize=(12,5))
@@ -192,7 +231,7 @@ class PeriodicBranching(EnsembleAlgorithm):
                     ax.plot(time*tu, dists[dist_name][branch_group,i_mem1,:], color='tomato',)
                 hrmse, = ax.plot(time*tu, rmses[dist_name][branch_group,:], color='black', label='RMSE')
                 hrmsd = ax.axhline(rmsds[dist_name],label='RMSD', color='black', linestyle='--')
-                hlyap, = ax.plot(time[1:]*tu, np.minimum(rmsds[dist_name], rmses[dist_name][branch_group,1]*np.exp(lyap_dict[dist_name][branch_group]*(time[1:]-time[1])*tu)), color='dodgerblue')
+                hlyap, = ax.plot(time[1:]*tu, np.minimum(rmsds[dist_name], rmses[dist_name][branch_group,1]*np.exp(lyap[dist_name][branch_group]*(time[1:]-time[1])*tu)), color='dodgerblue')
                 ax.legend(handles=[hrmse,hrmsd,hlyap])
                 ax.set_ylabel(labels[dist_name])
                 ax.set_xlabel('time')
@@ -201,7 +240,7 @@ class PeriodicBranching(EnsembleAlgorithm):
                 plt.close(fig)
         for dist_name in dist_names:
             fig,ax = plt.subplots()
-            ax.plot(split_times,lyap_dict[dist_name],color='black',marker='o')
+            ax.plot(split_times,lyap[dist_name],color='black',marker='o')
             ax.set_xlabel('split_time')
             ax.set_ylabel('Lyapunov exponent')
             fig.savefig(fndict[dist_name]['lyap_exp'], **pltkwargs)

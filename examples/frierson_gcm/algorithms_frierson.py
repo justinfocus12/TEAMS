@@ -34,17 +34,20 @@ import pickle
 print(f'{i = }'); i += 1
 import copy as copylib
 print(f'{i = }'); i += 1
+from importlib import reload
 
 sys.path.append("../..")
 print(f'Now starting to import my own modules')
-import utils
+import utils; reload(utils)
 print(f'{i = }'); i += 1
+import ensemble; reload(ensemble)
 from ensemble import Ensemble
 print(f'{i = }'); i += 1
-import forcing
+import forcing; reload(forcing)
 print(f'{i = }'); i += 1
-import algorithms
+import algorithms; reload(forcing)
 print(f'{i = }'); i += 1
+import frierson_gcm; reload(frierson_gcm)
 from frierson_gcm import FriersonGCM
 print(f'{i = }'); i += 1
 
@@ -90,7 +93,7 @@ class FriersonGCMPeriodicBranching(algorithms.PeriodicBranching):
             })
         return icandf
 
-def test_periodic_branching(nproc,i_param):
+def run_periodic_branching(nproc,recompile,i_param):
     tododict = dict({
         'run_pebr':                1,
         'analyze_pebr': dict({
@@ -111,10 +114,11 @@ def test_periodic_branching(nproc,i_param):
     print(f'About to generate default config')
     config_gcm = FriersonGCM.default_config(base_dir_absolute,base_dir_absolute)
 
-    # Parameters to branch over
-    pert_type_list = ['IMP'] + ['SPPT']*5
-    std_sppt_list = [0.5,0.5,0.25,0.1,0.05,0.01]
-    tau_sppt_list = [6.0 * 3600] * 6
+    # Parameters to loop over
+    pert_type_list = ['IMP'] + ['SPPT']*4 + ['SPPT']*4
+    std_sppt_list = [0.5,0.25,0.1,0.05,0.01] + [0.25,0.1,0.05,0.01]
+    tau_sppt_list = [6.0 * 3600] * 9
+    L_sppt_list = [500.0 * 1000] * 5 + [2000.0 * 1000] * 4
 
     pert_type = pert_type_list[i_param]
     std_sppt = std_sppt_list[i_param]
@@ -264,13 +268,14 @@ def test_periodic_branching(nproc,i_param):
                 print(f'{mems_branch = }')
                 for obs_name in obs_names:
                     print(f'----------Plotting {obs_name}-----------')
+                    nmem2plot = min(4,len(mems_branch))
                     for i_time,t in enumerate(time):
-                        fig,axes = plt.subplots(nrows=1+len(mems_branch),ncols=2,figsize=(12,(1+len(mems_branch))*4))
+                        fig,axes = plt.subplots(nrows=1+nmem2plot,ncols=2,figsize=(12,(1+nmem2plot)*4))
                         axes[0,1].axis('off')
                         ax = axes[0,0]
                         xr.plot.pcolormesh(obs_dict_trunk[obs_name].sel(time=t), x='lon', y='lat', ax=ax, cmap=obsprop[obs_name]['cmap'])
                         ax.set_title('CTRL')
-                        for i_mem,mem in enumerate(mems_branch[:min(4,len(mems_branch)]):
+                        for i_mem,mem in enumerate(mems_branch[:nmem2plot]):
                             print(f'{i_mem = }, {mem = }')
                             ax = axes[i_mem+1,0]
                             field2plot = obs_dict_branch[obs_name][i_mem].sel(time=t)
@@ -309,82 +314,50 @@ def test_periodic_branching(nproc,i_param):
                 obs_labels[obs_name] = r'%s at %s'%(obsprop[obs_name]['label'],locstr)
                 obs_abbrvs[obs_name] = obsprop[obs_name]['abbrv']
                 obs_units[obs_name] = r'[%s]'%(obsprop[obs_name]['unit_symbol'])
-            for branch_group in range(alg.num_branch_groups): #range(alg.branching_state['next_branch_group']):
+            for branch_group in range(min(3,alg.num_branch_groups)): #range(alg.branching_state['next_branch_group']):
                 alg.plot_obs_spaghetti(obs_funs, branch_group, dirdict['plots'], ylabels=obs_units, titles=obs_labels, abbrvs=obs_abbrvs)
         if tododict['plot_pebr']['pert_growth']:
             pert_growth_dict = pickle.load(open(fndict['analysis']['pert_growth'],'rb'))
             lyap_dict = pickle.load(open(fndict['analysis']['lyap_exp'],'rb'))
             alg.plot_pert_growth(pert_growth_dict, lyap_dict, fndict['plots'], logscale=True)
-        if False:
-            # Plot distance from trunk for all branches, in terms of (u,v) coordinates
-            trulin = alg.branching_state['trunk_lineage']
-            for mem in trulin:
-                print(f'{mem = } in trunk; {alg.ens.get_member_timespan(mem) = }')
-            dist_region = dict(lat=slice(lat-10,lat+10),lon=slice(lon-10,lon+10))
-            ds_trunk = (
-                    xr.open_mfdataset([
-                        join(ens.root_dir,ens.traj_metadata[mem]['filename_traj'])
-                        for mem in alg.branching_state['trunk_lineage']],
-                        decode_times=False,
-                        data_vars=["ucomp","vcomp"])
-                    .sel(dist_region)
-                    .sel(pfull=pfull,method='nearest')
-                    )
-            print(f'{ds_trunk.time.values = }')
-            dist2trunk = dict()
-            for mem in np.setdiff1d(np.arange(ens.memgraph.number_of_nodes()), alg.branching_state['trunk_lineage']):
-                dsmem = (
-                        xr.open_dataset(
-                            join(ens.root_dir,ens.traj_metadata[mem]['filename_traj']),
-                            decode_times=False)
-                        .sel(dist_region)
-                        .sel(pfull=pfull,method='nearest')
-                        )
-                dsmem.drop_vars(np.setdiff1d(list(dsmem.data_vars.keys()),['ucomp','vcomp']))
-                common_time = np.intersect1d(dsmem.time.to_numpy(), ds_trunk.time.to_numpy())
-                if len(common_time) > 0:
-                    timesel = dict(time=common_time)
-                    print(f'{ds_trunk["ucomp"].sel(timesel).shape = }')
-                    print(f'{dsmem["ucomp"].sel(timesel).shape = }')
-                    dist2trunk[mem] = np.sqrt((
-                        (dsmem['ucomp'].sel(timesel) - ds_trunk['ucomp'].sel(timesel))**2 + 
-                        (dsmem['vcomp'].sel(timesel) - ds_trunk['vcomp'].sel(timesel))**2
-                        )
-                        .sum(dim=['lat','lon']))
-
-            fig,ax = plt.subplots()
-            for (mem,dist) in dist2trunk.items():
-                xr.plot.plot(dist, x='time', label=f'm{mem}')
-            ax.set_yscale('log')
-            ax.set_title('Distance to trunk')
-            ax.set_xlabel('Time')
-            ax.set_ylabel('Euclidean distance')
-            fig.savefig(join(plotdir,f'dist2trunk.png'), **pltkwargs)
-            plt.close(fig)
-
-            # Plot local observables for all members
-            obs_vals = dict({obs: [] for obs in obs2plot})
-            for mem in range(ens.memgraph.number_of_nodes()):
-                dsmem = xr.open_mfdataset(join(ens.root_dir,ens.traj_metadata[mem]['filename_traj']), decode_times=False)
-                for obs in obs2plot:
-                    memobs = getattr(ens.dynsys, obs)(dsmem).sel(dict(lat=lat,lon=lon),method='nearest').compute()
-                    if 'pfull' in memobs.dims:
-                        memobs = memobs.sel(pfull=pfull,method='nearest')
-                    obs_vals[obs].append(memobs)
-            for obs in obs2plot:
-                fig,ax = plt.subplots(figsize=(20,5))
-                handles = []
-                for mem in range(ens.memgraph.number_of_nodes()):
-                    h, = xr.plot.plot(obs_vals[obs][mem], x='time', label=f'm{mem}', marker='o')
-                    handles.append(h)
-                ax.legend(handles=handles)
-                ax.set_title(obslib[obs]['label'])
-                fig.savefig(join(plotdir,f'{obslib[obs]["abbrv"]}.png'),**pltkwargs)
     return
 
+def meta_analyze_periodic_branching():
+    expt_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/frierson_gcm/2024-03-02/0/PeBr"
+    meta_dir = join(expt_dir,'meta_analysis')
+    makedirs(meta_dir,exist_ok=True)
+    algdir_pattern = join(expt_dir,"abs1_resT21_pertSPPT_std0p*_clip2_tau6h_L500km/PeBr*/")
+    algdirs = glob.glob(algdir_pattern)
+    print(f'{algdirs = }')
+    pert_growth_list = []
+    std_sppt_list = []
+    for algdir in algdirs:
+        pert_growth_list.append(pickle.load(open(join(algdir,'analysis/pert_growth.pickle'),'rb')))
+        alg = pickle.load(open(join(algdir,'alg.pickle'),'rb'))
+        tu = alg.ens.dynsys.dt_save
+        std_sppt_list.append(alg.ens.dynsys.config['SPPT']['std_sppt'])
+    fracsat,t2fracsat = FriersonGCMPeriodicBranching.analyze_pert_growth_meta(pert_growth_list, std_sppt_list)
+    pickle.dump({'fracs': fracsat, 't2fracsat': t2fracsat},open(join(meta_dir,'t2fracsat.pickle'),'wb'))
+    FriersonGCMPeriodicBranching.plot_pert_growth_meta(std_sppt_list, fracsat, t2fracsat, join(meta_dir,'t2fracsat.png'), r'$\sigma_{\mathrm{SPPT}}$', tu=tu)
+    return
+
+        
+
+
+
+
+
+
 if __name__ == "__main__":
+    tododict = dict({
+        'run':              0,
+        'meta':             1
+        })
     print(f'Got into Main')
-    nproc = int(sys.argv[1])
-    recompile = bool(int(sys.argv[2]))
-    i_param = int(sys.argv[3])
-    test_periodic_branching(nproc,recompile,i_param)
+    if tododict['run']:
+        nproc = 4 
+        recompile = 0 
+        i_param = int(sys.argv[1])
+        run_periodic_branching(nproc,recompile,i_param)
+    if tododict['meta']:
+        meta_analyze_periodic_branching()
