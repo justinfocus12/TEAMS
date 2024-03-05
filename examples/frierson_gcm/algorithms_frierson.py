@@ -115,20 +115,16 @@ def run_periodic_branching(nproc,recompile,i_param):
     config_gcm = FriersonGCM.default_config(base_dir_absolute,base_dir_absolute)
 
     # Parameters to loop over
-    pert_type_list = ['IMP'] + ['SPPT']*4 + ['SPPT']*4
-    std_sppt_list = [0.5,0.25,0.1,0.05,0.01] + [0.25,0.1,0.05,0.01]
-    tau_sppt_list = [6.0 * 3600] * 9
-    L_sppt_list = [500.0 * 1000] * 5 + [2000.0 * 1000] * 4
+    pert_type_list = ['IMP']        + ['SPPT']*12
+    std_sppt_list = [0.5]           + [0.25,0.1,0.05,0.01]*3 
+    tau_sppt_list = [6.0*3600]      + [6.0*3600]*4   + [6.0*3600]*4    + [24.0*3600]*4  + [24.0*3600]*4   
+    L_sppt_list = [500.0*1000]      + [500.0*1000]*4 + [2000.0*1000]*4 + [500.0*1000]*4 + [2000.0*1000]*4
 
-    pert_type = pert_type_list[i_param]
-    std_sppt = std_sppt_list[i_param]
-    tau_sppt = tau_sppt_list[i_param]
-
-
-    config_gcm['pert_type'] = pert_type
-    if pert_type == 'SPPT':
-        config_gcm['SPPT']['tau_sppt'] = tau_sppt
-        config_gcm['SPPT']['std_sppt'] = std_sppt
+    config_gcm['pert_type'] = pert_type_list[i_param]
+    if config_gcm['pert_type'] == 'SPPT':
+        config_gcm['SPPT']['tau_sppt'] = tau_sppt_list[i_param]
+        config_gcm['SPPT']['std_sppt'] = std_sppt_list[i_param]
+        config_gcm['SPPT']['L_sppt'] = L_sppt_list[i_param]
     config_gcm['remove_temp'] = 1
     param_abbrv_gcm,param_label_gcm = FriersonGCM.label_from_config(config_gcm)
     config_algo = dict({
@@ -175,7 +171,7 @@ def run_periodic_branching(nproc,recompile,i_param):
     # TODO write config to file, too 
 
 
-    init_cond_dir = f'/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/frierson_gcm/2024-02-29/0/DNS/resT21_abs1_frc{pert_type}'
+    init_cond_dir = f'/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/frierson_gcm/2024-02-29/0/DNS/resT21_abs1_frc{config_gcm["pert_type"]}'
     init_time = int(xr.open_mfdataset(join(init_cond_dir,'mem20.nc'),decode_times=False)['time'].load()[-1].item())
     init_cond = relpath(join(init_cond_dir,'restart_mem20.cpio'), root_dir)
         
@@ -326,19 +322,27 @@ def meta_analyze_periodic_branching():
     expt_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/frierson_gcm/2024-03-02/0/PeBr"
     meta_dir = join(expt_dir,'meta_analysis')
     makedirs(meta_dir,exist_ok=True)
-    algdir_pattern = join(expt_dir,"abs1_resT21_pertSPPT_std0p*_clip2_tau6h_L500km/PeBr*/")
+    # -------- Fixed parameters -----
+    L_sppt = 500 * 1000.0
+    tau_sppt = 6.0 * 3600
+    fixed_param_label = f'tau{tau_sppt/3600:g}h_L{L_sppt/1000:g}km'
+    # -------------------------------
+    algdir_pattern = join(expt_dir,f"abs1_resT21_pertSPPT_std0p*_clip2_{fixed_param_label}/PeBr*/")
+    print(f'{algdir_pattern = }')
     algdirs = glob.glob(algdir_pattern)
     print(f'{algdirs = }')
     pert_growth_list = []
     std_sppt_list = []
     for algdir in algdirs:
-        pert_growth_list.append(pickle.load(open(join(algdir,'analysis/pert_growth.pickle'),'rb')))
-        alg = pickle.load(open(join(algdir,'alg.pickle'),'rb'))
-        tu = alg.ens.dynsys.dt_save
-        std_sppt_list.append(alg.ens.dynsys.config['SPPT']['std_sppt'])
+        pg_filename = join(algdir,'analysis/pert_growth.pickle')
+        if exists(pg_filename):
+            pert_growth_list.append(pickle.load(open(pg_filename,'rb')))
+            alg = pickle.load(open(join(algdir,'alg.pickle'),'rb'))
+            tu = alg.ens.dynsys.dt_save
+            std_sppt_list.append(alg.ens.dynsys.config['SPPT']['std_sppt'])
     fracsat,t2fracsat = FriersonGCMPeriodicBranching.analyze_pert_growth_meta(pert_growth_list, std_sppt_list)
     pickle.dump({'fracs': fracsat, 't2fracsat': t2fracsat},open(join(meta_dir,'t2fracsat.pickle'),'wb'))
-    FriersonGCMPeriodicBranching.plot_pert_growth_meta(std_sppt_list, fracsat, t2fracsat, join(meta_dir,'t2fracsat.png'), r'$\sigma_{\mathrm{SPPT}}$', tu=tu)
+    FriersonGCMPeriodicBranching.plot_pert_growth_meta(std_sppt_list, fracsat, t2fracsat, join(meta_dir,f't2fracsat_{fixed_param_label}.png'), r'$\sigma_{\mathrm{SPPT}}$', tu=tu)
     return
 
         
@@ -350,8 +354,8 @@ def meta_analyze_periodic_branching():
 
 if __name__ == "__main__":
     tododict = dict({
-        'run':              0,
-        'meta':             1
+        'run':              1,
+        'meta':             0
         })
     print(f'Got into Main')
     if tododict['run']:
