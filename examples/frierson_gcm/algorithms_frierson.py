@@ -108,17 +108,17 @@ def run_periodic_branching(nproc,recompile,i_param):
             }),
         })
     base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
-    scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/frierson_gcm"
-    date_str = "2024-03-02"
+    scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
+    date_str = "2024-03-05"
     sub_date_str = "0/PeBr"
     print(f'About to generate default config')
     config_gcm = FriersonGCM.default_config(base_dir_absolute,base_dir_absolute)
 
     # Parameters to loop over
     pert_type_list = ['IMP']        + ['SPPT']*12
-    std_sppt_list = [0.5]           + [0.25,0.1,0.05,0.01]*3 
-    tau_sppt_list = [6.0*3600]      + [6.0*3600]*4   + [6.0*3600]*4    + [24.0*3600]*4  + [24.0*3600]*4   
-    L_sppt_list = [500.0*1000]      + [500.0*1000]*4 + [2000.0*1000]*4 + [500.0*1000]*4 + [2000.0*1000]*4
+    std_sppt_list = [0.5]           + [0.5,0.1,0.05,0.01]*3 
+    tau_sppt_list = [6.0*3600]      + [6.0*3600]*4   + [6.0*3600]*4    + [24.0*3600]*4   
+    L_sppt_list = [500.0*1000]      + [500.0*1000]*4 + [2000.0*1000]*4 + [500.0*1000]*4 
 
     config_gcm['pert_type'] = pert_type_list[i_param]
     if config_gcm['pert_type'] == 'SPPT':
@@ -169,9 +169,9 @@ def run_periodic_branching(nproc,recompile,i_param):
     root_dir = dirdict['alg']
     alg_filename = join(dirdict['alg'],'alg.pickle')
     # TODO write config to file, too 
-
-
-    init_cond_dir = f'/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/frierson_gcm/2024-02-29/0/DNS/resT21_abs1_frc{config_gcm["pert_type"]}'
+    init_cond_dir = join(
+            f'/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/2024-03-05/0/DNS/',
+            param_abbrv_gcm)
     init_time = int(xr.open_mfdataset(join(init_cond_dir,'mem20.nc'),decode_times=False)['time'].load()[-1].item())
     init_cond = relpath(join(init_cond_dir,'restart_mem20.cpio'), root_dir)
         
@@ -227,6 +227,38 @@ def run_periodic_branching(nproc,recompile,i_param):
                 f1 = f1.stack(latlon=['lat','lon']).transpose('time','latlon').to_numpy()
                 D2mat = np.add.outer(np.sum(f0**2, axis=1), np.sum(f1**2, axis=1)) - 2*f0.dot(f1.T)
                 return np.sqrt(np.mean(D2mat))
+            def dist_rolling_window(ds0,ds1,field_name,window):
+                t0 = ds0.time.to_numpy()
+                t1 = ds1.time.to_numpy()
+                tsel = dict(time=slice(max(t0[0],t1[0]),min(t0[-1],t1[-1])+1))
+                nt = tsel.stop - tsel.start + 1
+                f0 = getattr(alg.ens.dynsys, field_name)(ds0).sel(tsel).sel(lat=lat,lon=lon,method='nearest')
+                f1 = getattr(alg.ens.dynsys, field_name)(ds1).sel(tsel).sel(lat=lat,lon=lon,method='nearest')
+                if 'pfull' in f0.dims:
+                    f0 = f0.sel(pfull=pfull,method='nearest')
+                    f1 = f1.sel(pfull=pfull,method='nearest')
+                f0 = f0.compute().to_numpy()
+                f1 = f1.compute().to_numpy()
+                D2 = np.convolve((f0 - f1)**2, np.ones(window), 'full')[:nt]
+                D2[:window] = np.nan
+                return D2
+            def rmsd_rolling_window(ds0,ds1,field_name,window):
+                f0 = getattr(alg.ens.dynsys, field_name)(ds0).sel(tsel).sel(lat=lat,lon=lon,method='nearest')
+                f1 = getattr(alg.ens.dynsys, field_name)(ds1).sel(tsel).sel(lat=lat,lon=lon,method='nearest')
+                if 'pfull' in f0.dims:
+                    f0 = f0.sel(pfull=pfull,method='nearest')
+                    f1 = f1.sel(pfull=pfull,method='nearest')
+                f0 = f0.compute().to_numpy()
+                f1 = f1.compute().to_numpy()
+                n0 = len(f0)
+                n1 = len(f1)
+                F0 = np.vstack(tuple(np.roll(f0,lag) for lag in range(window))).T[window:]
+                F1 = np.vstack(tuple(np.roll(f1,lag) for lag in range(window))).T[window:]
+                D2mat = np.add.outer(np.sum(F0**2, axis=1), np.sum(F1**2, axis=1)) - 2*F0.dot(F1.T)
+                return np.sqrt(np.mean(D2mat))
+
+
+
             dist_funs = dict({'tdep': dict(), 'rmsd': dict()})
             for field_name in ['temperature','total_rain','column_water_vapor','surface_pressure']:
                 dist_funs['tdep'][field_name] = lambda ds0,ds1,field_name=field_name: dist_euclidean(ds0,ds1,field_name)

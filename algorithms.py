@@ -225,14 +225,9 @@ class PeriodicBranching(EnsembleAlgorithm):
             split_times[branch_group] = time[0]
             for obs_name in obs_names:
                 running_mean = np.cumsum(obs_dict_branch[obs_name], axis=1) / np.arange(1,len(time)+1) # shape (nbranch,ntime)
-                K = np.zeros((self.branches_per_group,self.branches_per_group,self.branch_duration))
-                K[:,:,0] = np.outer(running_mean[:,0],running_mean[:,0])
-                for t in range(1,len(time)):
-                    K[:,:,t] = K[:,:,t-1]+
-
-
                 dists[dist_name][branch_group,:,:] = dists_local[dist_name].copy()
                 rmses[dist_name][branch_group,:] = np.sqrt(np.mean(dists_local[dist_name]**2, axis=0))
+                pass
 
     # ************** Perturbation growth ****************
     def measure_pert_growth(self, dist_funs):

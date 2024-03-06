@@ -850,21 +850,34 @@ def dns_short_chain(nproc):
         init_time = fin_time 
     return
 
-def dns_moderate(nproc,pert_type):
+def dns_moderate(nproc,recompile,i_param):
     tododict = dict({
-        'run':            0,
+        'run':            1,
         'plot':           1,
         })
     # Create a small ensemble
     # Run three trajectories, each one picking up where the previous one left off
     base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
-    scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/frierson_gcm"
-    date_str = "2024-02-29"
+    scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
+    date_str = "2024-03-05"
     sub_date_str = "0/DNS"
     print(f'About to generate default config')
+
     config = FriersonGCM.default_config(base_dir_absolute,base_dir_absolute)
     config['resolution'] = 'T21'
-    config['pert_type'] = pert_type
+
+    pert_type_list = ['IMP']        + ['SPPT']*12
+    std_sppt_list = [0.5]           + [0.5,0.1,0.05,0.01]*3 
+    tau_sppt_list = [6.0*3600]      + [6.0*3600]*4   + [6.0*3600]*4    + [24.0*3600]*4   
+    L_sppt_list = [500.0*1000]      + [500.0*1000]*4 + [2000.0*1000]*4 + [500.0*1000]*4 
+    config['pert_type'] = pert_type_list[i_param]
+    if config['pert_type'] == 'SPPT':
+        config['SPPT']['tau_sppt'] = tau_sppt_list[i_param]
+        config['SPPT']['std_sppt'] = std_sppt_list[i_param]
+        config['SPPT']['L_sppt'] = L_sppt_list[i_param]
+
+
+
     label,display = FriersonGCM.label_from_config(config)
     expt_dir = join(scratch_dir,date_str,sub_date_str,label)
     makedirs(expt_dir,exist_ok=True)
@@ -883,7 +896,7 @@ def dns_moderate(nproc,pert_type):
             _,init_time = ens.get_member_timespan(n_mem-1)
             init_cond = ens.traj_metadata[n_mem-1]['filename_restart']
         else:
-            gcm = FriersonGCM(config)
+            gcm = FriersonGCM(config,recompile=recompile)
             ens = Ensemble(gcm,root_dir=root_dir)
             n_mem = 0
             init_time = 0
@@ -1128,7 +1141,7 @@ def score_fun_instantaneous(ds):
 
 if __name__ == "__main__":
     print(f'Got into Main')
-    nproc = int(sys.argv[1])
-    pert_type = ['IMP','SPPT'][int(sys.argv[2])]
-    print(f'{nproc = }')
-    dns_moderate(nproc,pert_type)
+    nproc = 4
+    recompile = False
+    i_param = int(sys.argv[1])
+    dns_moderate(nproc,recompile,i_param)

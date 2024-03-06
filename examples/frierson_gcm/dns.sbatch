@@ -10,4 +10,4 @@
 
 module load anaconda3/2021.11
 source activate teamsenv
-python -u frierson_gcm.py 4 $SLURM_ARRAY_TASK_ID > progress_"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID".out
+python -u frierson_gcm.py $SLURM_ARRAY_TASK_ID > progress_"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID".out
