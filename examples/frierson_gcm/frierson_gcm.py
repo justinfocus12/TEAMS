@@ -1009,45 +1009,90 @@ def meta_analyze_dns():
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
     date_str = "2024-03-05"
     sub_date_str = "0/DNS"
-    analysis_dir = join(scratch_dir,date_str,sub_date_str)
-    makedirs(analysis_dir, exist_ok=True)
+    expt_dir = join(scratch_dir,date_str,sub_date_str)
+    meta_dir = join(expt_dir,'meta_analysis')
+    makedirs(meta_dir, exist_ok=True)
 
     # -------- Specify which variables to fix and which to vary ---------
     params = dict()
     params['L_sppt'] = dict({
-        'fun': lambda config: config['L_sppt'],
+        'fun': lambda config: config['SPPT']['L_sppt'],
         'scale': 1000, # for display purposes
-        'symbol': r'$L_{\mathrm{SPPT}}$ [km]',
+        'symbol': r'$L_{\mathrm{SPPT}}$',
+        'unit_symbol': 'km',
         })
     params['tau_sppt'] = dict({
-        'fun': lambda config: config['tau_sppt'],
+        'fun': lambda config: config['SPPT']['tau_sppt'],
         'scale': 3600, 
-        'symbol': r'$\tau_{\mathrmm{SPPT}}$ [h]',
+        'symbol': r'$\tau_{\mathrm{SPPT}}$',
+        'unit_symbol': 'h',
         })
     params['std_sppt'] = dict({
-        'fun': lambda config: config['std_sppt'],
+        'fun': lambda config: config['SPPT']['std_sppt'] if config['pert_type']=='SPPT' else 0.0,
         'scale': 1.0,
         'symbol': r'$\sigma_{\mathrm{SPPT}}$',
         })
 
-    params2fix = {'L_sppt','tau_sppt'}
-    param2vary = {'std_sppt'}
-    param_vbl = 'std_sppt'
+    params2fix = ['L_sppt','tau_sppt']
+    param2vary = 'std_sppt'
+
+    obs_names = ['temperature','total_rain','column_water_vapor','surface_pressure']
+
 
     dnsdir_pattern = join(expt_dir,f"abs1_resT21_pertSPPT*/")
     dnsdirs = glob.glob(dnsdir_pattern)
     print(f'{dnsdirs = }')
     param_vals = dict({p: [] for p in params.keys()})
-    for dnsdir in dnsdirs:
-        config = pickle.load(open(join(dnsdir,'ens.pickle'),'rb').dynsys.config)
+    # TODO add the non-SPPT version to each plot 
+    return_stats = []
+    for i_dnsdir,dnsdir in enumerate(dnsdirs):
+        dynsys = pickle.load(open(join(dnsdir,'ens.pickle'),'rb')).dynsys
         for p in params.keys():
-            param_vals[p].append(params[p]['fun'](config))
+            param_vals[p].append(params[p]['fun'](dynsys.config))
+        return_stats.append(pickle.load(open(join(dnsdir,'analysis','rlev_rtime_logsf.pickle'),'rb')))
+        if i_dnsdir == 0:
+            obsprop = dynsys.observable_props()
     # Enumerate all combinations of fixed parameters
-    param_vals_fixed = zip(*(params[p] for p in params2fix))
+    param_vals_fixed = list(zip(*(param_vals[p] for p in params2fix)))
+    print(f'{param_vals_fixed = }')
     unique_param_vals_fixed = set(param_vals_fixed)
     for pvf in unique_param_vals_fixed:
-        idx = np.array([i for i in range(len(dnsdir)) if param_vals_fixed == pvf])
-        # Compute the block maxima 
+        print(f'{pvf = }')
+        fixed_param_abbrv = ('_'.join([r'%s%g%s'%(params2fix[i],pvf[i]/params[params2fix[i]]['scale'],params[params2fix[i]]['unit_symbol']) for i in range(len(params2fix))])).replace('.','p')
+        print(f'{fixed_param_abbrv = }')
+        fixed_param_label = ', '.join([
+            r'%s $=%g$ %s'%(params[params2fix[i]]['symbol'],pvf[i]/params[params2fix[i]]['scale'],params[params2fix[i]]['unit_symbol']) 
+            for i in range(len(params2fix))])
+        idx = np.array([i for i in range(len(dnsdirs)) if (param_vals_fixed[i] == pvf)])
+        order = np.argsort([param_vals[param2vary][i] for i in idx])
+        idx = idx[order]
+        # 1. return period plots and histograms as function of variable parameter
+        for obs_name in obs_names:
+            fig,axes = plt.subplots(ncols=2,figsize=(12,5))
+            handles = []
+            colors = plt.cm.Set1(np.arange(len(idx)))
+            for ii,i in enumerate(idx):
+                ax = axes[0]
+                ax.stairs(return_stats[i][obs_name]['hist'],return_stats[i][obs_name]['bin_edges'], color=colors[ii])
+                ax = axes[1]
+                h, = ax.plot(return_stats[i][obs_name]['rtime'],return_stats[i][obs_name]['rlev'],color=colors[ii],marker='.',label=r'%g'%(param_vals[param2vary][i]))
+                ax.set_xscale('log')
+                handles.append(h)
+            axes[0].set_xlabel(r'%s'%(obsprop[obs_name]['label']))
+            axes[0].set_ylabel('Probability density')
+            axes[0].set_yscale('log')
+            axes[1].set_xlabel('Return time')
+            axes[1].set_ylabel('Return level')
+            axes[1].set_xscale('log')
+            #fixed_param_str = ', '.join([
+            #    r'%s$=$%g'%(params[p]['symbol'],pvf[i_p])
+            #    for (i_p,p) in enumerate(params2fix)
+            #    ])
+            #axes[1].set_title(fixed_param_str)
+            axes[1].legend(handles=handles, title=params[param2vary]['symbol'], loc='lower right')
+            fig.suptitle(fixed_param_label)
+            fig.savefig(join(meta_dir,f'rtime_{obsprop[obs_name]["abbrv"]}_asfunof_{param2vary}_{fixed_param_abbrv}.png'),**pltkwargs)
+            plt.close(fig)
     
 
 
@@ -1059,5 +1104,9 @@ if __name__ == "__main__":
     print(f'Got into Main')
     nproc = 4
     recompile = False
-    i_param = int(sys.argv[1])
-    dns(nproc,recompile,i_param)
+    i_procedure = 1
+    if i_procedure == 0:
+        i_param = int(sys.argv[1])
+        dns(nproc,recompile,int(i_param))
+    elif i_procedure == 1:
+        meta_analyze_dns()
