@@ -200,7 +200,7 @@ def run_periodic_branching(nproc,recompile,i_param):
             pickle.dump(alg, open(alg_filename, 'wb'))
     if utils.find_true_in_dict(tododict['analyze_pebr']):
         alg = pickle.load(open(fndict['alg']['alg'], 'rb'))
-        if tododict['analyze_pebr']['measure_pert_growth']:
+        if tododict['analyze_pebr']['measure_pert_growth'] and (not exists(fndict['analysis']['pert_growth'])):
             obsprop = alg.ens.dynsys.observable_props()
             lat = 45.0
             lon = 180.0
@@ -267,7 +267,7 @@ def run_periodic_branching(nproc,recompile,i_param):
             pickle.dump(pert_growth, open(fndict['analysis']['pert_growth'], 'wb'))
         else:
             pert_growth = pickle.load(open(fndict['analysis']['pert_growth'], 'rb'))
-        if tododict['analyze_pebr']['analyze_pert_growth']:
+        if tododict['analyze_pebr']['analyze_pert_growth'] and (not exists(fndict['analysis']['lyap_exp'])):
             lyapunov_exponents = alg.analyze_pert_growth(pert_growth)
             pickle.dump(lyapunov_exponents, open(fndict['analysis']['lyap_exp'], 'wb'))
     if utils.find_true_in_dict(tododict['plot_pebr']):
@@ -376,13 +376,6 @@ def meta_analyze_periodic_branching():
     pickle.dump({'fracs': fracsat, 't2fracsat': t2fracsat},open(join(meta_dir,'t2fracsat.pickle'),'wb'))
     FriersonGCMPeriodicBranching.plot_pert_growth_meta(std_sppt_list, fracsat, t2fracsat, join(meta_dir,f't2fracsat_{fixed_param_label}.png'), r'$\sigma_{\mathrm{SPPT}}$', tu=tu)
     return
-
-        
-
-
-
-
-
 
 if __name__ == "__main__":
     tododict = dict({

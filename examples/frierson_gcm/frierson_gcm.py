@@ -23,6 +23,7 @@ import pprint
 
 import sys
 sys.path.append("../..")
+import utils 
 from ensemble import Ensemble
 from dynamicalsystem import DynamicalSystem
 import forcing
@@ -817,43 +818,16 @@ class FriersonGCM(DynamicalSystem):
         scaling *= 3600 * 24
         return scaling
 
-def dns_short_chain(nproc):
-    # Run three trajectories, each one picking up where the previous one left off
-    base_dir = '/home/ju26596/jf_conv_gray_smooth'
-    scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/frierson_gcm"
-    date_str = "2024-02-16"
-    sub_date_str = "1"
-    print(f'About to generate default config')
-    config = FriersonGCM.default_config(base_dir)
-    gcm = FriersonGCM(config)
-    gcm.set_nproc(nproc)
 
-    expt_str = join(scratch_dir,date_str,sub_date_str)
-    makedirs(expt_str,exist_ok=True)
 
-    filename_warmstart = None
-    init_time = 0
-    for i_mem in range(3):
-        fin_time = init_time + 8
-        icandf = gcm.generate_default_icandf(init_time,fin_time)
-        icandf['filename_warmstart'] = copylib.copy(filename_warmstart)
-        saveinfo = dict({
-            # Temporary folder
-            'temp_dir': join(expt_str,f'mem{i_mem}'),
-            # Ultimate resulting filenames
-            'filename_traj': join(expt_str,f'mem{i_mem}.nc'),
-            'filename_restart': join(expt_str,f'restart_mem{i_mem}.nc'),
-            })
-        obs_fun = None
-        metadata,observable = gcm.run_trajectory(icandf, obs_fun, saveinfo, nproc=nproc)
-        filename_warmstart = saveinfo['filename_restart']
-        init_time = fin_time 
-    return
-
-def dns_moderate(nproc,recompile,i_param):
+def dns(nproc,recompile,i_param):
     tododict = dict({
-        'run':            1,
-        'plot':           1,
+        'run':                          0,
+        'analyze':                      1,
+        'plot': dict({
+            'snapshots':    0,
+            'return_stats': 1,
+            }),
         })
     # Create a small ensemble
     # Run three trajectories, each one picking up where the previous one left off
@@ -920,228 +894,170 @@ def dns_moderate(nproc,recompile,i_param):
             parent = mem
             init_cond = ens.traj_metadata[parent]['filename_restart']
             pickle.dump(ens, open(join(expt_dir,'ens.pickle'),'wb'))
-    if tododict['plot']:
-        plot_dir = join(expt_dir,'plots')
-        makedirs(plot_dir,exist_ok=True)
-
+    analysis_dir = join(expt_dir,'analysis')
+    os.makedirs(analysis_dir, exist_ok=True)
+    if tododict['analyze']:
         ens = pickle.load(open(join(expt_dir,'ens.pickle'),'rb'))
+        # Return periods of precipitation and temperature
+        spinup = 700
+        block_size = 25
+        obs_funs = dict()
         obsprop = ens.dynsys.observable_props()
         lat = 45.0
         lon = 180.0
         pfull = 1000.0
         obs_funs = dict()
         for obs_name in ['temperature']:
-            obs_funs[obs_name] = lambda dsmem,obs_name=obs_name: getattr(ens.dynsys, obs_name)(dsmem).sel(pfull=pfull,method='nearest')
+            obs_funs[obs_name] = lambda dsmem,obs_name=obs_name: getattr(ens.dynsys, obs_name)(dsmem).sel(lat=lat,lon=lon,pfull=pfull,method='nearest')
         for obs_name in ['total_rain','column_water_vapor','surface_pressure']:
-            obs_funs[obs_name] = lambda dsmem,obs_name=obs_name: getattr(ens.dynsys, obs_name)(dsmem)
-        mems2plot = [ens.get_nmem()-1]
-        obs_vals = ens.compute_observables(obs_funs, mems2plot)
+            obs_funs[obs_name] = lambda dsmem,obs_name=obs_name: getattr(ens.dynsys, obs_name)(dsmem).sel(lat=lat,lon=lon,method='nearest')
+        obs_names = list(obs_funs.keys())
 
-        for i_mem,mem in enumerate(mems2plot):
-            for obs_name in list(obs_funs.keys()):
-                memobs = obs_vals[obs_name][i_mem].compute()
-                # Plot a few daily snapshots
-                for day in memobs.time.to_numpy()[:2]: #.astype(int):
-                    fig,axes = plt.subplots(figsize=(12,5),ncols=2,sharey=True)
-                    ax = axes[0]
-                    xr.plot.pcolormesh(memobs.sel(time=day), x='lon', y='lat', cmap=obsprop[obs_name]['cmap'], ax=ax)
-                    ax.set_title(r'%s [%s], mem. %d, day %d'%(obsprop[obs_name]['label'], obsprop[obs_name]['unit_symbol'], mem, day))
-                    ax.set_xlabel('Longitude')
-                    ax.set_ylabel('Latitude')
-                    ax = axes[1]
-                    hday, = xr.plot.plot(memobs.mean(dim=['time','lon']),y='lat',color='black',ax=ax,label=r'(zonal,time) avg')
-                    havg, = xr.plot.plot(memobs.sel(time=day).mean(dim='lon'),y='lat',color='red',ax=ax,label=r'zonal avg')
-                    ax.set_title("")
-                    ax.set_xlabel(r'%s [%s]'%(obsprop[obs_name]['label'],obsprop[obs_name]['unit_symbol']))
-                    ax.set_ylabel('')
-                    ax.legend(handles=[hday,havg])
-
-                    fig.savefig(join(plot_dir,r'%s_mem%d_day%d'%(obsprop[obs_name]['abbrv'],mem,day)),**pltkwargs)
-                    plt.close(fig)
-                # Plot timeseries
-                fig,ax = plt.subplots()
-                xr.plot.plot(memobs.sel(lat=lat,lon=lon,method='nearest'), x='time', color='black')
-                ax.set_xlabel("time")
-                ax.set_ylabel(r'%s [%s]'%(obsprop[obs_name]['label'],obsprop[obs_name]['unit_symbol']))
-                ax.set_title(r'$(\lambda,\phi)=(%g,%g)$'%(lon,lat))
-                fig.savefig(join(plot_dir,r'%s_mem%d'%(obsprop[obs_name]['abbrv'],mem)),**pltkwargs)
-                plt.close(fig)
-    return
-
-
-def small_branching_ensemble(nproc,pert_type):
-    tododict = dict({
-        'run':            1,
-        'plot':           1,
-        })
-    # Create a small ensemble
-    # Run three trajectories, each one picking up where the previous one left off
-    base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
-    scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/frierson_gcm"
-    date_str = "2024-02-28"
-    sub_date_str = "0"
-    print(f'About to generate default config')
-    config = FriersonGCM.default_config(base_dir_absolute,base_dir_absolute)
-    config['pert_type'] = pert_type
-    label,display = FriersonGCM.label_from_config(config)
-    expt_dir = join(scratch_dir,date_str,sub_date_str,label)
-
-    if tododict['run']:
-        makedirs(expt_dir,exist_ok=True)
-        obs_fun = lambda t,x: None
-
-        gcm = FriersonGCM(config)
-        gcm.set_nproc(nproc)
-        ens = Ensemble(gcm)
-
-        seed_vals = [-1,29183,48271,39183,38383,88822,77612,22345]
-        parent_duration = 5 #15
-        child_duration = 3 #10
-
-        # Parent member
-        mem = 0
-        init_time = 0
-        fin_time = parent_duration
-        icandf = gcm.generate_default_icandf(init_time,fin_time)
-        saveinfo = dict({
-            # Temporary folder
-            'temp_dir': join(expt_dir,f'mem{mem}'),
-            # Ultimate resulting filenames
-            'filename_traj': join(expt_dir,f'mem{mem}.nc'),
-            'filename_restart': join(expt_dir,f'restart_mem{mem}.cpio'),
-            })
-        _ = ens.branch_or_plant(icandf, obs_fun, saveinfo)
-
-
-        # Branch off some children
-        for mem in [1,2]:
-            parent = 0
-            mdp = ens.traj_metadata[parent]
-            init_time = mdp['icandf']['frc'].fin_time
-            icandf = dict({
-                'init_cond': mdp['filename_restart'],
-                'frc': forcing.OccasionalReseedForcing(init_time, init_time+child_duration, [init_time], [seed_vals[mem]])
+        nmem = ens.get_nmem()
+        all_starts,all_ends = ens.get_all_timespans()
+        print(f'{all_starts = }')
+        mems2analyze = np.where(all_starts >= spinup)[0]
+        print(f'{mems2analyze = }')
+        obs = ens.compute_observables(obs_funs, mems2analyze)
+        for obs_name in obs_names:
+            obs[obs_name] = xr.concat(obs[obs_name], dim='time').to_numpy()
+        return_stats = dict()
+        for obs_name in obs_names:
+            block_maxima = utils.compute_block_maxima(obs[obs_name], block_size)
+            rlev,rtime,logsf = utils.compute_return_time_block_maxima(obs[obs_name], block_size)
+            hist,bin_edges = np.histogram(obs[obs_name], density=True)
+            return_stats[obs_name] = dict({
+                'rlev': rlev,
+                'rtime': rtime,
+                'logsf': logsf,
+                'hist': hist,
+                'bin_edges': bin_edges,
                 })
-            saveinfo = dict({
-                'temp_dir': join(expt_dir,f'mem{mem}'),
-                'filename_traj': join(expt_dir,f'mem{mem}.nc'),
-                'filename_restart': join(expt_dir,f'restart_mem{mem}.cpio'),
-                })
-            _ = ens.branch_or_plant(icandf, obs_fun, saveinfo, parent=parent)
-
-        # Another Parent member:
-        mem = 3
-        init_time = 0
-        fin_time = parent_duration
-        icandf = dict({
-            'init_cond': None,
-            'frc': forcing.OccasionalReseedForcing(init_time, fin_time, [init_time], [seed_vals[mem]])
-            })
-        saveinfo = dict({
-            # Temporary folder
-            'temp_dir': join(expt_dir,f'mem{mem}'),
-            # Ultimate resulting filenames
-            'filename_traj': join(expt_dir,f'mem{mem}.nc'),
-            'filename_restart': join(expt_dir,f'restart_mem{mem}.cpio'),
-            })
-        _ = ens.branch_or_plant(icandf, obs_fun, saveinfo)
-
-
-        # Branch off some children
-        for mem in [4,5]:
-            parent = 3
-            mdp = ens.traj_metadata[parent]
-            init_time = mdp['icandf']['frc'].fin_time
-            icandf = dict({
-                'init_cond': mdp['filename_restart'],
-                'frc': forcing.OccasionalReseedForcing(init_time, init_time+child_duration, [init_time], [seed_vals[mem]])
-                })
-            saveinfo = dict({
-                'temp_dir': join(expt_dir,f'mem{mem}'),
-                'filename_traj': join(expt_dir,f'mem{mem}.nc'),
-                'filename_restart': join(expt_dir,f'restart_mem{mem}.cpio'),
-                })
-            _ = ens.branch_or_plant(icandf, obs_fun, saveinfo, parent=parent)
-
-        # Save out the ensemble for later querying
-        pickle.dump(ens, open(join(expt_dir,'ens.pickle'),'wb'))
-    if tododict['plot']:
-        plot_dir = join(expt_dir,'plots')
-        makedirs(plot_dir,exist_ok=True)
-
+        pickle.dump(return_stats, open(join(analysis_dir, 'rlev_rtime_logsf.pickle'), 'wb'))
+        
+    plot_dir = join(expt_dir,'plots')
+    makedirs(plot_dir,exist_ok=True)
+    if utils.find_true_in_dict(tododict['plot']):
         ens = pickle.load(open(join(expt_dir,'ens.pickle'),'rb'))
-        obslib = ens.dynsys.observable_props()
-        obs2plot = ['temperature','total_rain','column_water_vapor','surface_pressure'][1:]
-        lat = 45.0
-        lon = 180.0
-        pfull = 500.0
+        obsprop = ens.dynsys.observable_props()
 
-        # Plot local observables for all members
-        obs_vals = dict({obs: [] for obs in obs2plot})
-        for mem in range(ens.memgraph.number_of_nodes()):
-            dsmem = xr.open_mfdataset(ens.traj_metadata[mem]['filename_traj'], decode_times=False)
-            i_lat = np.argmin(np.abs(dsmem.lat.values - lat))
-            i_lon = np.argmin(np.abs(dsmem.lon.values - lon))
-            for obs in obs2plot:
-                memobs = getattr(ens.dynsys, obs)(dsmem).isel(lat=i_lat,lon=i_lon).compute()
-                if 'pfull' in memobs.dims:
-                    i_pfull = np.argmin(np.abs(dsmem.pfull.values - pfull))
-                    memobs = memobs.isel(pfull=i_pfull)
-                obs_vals[obs].append(memobs)
-        for obs in obs2plot:
-            fig,ax = plt.subplots(figsize=(20,5))
-            handles = []
-            for mem in range(ens.memgraph.number_of_nodes()):
-                h, = xr.plot.plot(obs_vals[obs][mem], x='time', label=f'm{mem}', marker='o')
-                handles.append(h)
-            ax.legend(handles=handles)
-            ax.set_title(obslib[obs]['label'])
-            fig.savefig(join(plot_dir,f'{obslib[obs]["abbrv"]}.png'),**pltkwargs)
+        if tododict['plot']['return_stats']:
+            return_stats = pickle.load(open(join(analysis_dir, 'rlev_rtime_logsf.pickle'), 'rb'))
+            for obs_name in return_stats.keys():
+                fig,axes = plt.subplots(ncols=2,figsize=(10,4))
+                ax = axes[0]
+                ax.stairs(return_stats[obs_name]['hist'],return_stats[obs_name]['bin_edges'])
+                ax.set_xlabel(obsprop[obs_name]['label'])
+                ax.set_ylabel('Density')
+                ax.set_yscale('log')
+                ax = axes[1]
+                ax.plot(return_stats[obs_name]['rtime'],return_stats[obs_name]['rlev'],color='black',marker='.')
+                ax.set_xlabel('Return time')
+                ax.set_ylabel('Return level')
+                ax.set_xscale('log')
+                ax.set_title(obsprop[obs_name]['label'])
+                fig.savefig(join(plot_dir,f'rtime_{obsprop[obs_name]["abbrv"]}.png'),**pltkwargs)
+                plt.close(fig)
 
 
-        # Plot full fields
-        for mem in [0,4]: #range(ens.memgraph.number_of_nodes()):
-            dsmem = xr.open_mfdataset(ens.traj_metadata[mem]['filename_traj'], decode_times=False)
-            i_pfull = np.argmin(np.abs(dsmem.pfull.values - pfull))
-            for obs in obs2plot:
-                memobs = getattr(ens.dynsys, obs)(dsmem)
-                if 'pfull' in memobs.dims:
-                    memobs = memobs.isel(pfull=i_pfull)
-                memobs = memobs.compute()
-                for day in memobs.time.to_numpy().astype(int):
-                    fig,ax = plt.subplots(figsize=(8,5))
-                    xr.plot.pcolormesh(memobs.sel(time=day), x='lon', y='lat', cmap=obslib[obs]['cmap'], ax=ax)
-                    ax.set_title(r'%s [%s], mem. %d, day %d'%(obslib[obs]['label'], obslib[obs]['unit_symbol'], mem, day))
-                    ax.set_xlabel('Longitude')
-                    ax.set_ylabel('Latitude')
-                    fig.savefig(join(plot_dir,r'%s_mem%d_day%d'%(obslib[obs]['abbrv'],mem,day)),**pltkwargs)
+        if tododict['plot']['snapshots']:
+            lat = 45.0
+            lon = 180.0
+            pfull = 1000.0
+            obs_funs = dict()
+            for obs_name in ['temperature']:
+                obs_funs[obs_name] = lambda dsmem,obs_name=obs_name: getattr(ens.dynsys, obs_name)(dsmem).sel(pfull=pfull,method='nearest')
+            for obs_name in ['total_rain','column_water_vapor','surface_pressure']:
+                obs_funs[obs_name] = lambda dsmem,obs_name=obs_name: getattr(ens.dynsys, obs_name)(dsmem)
+            mems2plot = [ens.get_nmem()-1]
+            obs_vals = ens.compute_observables(obs_funs, mems2plot)
+
+            for i_mem,mem in enumerate(mems2plot):
+                for obs_name in list(obs_funs.keys()):
+                    memobs = obs_vals[obs_name][i_mem].compute()
+                    # Plot a few daily snapshots
+                    for day in memobs.time.to_numpy()[:2]: #.astype(int):
+                        fig,axes = plt.subplots(figsize=(12,5),ncols=2,sharey=True)
+                        ax = axes[0]
+                        xr.plot.pcolormesh(memobs.sel(time=day), x='lon', y='lat', cmap=obsprop[obs_name]['cmap'], ax=ax)
+                        ax.set_title(r'%s [%s], mem. %d, day %d'%(obsprop[obs_name]['label'], obsprop[obs_name]['unit_symbol'], mem, day))
+                        ax.set_xlabel('Longitude')
+                        ax.set_ylabel('Latitude')
+                        ax = axes[1]
+                        hday, = xr.plot.plot(memobs.mean(dim=['time','lon']),y='lat',color='black',ax=ax,label=r'(zonal,time) avg')
+                        havg, = xr.plot.plot(memobs.sel(time=day).mean(dim='lon'),y='lat',color='red',ax=ax,label=r'zonal avg')
+                        ax.set_title("")
+                        ax.set_xlabel(r'%s [%s]'%(obsprop[obs_name]['label'],obsprop[obs_name]['unit_symbol']))
+                        ax.set_ylabel('')
+                        ax.legend(handles=[hday,havg])
+
+                        fig.savefig(join(plot_dir,r'%s_mem%d_day%d'%(obsprop[obs_name]['abbrv'],mem,day)),**pltkwargs)
+                        plt.close(fig)
+                    # Plot timeseries
+                    fig,ax = plt.subplots()
+                    xr.plot.plot(memobs.sel(lat=lat,lon=lon,method='nearest'), x='time', color='black')
+                    ax.set_xlabel("time")
+                    ax.set_ylabel(r'%s [%s]'%(obsprop[obs_name]['label'],obsprop[obs_name]['unit_symbol']))
+                    ax.set_title(r'$(\lambda,\phi)=(%g,%g)$'%(lon,lat))
+                    fig.savefig(join(plot_dir,r'%s_mem%d'%(obsprop[obs_name]['abbrv'],mem)),**pltkwargs)
                     plt.close(fig)
-
     return
 
 
 
+def meta_analyze_dns():
+    scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
+    date_str = "2024-03-05"
+    sub_date_str = "0/DNS"
+    analysis_dir = join(scratch_dir,date_str,sub_date_str)
+    makedirs(analysis_dir, exist_ok=True)
+
+    # -------- Specify which variables to fix and which to vary ---------
+    params = dict()
+    params['L_sppt'] = dict({
+        'fun': lambda config: config['L_sppt'],
+        'scale': 1000, # for display purposes
+        'symbol': r'$L_{\mathrm{SPPT}}$ [km]',
+        })
+    params['tau_sppt'] = dict({
+        'fun': lambda config: config['tau_sppt'],
+        'scale': 3600, 
+        'symbol': r'$\tau_{\mathrmm{SPPT}}$ [h]',
+        })
+    params['std_sppt'] = dict({
+        'fun': lambda config: config['std_sppt'],
+        'scale': 1.0,
+        'symbol': r'$\sigma_{\mathrm{SPPT}}$',
+        })
+
+    params2fix = {'L_sppt','tau_sppt'}
+    param2vary = {'std_sppt'}
+    param_vbl = 'std_sppt'
+
+    dnsdir_pattern = join(expt_dir,f"abs1_resT21_pertSPPT*/")
+    dnsdirs = glob.glob(dnsdir_pattern)
+    print(f'{dnsdirs = }')
+    param_vals = dict({p: [] for p in params.keys()})
+    for dnsdir in dnsdirs:
+        config = pickle.load(open(join(dnsdir,'ens.pickle'),'rb').dynsys.config)
+        for p in params.keys():
+            param_vals[p].append(params[p]['fun'](config))
+    # Enumerate all combinations of fixed parameters
+    param_vals_fixed = zip(*(params[p] for p in params2fix))
+    unique_param_vals_fixed = set(param_vals_fixed)
+    for pvf in unique_param_vals_fixed:
+        idx = np.array([i for i in range(len(dnsdir)) if param_vals_fixed == pvf])
+        # Compute the block maxima 
+    
 
 
+    # -------------------------------------------------------------------
+    return
 
-
-
-# ----------- Below are some standard test methods ------------
-
-
-
-def score_fun_instantaneous(ds):
-    # This score fun must be positive, and in the algorithm trajectories will be scored by their running maximum, so that the scores are always increasing over time.
-    score = (
-           transformations.observable_from_name(ds["1xday"], "total_rain")
-           .sel(lat=slice(49,52), lon=slice(179,181))
-           .mean(dim=["lat","lon"]))
-
-    return score 
 
 if __name__ == "__main__":
     print(f'Got into Main')
     nproc = 4
     recompile = False
     i_param = int(sys.argv[1])
-    dns_moderate(nproc,recompile,i_param)
+    dns(nproc,recompile,i_param)

@@ -63,9 +63,9 @@ class Ensemble(ABC):
                 obs_dict[obs_name].append(obs_dict_mem[obs_name])
         return obs_dict
 
-    def compute_observables_along_lineage(self, obs_names, mem_leaf):
+    def compute_observables_along_lineage(self, obs_funs, mem_leaf):
         mems = sorted(nx.ancestors(self.memgraph, mem_leaf) | {mem_leaf})
-        obs_dict = self.compute_observables(obs_names, mems)
+        obs_dict = self.compute_observables(obs_funs, mems)
         return obs_dict # leave the explicit concatenation to later
 
     # --------------- Plotting methods ---------------
