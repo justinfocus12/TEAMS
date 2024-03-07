@@ -822,7 +822,7 @@ class FriersonGCM(DynamicalSystem):
 
 def dns(nproc,recompile,i_param):
     tododict = dict({
-        'run':                          0,
+        'run':                          1,
         'analyze':                      1,
         'plot': dict({
             'snapshots':    0,
@@ -840,10 +840,10 @@ def dns(nproc,recompile,i_param):
     config = FriersonGCM.default_config(base_dir_absolute,base_dir_absolute)
     config['resolution'] = 'T21'
 
-    pert_type_list = ['IMP']        + ['SPPT']*12
-    std_sppt_list = [0.5]           + [0.5,0.1,0.05,0.01]*3 
-    tau_sppt_list = [6.0*3600]      + [6.0*3600]*4   + [6.0*3600]*4    + [24.0*3600]*4   
-    L_sppt_list = [500.0*1000]      + [500.0*1000]*4 + [2000.0*1000]*4 + [500.0*1000]*4 
+    pert_type_list = ['IMP']        + ['SPPT']*16
+    std_sppt_list = [0.5]           + [0.5,0.1,0.05,0.01]*4
+    tau_sppt_list = [6.0*3600]      + [6.0*3600]*4   + [6.0*3600]*4    + [24.0*3600]*4     + [96.0*3600]*4 
+    L_sppt_list = [500.0*1000]      + [500.0*1000]*4 + [2000.0*1000]*4 + [500.0*1000]*4    + [500.0*1000]*4
     config['pert_type'] = pert_type_list[i_param]
     if config['pert_type'] == 'SPPT':
         config['SPPT']['tau_sppt'] = tau_sppt_list[i_param]
@@ -1028,7 +1028,7 @@ def meta_analyze_dns():
         'unit_symbol': 'h',
         })
     params['std_sppt'] = dict({
-        'fun': lambda config: config['SPPT']['std_sppt'] if config['pert_type']=='SPPT' else 0.0,
+        'fun': lambda config: config['SPPT']['std_sppt'],
         'scale': 1.0,
         'symbol': r'$\sigma_{\mathrm{SPPT}}$',
         })
@@ -1052,6 +1052,8 @@ def meta_analyze_dns():
         return_stats.append(pickle.load(open(join(dnsdir,'analysis','rlev_rtime_logsf.pickle'),'rb')))
         if i_dnsdir == 0:
             obsprop = dynsys.observable_props()
+
+    # TODO Add special case to the dataset: non-SPPT
     # Enumerate all combinations of fixed parameters
     param_vals_fixed = list(zip(*(param_vals[p] for p in params2fix)))
     print(f'{param_vals_fixed = }')
@@ -1104,7 +1106,7 @@ if __name__ == "__main__":
     print(f'Got into Main')
     nproc = 4
     recompile = False
-    i_procedure = 1
+    i_procedure = 0
     if i_procedure == 0:
         i_param = int(sys.argv[1])
         dns(nproc,recompile,int(i_param))

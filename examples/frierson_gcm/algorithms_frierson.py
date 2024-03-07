@@ -351,11 +351,11 @@ def run_periodic_branching(nproc,recompile,i_param):
     return
 
 def meta_analyze_periodic_branching():
-    expt_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/frierson_gcm/2024-03-02/0/PeBr"
+    expt_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/2024-03-05/0/PeBr"
     meta_dir = join(expt_dir,'meta_analysis')
     makedirs(meta_dir,exist_ok=True)
     # -------- Fixed parameters -----
-    L_sppt = 500 * 1000.0
+    L_sppt = 2000 * 1000.0
     tau_sppt = 6.0 * 3600
     fixed_param_label = f'tau{tau_sppt/3600:g}h_L{L_sppt/1000:g}km'
     # -------------------------------
@@ -378,15 +378,12 @@ def meta_analyze_periodic_branching():
     return
 
 if __name__ == "__main__":
-    tododict = dict({
-        'run':              1,
-        'meta':             0
-        })
+    procedure = 'run'
     print(f'Got into Main')
-    if tododict['run']:
+    if procedure == 'run':
         nproc = 4 
         recompile = 0 
         i_param = int(sys.argv[1])
         run_periodic_branching(nproc,recompile,i_param)
-    if tododict['meta']:
+    elif procedure == 'meta':
         meta_analyze_periodic_branching()
