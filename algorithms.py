@@ -193,22 +193,20 @@ class PeriodicBranching(EnsembleAlgorithm):
         time = 1 + split_time + np.arange(self.branch_duration, dtype=int)
         tidx_trunk = split_time - all_init_times[mems_trunk[0]] + np.arange(self.branch_duration)
         return time,mems_trunk,tidx_trunk,mems_branch,tidxs_branch
-    def compute_pairwise_funs_local(self, pair_funs, branch_group):
+    def compute_pairwise_fun_local(self, pairwise_fun, branch_group):
         # These should be time-dependent functions
         time,mems_trunk,tidx_trunk,mems_branch,tidxs_branch = self.get_tree_subset(branch_group)
         print(f'{time = }')
-        pair_list = []
+        pairwise_fun_vals_list = []
         for mem0 in mems_trunk:
-            pair_list.append(self.ens.compute_pairwise_observables(pair_funs, mem0, mems_branch))
+            pairwise_fun_vals_list.append(self.ens.compute_pairwise_observables([pairwise_fun], mem0, mems_branch))[0]
             print(f'{pair_list[-1]["temperature"][0].shape = }')
-        pairs = dict()
-        pair_names = list(pair_funs.keys())
-        for pair_name in pair_names:
-            pairs[pair_name] = np.zeros((len(mems_branch), len(time)))
-            for i_mem1,mem1 in enumerate(mems_branch):
-                print(f'{pair_list[0][pair_name][i_mem1] = }')
-                pairs[pair_name][i_mem1,:] = np.concatenate([d[pair_name][i_mem1] for d in pair_list])[tidx_trunk]
-        return time,pairs
+        # Repackage into the right shape
+        pairwise_fun_vals_array = np.zeros((len(mems_branch), len(time)))
+        for i_mem1,mem1 in enumerate(mems_branch):
+            print(f'{pair_list[0][pair_name][i_mem1] = }')
+            pairwise_fun_vals_array[i_mem1,:] = np.concatenate([d[i_mem1] for d in pairwise_fun_vals_list])[tidx_trunk]
+        return time,pairwise_fun_vals_array
     # ************** Extreme observable *****************
     def measure_obs_running_correlation(self, obs_funs):
         # Measure the running correlation between the observable functions 
@@ -230,22 +228,17 @@ class PeriodicBranching(EnsembleAlgorithm):
                 pass
 
     # ************** Perturbation growth ****************
-    def measure_pert_growth(self, dist_funs):
+    def measure_pert_growth(self, dist_fun):
         # Save a statistical analysis of RMSE growth to a specified directory
-        dist_names = list(dist_funs['tdep'].keys())
         ngroups = self.branching_state['next_branch_group']+1
         split_times = np.zeros(ngroups, dtype=int)
         print(f'{split_times = }')
-        dists = dict({dist_name: np.zeros((ngroups, self.branches_per_group, self.branch_duration)) for dist_name in dist_names})
-        rmses = dict({dist_name: np.zeros((ngroups, self.branch_duration)) for dist_name in dist_names})
+        dists = np.zeros((ngroups, self.branches_per_group, self.branch_duration)) 
         for branch_group in range(ngroups):
             print(f'About to compute distances for {branch_group = }')
-            time,dists_local = self.compute_pairwise_funs_local(dist_funs['tdep'], branch_group)
+            time,dists_local = self.compute_pairwise_funs_local(dist_fun, branch_group)
             split_times[branch_group] = time[0]
-            rmse_local = dict({key: np.sqrt(np.mean(val**2, axis=0)) for (key,val) in dists_local.items()})
-            for dist_name in dist_names:
-                dists[dist_name][branch_group,:,:] = dists_local[dist_name].copy()
-                rmses[dist_name][branch_group,:] = np.sqrt(np.mean(dists_local[dist_name]**2, axis=0))
+            dists[dist_name][branch_group,:,:] = dists_local[dist_name].copy()
         # Compute RMSD, using only the last two branch members
         mems_trunk = self.branching_state['trunk_lineage']
         if len(mems_trunk) == 1:
@@ -277,7 +270,7 @@ class PeriodicBranching(EnsembleAlgorithm):
         print(f'{lyapunov_exponents = }')
         return lyapunov_exponents
     @classmethod
-    def analyze_pert_growth_meta(cls, pert_growth_list, indep_var_list):
+    def analyze_pert_growth_meta(cls, pert_growth_list):
         # Compare characteristics of perturbation growth as a function of various independent variables
         fracs = np.array([1/8,1/4,3/8,1/2])
         nfrac = len(fracs)
@@ -339,7 +332,9 @@ class PeriodicBranching(EnsembleAlgorithm):
         # 2. Make this a classmethod
         return
     @classmethod 
-    def plot_pert_growth_meta(cls, indep_var_list, fracsat, t2fracsat, savefile, ivlabel, tu=1):
+    def plot_pert_growth_meta(cls, indep_var_list, fracsat, t2fracsat, savefile, ivlabel, tu=1, fracsat_ref=None, t2fracsat_ref=None):
+        dist_names = list(t2fracsat.keys())
+        colors = {dist_name: plt.cm.Set1(i_dist_name) for (i_dist_name,dist_name) in enumerate(dist_names)}
         fig,axes = plt.subplots(nrows=len(fracsat),figsize=(6,3*len(fracsat)),sharex=True,gridspec_kw={'hspace': 0.25})
         handles = []
         for dist_name,t in t2fracsat.items():
@@ -348,11 +343,18 @@ class PeriodicBranching(EnsembleAlgorithm):
             order = np.argsort(indep_var_list)
             for i_frac,frac in enumerate(fracsat):
                 ax = axes[i_frac]
-                h, = ax.plot(np.array(indep_var_list)[order], t[order,i_frac]*tu, label=dist_name, marker='o')
+                h, = ax.plot(np.array(indep_var_list)[order], t[order,i_frac]*tu, label=dist_name, marker='o', color=colors[dist_name])
                 if i_frac == 0: handles.append(h)
                 ax.set_title(f'Time to {frac:g} of saturation')
                 ax.set_xlabel('')
-        axes[0].legend(handles=handles)
+        if (fracsat_ref is not None) and (t2fracsat_ref is not None):
+            for dist_name,t in t2fracsat_ref.items():
+                print(f'{dist_name = }')
+                print(f'{t = }')
+                for i_frac,frac in enumerate(fracsat):
+                    ax = axes[i_frac]
+                    h = ax.axhline(t[0,i_frac]*tu, color=colors[dist_name], linewidth=3, linestyle='--')
+        axes[0].legend(handles=handles,loc=(0,1.25),title='Field for distance')
         axes[-1].set_xlabel(ivlabel)
         fig.savefig(savefile, **pltkwargs)
         plt.close(fig)

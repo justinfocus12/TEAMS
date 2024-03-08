@@ -115,10 +115,10 @@ def run_periodic_branching(nproc,recompile,i_param):
     config_gcm = FriersonGCM.default_config(base_dir_absolute,base_dir_absolute)
 
     # Parameters to loop over
-    pert_type_list = ['IMP']        + ['SPPT']*12
-    std_sppt_list = [0.5]           + [0.5,0.1,0.05,0.01]*3 
-    tau_sppt_list = [6.0*3600]      + [6.0*3600]*4   + [6.0*3600]*4    + [24.0*3600]*4   
-    L_sppt_list = [500.0*1000]      + [500.0*1000]*4 + [2000.0*1000]*4 + [500.0*1000]*4 
+    pert_type_list = ['IMP']        + ['SPPT']*16
+    std_sppt_list = [0.5]           + [0.5,0.1,0.05,0.01]*4
+    tau_sppt_list = [6.0*3600]      + [6.0*3600]*4   + [6.0*3600]*4    + [24.0*3600]*4     + [96.0*3600]*4 
+    L_sppt_list = [500.0*1000]      + [500.0*1000]*4 + [2000.0*1000]*4 + [500.0*1000]*4    + [500.0*1000]*4
 
     config_gcm['pert_type'] = pert_type_list[i_param]
     if config_gcm['pert_type'] == 'SPPT':
@@ -158,7 +158,13 @@ def run_periodic_branching(nproc,recompile,i_param):
             'lyap_exp': join(dirdict['analysis'],'lyap_exp.pickle')
             })
         })
+
+    # ----------- Configure post-analysis ---------------------
     fndict['plots'] = dict()
+    config_analysis = dict({
+        'dist_names': ['total_rain_eucdist','column_water_vapor_eucdist','surface_pressure_eucdist'],
+
+
     dist_names = ['temperature','column_water_vapor','surface_pressure','total_rain',]
     for dist_name in dist_names:
         fndict['plots'][dist_name] = dict({'rmse': join(dirdict['plots'],f'rmse_dist{dist_name}')})
@@ -354,31 +360,82 @@ def meta_analyze_periodic_branching():
     expt_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/2024-03-05/0/PeBr"
     meta_dir = join(expt_dir,'meta_analysis')
     makedirs(meta_dir,exist_ok=True)
-    # -------- Fixed parameters -----
-    L_sppt = 2000 * 1000.0
-    tau_sppt = 6.0 * 3600
-    fixed_param_label = f'tau{tau_sppt/3600:g}h_L{L_sppt/1000:g}km'
-    # -------------------------------
-    algdir_pattern = join(expt_dir,f"abs1_resT21_pertSPPT_std0p*_clip2_{fixed_param_label}/PeBr*/")
+    # -------- Specify which variables to fix and which to vary ---------
+    params = dict()
+    params['L_sppt'] = dict({
+        'fun': lambda config: config['SPPT']['L_sppt'],
+        'scale': 1000, # for display purposes
+        'symbol': r'$L_{\mathrm{SPPT}}$',
+        'unit_symbol': 'km',
+        })
+    params['tau_sppt'] = dict({
+        'fun': lambda config: config['SPPT']['tau_sppt'],
+        'scale': 3600, 
+        'symbol': r'$\tau_{\mathrm{SPPT}}$',
+        'unit_symbol': 'h',
+        })
+    params['std_sppt'] = dict({
+        'fun': lambda config: config['SPPT']['std_sppt'],
+        'scale': 1.0,
+        'symbol': r'$\sigma_{\mathrm{SPPT}}$',
+        })
+    params2fix = ['L_sppt','tau_sppt']
+    param2vary = 'std_sppt'
+    # --------- Analysis for nosppt ---------
+    algdir_nosppt = glob.glob(join(expt_dir,f'abs1_resT21_pertIMP*/PeBr*/'))[0]
+    pert_growth_nosppt = pickle.load(open(join(algdir_nosppt,'analysis/pert_growth.pickle'),'rb'))
+    dist_names = list(pert_growth_nosppt.keys())
+    fracsat_nosppt,t2fracsat_nosppt = FriersonGCMPeriodicBranching.analyze_pert_growth_meta([pert_growth_nosppt])
+    print(f'{t2fracsat_nosppt = }')
+    # --------- Analysis for sppt -----------
+    param_vals = dict({p: [] for p in params.keys()})
+    algdir_pattern = join(expt_dir,f"abs1_resT21_pertSPPT_std0p*_clip2_tau*h_L*km/PeBr*/")
     print(f'{algdir_pattern = }')
     algdirs = glob.glob(algdir_pattern)
-    print(f'{algdirs = }')
+    algdirs2include = []
+    print(f'{len(algdirs) = }')
     pert_growth_list = []
-    std_sppt_list = []
-    for algdir in algdirs:
+    for i_algdir,algdir in enumerate(algdirs):
         pg_filename = join(algdir,'analysis/pert_growth.pickle')
         if exists(pg_filename):
+            algdirs2include.append(algdir)
             pert_growth_list.append(pickle.load(open(pg_filename,'rb')))
             alg = pickle.load(open(join(algdir,'alg.pickle'),'rb'))
-            tu = alg.ens.dynsys.dt_save
-            std_sppt_list.append(alg.ens.dynsys.config['SPPT']['std_sppt'])
-    fracsat,t2fracsat = FriersonGCMPeriodicBranching.analyze_pert_growth_meta(pert_growth_list, std_sppt_list)
-    pickle.dump({'fracs': fracsat, 't2fracsat': t2fracsat},open(join(meta_dir,'t2fracsat.pickle'),'wb'))
-    FriersonGCMPeriodicBranching.plot_pert_growth_meta(std_sppt_list, fracsat, t2fracsat, join(meta_dir,f't2fracsat_{fixed_param_label}.png'), r'$\sigma_{\mathrm{SPPT}}$', tu=tu)
+            if i_algdir == 0:
+                obsprop = alg.ens.dynsys.observable_props()
+                tu = alg.ens.dynsys.dt_save
+            for p in params.keys():
+                param_vals[p].append(params[p]['fun'](alg.ens.dynsys.config))
+
+    algdirs = algdirs2include
+    # For each fixed set of independent variables, analyze them as a group
+    param_vals_fixed = list(zip(*(param_vals[p] for p in params2fix)))
+    print(f'{param_vals_fixed = }')
+    unique_param_vals_fixed = set(param_vals_fixed)
+    for pvf in unique_param_vals_fixed:
+        print(f'{pvf = }')
+        fixed_param_abbrv = ('_'.join([
+            r'%s%g%s'%(params2fix[i],pvf[i]/params[params2fix[i]]['scale'],params[params2fix[i]]['unit_symbol']) 
+            for i in range(len(params2fix))
+            ])
+            ).replace('.','p')
+        print(f'{fixed_param_abbrv = }')
+        fixed_param_label = ', '.join([
+            r'%s $=%g$ %s'%(params[params2fix[i]]['symbol'],pvf[i]/params[params2fix[i]]['scale'],params[params2fix[i]]['unit_symbol']) 
+            for i in range(len(params2fix))
+            ])
+        idx = np.array([i for i in range(len(algdirs)) if (param_vals_fixed[i] == pvf)])
+        param2vary_vals = np.array([param_vals[param2vary][i] for i in idx])
+        order = np.argsort(param2vary_vals)
+        param2vary_vals = param2vary_vals[order]
+        idx = idx[order] 
+        pert_growth_sublist = [pert_growth_list[i] for i in idx]
+        fracsat,t2fracsat = FriersonGCMPeriodicBranching.analyze_pert_growth_meta(pert_growth_sublist)
+        FriersonGCMPeriodicBranching.plot_pert_growth_meta(param2vary_vals, fracsat, t2fracsat, join(meta_dir,f't2fracsat_{fixed_param_abbrv}.png'), r'$\sigma_{\mathrm{SPPT}}$', tu=tu, fracsat_ref=fracsat_nosppt, t2fracsat_ref=t2fracsat_nosppt)
     return
 
 if __name__ == "__main__":
-    procedure = 'run'
+    procedure = 'meta'
     print(f'Got into Main')
     if procedure == 'run':
         nproc = 4 

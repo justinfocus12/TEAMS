@@ -471,6 +471,33 @@ class FriersonGCM(DynamicalSystem):
             runavg += da.shift(time=i_delay).isel(time=day_end_tidx)
         runavg *= 1.0/steps_per_day
         return runavg
+    # --------------- Distance functions ----------------------
+    def compute_pairwise_observables(self, pairwise_funs, md0, md1list, root_dir): # Distance is the main application here 
+        pairwise_fun_vals = [[] for pwf in pairwise_fun] # List of lists
+        ds0 = xr.open_mfdataset(join(root_dir,md0['filename_traj']), decode_times=False)
+        for i_md1,md1 in enumerate(md1list):
+            ds1 = xr.open_mfdataset(join(root_dir,md1['filename_traj']), decode_times=False)
+            pairwise_fun_vals.append([])
+            for i_pwf,pwf in enumerate(pairwise_funs):
+                pairwise_fun_vals[i_pwf].append(pwf(ds0,ds1))
+        return pairwise_fun_vals
+    def distance_props(self):
+        obsprop = self.observable_props()
+        distprop = dict()
+        # 2D fields, Euclidean distance
+        for field in ['total_rain','column_water_vapor','surface_pressure']:
+            opf = obsprop[field]
+            distkey = f'{field}_eucdist'
+            distprop[distkey] = dict({
+                'abbrv': r'%s_EUC'%(opf['abbrv']),
+                'unit_symbol': opf['unit_symbol'],
+                'label': r'Eucl. Dist. (%s)'%(opf['label']),
+                'cmap': opf['cmap'],
+                })
+        return distprop
+
+
+
     # --------------- Observable functions ---------------------
     def compute_observables(self, obs_funs, metadata, root_dir):
         ds = xr.open_mfdataset(join(root_dir,metadata['filename_traj']), decode_times=False)
@@ -479,15 +506,6 @@ class FriersonGCM(DynamicalSystem):
         for obs_name,obs_fun in obs_funs.items():
             obs_dict[obs_name] = obs_fun(ds).compute()
         return obs_dict
-    def compute_pairwise_observables(self, pair_funs, md0, md1list, root_dir):
-        pair_names = list(pair_funs.keys())
-        pair_dict = dict({pn: [] for pn in pair_names})
-        ds0 = xr.open_mfdataset(join(root_dir,md0['filename_traj']), decode_times=False)
-        for i_md1,md1 in enumerate(md1list):
-            ds1 = xr.open_mfdataset(join(root_dir,md1['filename_traj']), decode_times=False)
-            for i_pn,pn in enumerate(pair_names):
-                pair_dict[pn].append(pair_funs[pn](ds0,ds1))
-        return pair_dict
     def observable_props(self):
         obslib = dict()
         obslib['r_sppt_g'] = dict({
@@ -822,11 +840,11 @@ class FriersonGCM(DynamicalSystem):
 
 def dns(nproc,recompile,i_param):
     tododict = dict({
-        'run':                          1,
-        'analyze':                      1,
+        'run':                          0,
+        'analyze':                      0,
         'plot': dict({
-            'snapshots':    0,
-            'return_stats': 1,
+            'snapshots':    1,
+            'return_stats': 0,
             }),
         })
     # Create a small ensemble
@@ -909,7 +927,7 @@ def dns(nproc,recompile,i_param):
         obs_funs = dict()
         for obs_name in ['temperature']:
             obs_funs[obs_name] = lambda dsmem,obs_name=obs_name: getattr(ens.dynsys, obs_name)(dsmem).sel(lat=lat,lon=lon,pfull=pfull,method='nearest')
-        for obs_name in ['total_rain','column_water_vapor','surface_pressure']:
+        for obs_name in ['r_sppt_g','total_rain','column_water_vapor','surface_pressure']:
             obs_funs[obs_name] = lambda dsmem,obs_name=obs_name: getattr(ens.dynsys, obs_name)(dsmem).sel(lat=lat,lon=lon,method='nearest')
         obs_names = list(obs_funs.keys())
 
@@ -967,7 +985,7 @@ def dns(nproc,recompile,i_param):
             obs_funs = dict()
             for obs_name in ['temperature']:
                 obs_funs[obs_name] = lambda dsmem,obs_name=obs_name: getattr(ens.dynsys, obs_name)(dsmem).sel(pfull=pfull,method='nearest')
-            for obs_name in ['total_rain','column_water_vapor','surface_pressure']:
+            for obs_name in ['r_sppt_g','total_rain','column_water_vapor','surface_pressure']:
                 obs_funs[obs_name] = lambda dsmem,obs_name=obs_name: getattr(ens.dynsys, obs_name)(dsmem)
             mems2plot = [ens.get_nmem()-1]
             obs_vals = ens.compute_observables(obs_funs, mems2plot)
@@ -1054,6 +1072,9 @@ def meta_analyze_dns():
             obsprop = dynsys.observable_props()
 
     # TODO Add special case to the dataset: non-SPPT
+    ctrldir = glob.glob(join(expt_dir,f"abs1_resT21_pertIMP*/"))[0]
+    return_stats_ctrl = pickle.load(open(join(ctrldir,'analysis','rlev_rtime_logsf.pickle'),'rb'))
+
     # Enumerate all combinations of fixed parameters
     param_vals_fixed = list(zip(*(param_vals[p] for p in params2fix)))
     print(f'{param_vals_fixed = }')
@@ -1067,30 +1088,37 @@ def meta_analyze_dns():
             for i in range(len(params2fix))])
         idx = np.array([i for i in range(len(dnsdirs)) if (param_vals_fixed[i] == pvf)])
         order = np.argsort([param_vals[param2vary][i] for i in idx])
-        idx = idx[order]
+        idx = idx[order] 
         # 1. return period plots and histograms as function of variable parameter
         for obs_name in obs_names:
             fig,axes = plt.subplots(ncols=2,figsize=(12,5))
             handles = []
+            # Plot the SPPT statistics
             colors = plt.cm.Set1(np.arange(len(idx)))
             for ii,i in enumerate(idx):
                 ax = axes[0]
-                ax.stairs(return_stats[i][obs_name]['hist'],return_stats[i][obs_name]['bin_edges'], color=colors[ii])
+                bin_edges = return_stats[i][obs_name]['bin_edges']
+                bin_centers = (bin_edges[1:]+bin_edges[:-1])/2
+                ax.plot(bin_centers,return_stats[i][obs_name]['hist'], color=colors[ii], marker='.')
                 ax = axes[1]
                 h, = ax.plot(return_stats[i][obs_name]['rtime'],return_stats[i][obs_name]['rlev'],color=colors[ii],marker='.',label=r'%g'%(param_vals[param2vary][i]))
                 ax.set_xscale('log')
                 handles.append(h)
+            # Plot the control
+            ax = axes[0]
+            bin_edges = return_stats_ctrl[obs_name]['bin_edges']
+            bin_centers = (bin_edges[1:]+bin_edges[:-1])/2
+            ax.plot(bin_centers,return_stats_ctrl[obs_name]['hist'], color='black', marker='.', linestyle='--', linewidth=3)
+            ax = axes[1]
+            h, = ax.plot(return_stats_ctrl[obs_name]['rtime'],return_stats_ctrl[obs_name]['rlev'],color='black',marker='.',label=r'no SPPT')
+            ax.set_xscale('log')
+            handles.append(h)
             axes[0].set_xlabel(r'%s'%(obsprop[obs_name]['label']))
             axes[0].set_ylabel('Probability density')
             axes[0].set_yscale('log')
             axes[1].set_xlabel('Return time')
             axes[1].set_ylabel('Return level')
             axes[1].set_xscale('log')
-            #fixed_param_str = ', '.join([
-            #    r'%s$=$%g'%(params[p]['symbol'],pvf[i_p])
-            #    for (i_p,p) in enumerate(params2fix)
-            #    ])
-            #axes[1].set_title(fixed_param_str)
             axes[1].legend(handles=handles, title=params[param2vary]['symbol'], loc='lower right')
             fig.suptitle(fixed_param_label)
             fig.savefig(join(meta_dir,f'rtime_{obsprop[obs_name]["abbrv"]}_asfunof_{param2vary}_{fixed_param_abbrv}.png'),**pltkwargs)
@@ -1106,9 +1134,10 @@ if __name__ == "__main__":
     print(f'Got into Main')
     nproc = 4
     recompile = False
-    i_procedure = 0
-    if i_procedure == 0:
-        i_param = int(sys.argv[1])
-        dns(nproc,recompile,int(i_param))
-    elif i_procedure == 1:
+    procedure = 'run'
+    if procedure == 'run':
+        idx_param = [int(v) for v in sys.argv[1:]]
+        for i_param in idx_param:
+            dns(nproc,recompile,i_param)
+    elif procedure == 'meta':
         meta_analyze_dns()
