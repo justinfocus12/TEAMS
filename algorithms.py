@@ -236,21 +236,17 @@ class PeriodicBranching(EnsembleAlgorithm):
         dists = np.zeros((ngroups, self.branches_per_group, self.branch_duration)) 
         for branch_group in range(ngroups):
             print(f'About to compute distances for {branch_group = }')
-            time,dists_local = self.compute_pairwise_funs_local(dist_fun, branch_group)
+            time,dists_local = self.compute_pairwise_fun_local(dist_fun, branch_group)
             split_times[branch_group] = time[0]
-            dists[dist_name][branch_group,:,:] = dists_local[dist_name].copy()
+            dists[branch_group,:,:] = dists_local[dist_name].copy()
         # Compute RMSD, using only the last two branch members
         mems_trunk = self.branching_state['trunk_lineage']
         if len(mems_trunk) == 1:
             mems_rmsd = [len(mems_trunk)-1]*2
         else:
             mems_rmsd = [len(mems_trunk)-i for i in [1,2]]
-        rmsds = self.ens.compute_pairwise_observables(dist_funs['rmsd'], mems_rmsd[0], mems_rmsd[1:])
-        for dist_name in dist_names:
-            rmsds[dist_name] = np.mean(rmsds[dist_name])
         # Also compute other summary stats besides RMSE, like Lyapunov exponents and changeover times from exponential to diffusive growth. 
-        pert_growth = dict({'split_times': split_times, 'rmses': rmses, 'rmsds': rmsds, 'dists': dists})
-        return pert_growth
+        return split_times,dists,rmses
     def analyze_pert_growth(self, pert_growth):
         split_times,rmses,rmsds,dists = [pert_growth[key] for key in ['split_times','rmses','rmsds','dists']]
         dist_names = list(rmses.keys())

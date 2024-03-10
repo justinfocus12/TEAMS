@@ -54,7 +54,20 @@ def compute_block_maxima(x,T):
 def compute_return_time_block_maxima(x,T):
     block_maxima = compute_block_maxima(x,T)
     rlev,lsf = compute_logsf_empirical(block_maxima)
-    rtime = -T / np.log(-np.expm1(lsf))
+    rtime = convert_logsf_to_rtime(lsf,T)
     return rlev,rtime,lsf
 
+def convert_logsf_to_rtime(logsf, T):
+    # log-survival function to return period
+    rtime = -T / np.log(-np.expm1(logsf))
+    return rtime
+
+def compute_returnstats_and_histogram(f, time_block_size, bounds=None):
+    if bounds is None:
+        bounds = [np.min(f),np.max(f)]
+    bins = np.linspace(bounds[0],bounds[1],30)
+    hist,bin_edges = np.histogram(f, density=True, bins=bins)
+    rlev,rtime,logsf = compute_return_time_block_maxima(f, time_block_size)
+    idx = np.searchsorted(rlev, bin_edges[:-1])
+    return bin_edges[:-1], hist, rtime[idx], logsf[idx]
 

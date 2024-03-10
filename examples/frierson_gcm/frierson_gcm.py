@@ -502,10 +502,27 @@ class FriersonGCM(DynamicalSystem):
     def compute_observables(self, obs_funs, metadata, root_dir):
         ds = xr.open_mfdataset(join(root_dir,metadata['filename_traj']), decode_times=False)
         obs_name = list(obs_funs.keys())
-        obs_dict = dict()
+        obs = dict()
         for obs_name,obs_fun in obs_funs.items():
-            obs_dict[obs_name] = obs_fun(ds).compute()
-        return obs_dict
+            obs[obs_name] = obs_fun(ds).compute()
+        return obs
+    def compute_stats_dns_rotsym(self, fxypt, lon_roll_step_requested, time_block_size, lat_target, lon_target, pfull_target=None, bounds=None):
+        # Given a physical input field f(x,y,t), augment it by rotations to compute return periods
+        # constant parameters to adjust 
+        time_block_size = 25 
+        # Concatenate a long array of timeseries at different longitudes
+        dlon = fxypt.lon[:2].diff('lon').item()
+        nlon = fxypt['lon'].size
+        lon_roll_step_idx = int(round(lon_roll_step_requested/dlon))
+        i_target_lon = np.argmin(np.abs(lon_target - fxypt['lon'].to_numpy()))
+        idx_lon = np.unique(np.mod(np.arange(i_target_lon, i_target_lon+nlon, step=lon_roll_step_idx), nlon))
+        # Clip the time axis to contain exactly an integer multiple of the block size
+        clip_size = np.mod(fxypt['time'].size, time_block_size)
+        f_subsel = fxypt.sel(lat=lat_target,method='nearest').isel(time=slice(clip_size,None))
+        if 'pfull' in fxypt.dims:
+            f_subsel = f_subsel.sel(pfull=pfull_target,method='nearest')
+        fconcat = np.concatenate(tuple(f_subsel.isel(lon=i_lon).to_numpy() for i_lon in idx_lon))
+        return utils.compute_returnstats_and_histogram(fconcat, time_block_size, bounds=bounds)
     def observable_props(self):
         obslib = dict()
         obslib['r_sppt_g'] = dict({
@@ -513,8 +530,8 @@ class FriersonGCM(DynamicalSystem):
             "unit_symbol": "",
             "label": r"$r_{\mathrm{SPPT}}$",
             "cmap": "coolwarm",
-            "cmin": None,
-            "cmax": None,
+            "vmin": None,
+            "vmax": None,
             "clo": "gray",
             "chi": "yellow",
             })
@@ -523,8 +540,8 @@ class FriersonGCM(DynamicalSystem):
             "unit_symbol": "s$^{-2}$",
             "label": "Effective static stability",
             "cmap": "coolwarm",
-            "cmin": None,
-            "cmax": None,
+            "vmin": None,
+            "vmax": None,
             "clo": "gray",
             "chi": "yellow",
             })
@@ -534,8 +551,8 @@ class FriersonGCM(DynamicalSystem):
             "unit_symbol": "Pa/s",
             "label": "Vertical velocity",
             "cmap": "coolwarm",
-            "cmin": None,
-            "cmax": None,
+            "vmin": None,
+            "vmax": None,
             "clo": "gray",
             "chi": "yellow",
             })
@@ -544,8 +561,8 @@ class FriersonGCM(DynamicalSystem):
             "unit_symbol": "m/s",
             "label": "Meridional velocity",
             "cmap": "coolwarm",
-            "cmin": None,
-            "cmax": None,
+            "vmin": None,
+            "vmax": None,
             "clo": "gray",
             "chi": "yellow",
             })
@@ -554,8 +571,8 @@ class FriersonGCM(DynamicalSystem):
             "unit_symbol": "m/s",
             "label": "Zonal velocity",
             "cmap": "coolwarm",
-            "cmin": None,
-            "cmax": None,
+            "vmin": None,
+            "vmax": None,
             "clo": "gray",
             "chi": "yellow",
             })
@@ -564,8 +581,8 @@ class FriersonGCM(DynamicalSystem):
             "unit_symbol": "mm/day",
             "label": "Extreme precip. scaling",
             "cmap": "Blues",
-            "cmin": 0.0,
-            "cmax": 64.0,
+            "vmin": 0.0,
+            "vmax": 64.0,
             "clo": "gray",
             "chi": "yellow",
             })
@@ -574,8 +591,8 @@ class FriersonGCM(DynamicalSystem):
             "unit_symbol": "mm/day",
             "label": "Convection rain",
             "cmap": "Blues",
-            "cmin": 0.0, 
-            "cmax": 64.0,
+            "vmin": 0.0, 
+            "vmax": 64.0,
             "clo": "gray", 
             "chi": "yellow",
             })
@@ -584,8 +601,8 @@ class FriersonGCM(DynamicalSystem):
             "unit_symbol": "mm/day",
             "label": "Condensation rain",
             "cmap": "Blues",
-            "cmin": 0.0, 
-            "cmax": 64.0,
+            "vmin": 0.0, 
+            "vmax": 64.0,
             "clo": "gray",
             "chi": "yellow",
             })
@@ -594,8 +611,8 @@ class FriersonGCM(DynamicalSystem):
             "unit_symbol": "mm/day",
             "label": "Rain rate",
             "cmap": "Blues",
-            "cmin": 0.0, 
-            "cmax": 64.0,
+            "vmin": 0.0, 
+            "vmax": 80.0,
             "clo": "gray",
             "chi": "yellow",
             })
@@ -604,8 +621,8 @@ class FriersonGCM(DynamicalSystem):
             "unit_symbol": "kg/kg",
             "label": "Specific humidity",
             "cmap": "Blues",
-            "cmin": None,
-            "cmax": None,
+            "vmin": None,
+            "vmax": None,
             "clo": "gray",
             "chi": "yellow",
             })
@@ -614,8 +631,8 @@ class FriersonGCM(DynamicalSystem):
             "unit_symbol": "K",
             "label": "Temperature",
             "cmap": "Reds",
-            "cmin": 210.0, 
-            "cmax": 350.0,
+            "vmin": 210.0, 
+            "vmax": 350.0,
             "clo": "gray",
             "chi": "yellow",
             })
@@ -624,8 +641,8 @@ class FriersonGCM(DynamicalSystem):
             "unit_symbol": r"kg m$^{-2}$",
             "label": "Column water vapor",
             "cmap": "Blues",
-            "cmin": 0.0, 
-            "cmax": 7.0,
+            "vmin": 0.0, 
+            "vmax": 7.0,
             "clo": "gray",
             "chi": "yellow",
             })
@@ -634,8 +651,8 @@ class FriersonGCM(DynamicalSystem):
             "unit_symbol": r"fraction",
             "label": "Column relative humidity",
             "cmap": "Blues",
-            "cmin": 0.0, 
-            "cmax": 1.0,
+            "vmin": 0.0, 
+            "vmax": 1.0,
             "clo": "gray",
             "chi": "yellow",
             })
@@ -644,8 +661,8 @@ class FriersonGCM(DynamicalSystem):
             "unit_symbol": r"kg m$^{-2}$s$^{-1}$",
             "label": "Water vapor convergence",
             "cmap": "coolwarm_r",
-            "cmin": None, 
-            "cmax": None,
+            "vmin": None, 
+            "vmax": None,
             "clo": "gray",
             "chi": "yellow",
             })
@@ -654,8 +671,8 @@ class FriersonGCM(DynamicalSystem):
             "unit_symbol": r"s$^{-1}$",
             "label": "Vorticity",
             "cmap": "coolwarm",
-            "cmin": None, 
-            "cmax": None,
+            "vmin": None, 
+            "vmax": None,
             "clo": "gray",
             "chi": "yellow",
             })
@@ -664,8 +681,8 @@ class FriersonGCM(DynamicalSystem):
             "unit_symbol": r"Pa",
             "label": "Surface pressure",
             "cmap": "rainbow",
-            "cmin": 96.0e3, 
-            "cmax": 103.0e3,
+            "vmin": 96.0e3, 
+            "vmax": 103.0e3,
             "clo": "gray",
             "chi": "yellow",
             })
@@ -841,9 +858,9 @@ class FriersonGCM(DynamicalSystem):
 def dns(nproc,recompile,i_param):
     tododict = dict({
         'run':                          0,
-        'analyze':                      0,
+        'analyze':                      1,
         'plot': dict({
-            'snapshots':    1,
+            'snapshots':    0,
             'return_stats': 0,
             }),
         })
@@ -916,42 +933,34 @@ def dns(nproc,recompile,i_param):
     os.makedirs(analysis_dir, exist_ok=True)
     if tododict['analyze']:
         ens = pickle.load(open(join(expt_dir,'ens.pickle'),'rb'))
-        # Return periods of precipitation and temperature
-        spinup = 700
-        block_size = 25
-        obs_funs = dict()
         obsprop = ens.dynsys.observable_props()
-        lat = 45.0
-        lon = 180.0
-        pfull = 1000.0
-        obs_funs = dict()
-        for obs_name in ['temperature']:
-            obs_funs[obs_name] = lambda dsmem,obs_name=obs_name: getattr(ens.dynsys, obs_name)(dsmem).sel(lat=lat,lon=lon,pfull=pfull,method='nearest')
-        for obs_name in ['r_sppt_g','total_rain','column_water_vapor','surface_pressure']:
-            obs_funs[obs_name] = lambda dsmem,obs_name=obs_name: getattr(ens.dynsys, obs_name)(dsmem).sel(lat=lat,lon=lon,method='nearest')
-        obs_names = list(obs_funs.keys())
 
+        spinup = 700
         nmem = ens.get_nmem()
         all_starts,all_ends = ens.get_all_timespans()
-        print(f'{all_starts = }')
         mems2analyze = np.where(all_starts >= spinup)[0]
-        print(f'{mems2analyze = }')
-        obs = ens.compute_observables(obs_funs, mems2analyze)
-        for obs_name in obs_names:
-            obs[obs_name] = xr.concat(obs[obs_name], dim='time').to_numpy()
-        return_stats = dict()
-        for obs_name in obs_names:
-            block_maxima = utils.compute_block_maxima(obs[obs_name], block_size)
-            rlev,rtime,logsf = utils.compute_return_time_block_maxima(obs[obs_name], block_size)
-            hist,bin_edges = np.histogram(obs[obs_name], density=True)
-            return_stats[obs_name] = dict({
-                'rlev': rlev,
-                'rtime': rtime,
-                'logsf': logsf,
-                'hist': hist,
-                'bin_edges': bin_edges,
-                })
-        pickle.dump(return_stats, open(join(analysis_dir, 'rlev_rtime_logsf.pickle'), 'wb'))
+        time_block_size = 25
+        for obs_name in ['temperature','total_rain']:
+            obs_fun = {obs_name: lambda dsmem: getattr(ens.dynsys, obs_name)(dsmem)}
+            fxypt = xr.concat(ens.compute_observables(obs_fun,mems2analyze)[obs_name], dim='time')
+            # ----------------- Mean and quantiles at various latitudes ----------
+            sf = np.array([0.1,0.01,0.001]) # complementary quantiles of interest
+            coords_sf = dict({c: fxypt.coords[c] for c in set(fxypt.dims) - {'time'}})
+            coords_sf['sf'] = sf
+            f_sf = xr.DataArray(coords=coords_sf, dims=tuple(coords_sf.keys()), data=np.nan)
+            for i,sfval in enumerate(sf):
+                f_sf.loc[dict(sf=sfval)] = fxypt.quantile(1-sfval, dim=['time','lon'])
+            f_sf.to_netcdf(join(analysis_dir,f'sf_{obs_name}.nc'))
+
+            # ----------------- Return period plots at a fixed latitude --------
+            lat_target = 45.0
+            lon_target = 180.0
+            lon_roll_step_requested = 30
+            pfull_target = 1000
+            bin_lows,hist,rtime,logsf = ens.dynsys.compute_stats_dns_rotsym(fxypt, lon_roll_step_requested, time_block_size, lat_target, lon_target, pfull_target)
+            np.save(join(analysis_dir,f'distn_{obs_name}_lat{lat_target:g}_lon{lon_target:g}_pfull{pfull_target:g}.npy'),np.vstack((bin_lows,hist,logsf,rtime)))
+
+
         
     plot_dir = join(expt_dir,'plots')
     makedirs(plot_dir,exist_ok=True)
@@ -960,20 +969,26 @@ def dns(nproc,recompile,i_param):
         obsprop = ens.dynsys.observable_props()
 
         if tododict['plot']['return_stats']:
-            return_stats = pickle.load(open(join(analysis_dir, 'rlev_rtime_logsf.pickle'), 'rb'))
-            for obs_name in return_stats.keys():
+            for obs_name in ['temperature','total_rain']:
+                bin_lows,hist,logsf,rtime = np.load(join(analysis_dir,f'distn_{obs_name}.npy'))
+                print(f'{bin_lows[:3] = }')
+                print(f'{hist[:3] = }')
+                print(f'{rtime[:3] = }')
+                bin_mids = bin_lows + 0.5*(bin_lows[1]-bin_lows[0])
                 fig,axes = plt.subplots(ncols=2,figsize=(10,4))
                 ax = axes[0]
-                ax.stairs(return_stats[obs_name]['hist'],return_stats[obs_name]['bin_edges'])
+                ax.plot(bin_lows,hist,color='black',marker='o')
                 ax.set_xlabel(obsprop[obs_name]['label'])
-                ax.set_ylabel('Density')
+                ax.set_ylabel('Prob. density')
                 ax.set_yscale('log')
                 ax = axes[1]
-                ax.plot(return_stats[obs_name]['rtime'],return_stats[obs_name]['rlev'],color='black',marker='.')
+                ax.plot(rtime,bin_lows,color='black',marker='.')
+                ax.set_ylim([bin_lows[np.argmax(rtime>0)],2*bin_lows[-1]-bin_lows[-2]])
                 ax.set_xlabel('Return time')
                 ax.set_ylabel('Return level')
                 ax.set_xscale('log')
                 ax.set_title(obsprop[obs_name]['label'])
+                print(join(plot_dir,f'rtime_{obsprop[obs_name]["abbrv"]}.png'))
                 fig.savefig(join(plot_dir,f'rtime_{obsprop[obs_name]["abbrv"]}.png'),**pltkwargs)
                 plt.close(fig)
 
@@ -1054,50 +1069,48 @@ def meta_analyze_dns():
     params2fix = ['L_sppt','tau_sppt']
     param2vary = 'std_sppt'
 
-    obs_names = ['temperature','total_rain','column_water_vapor','surface_pressure']
-
+    obs_names = ['temperature','total_rain']
 
     dnsdir_pattern = join(expt_dir,f"abs1_resT21_pertSPPT*/")
     dnsdirs = glob.glob(dnsdir_pattern)
     print(f'{dnsdirs = }')
     param_vals = dict({p: [] for p in params.keys()})
-    # TODO add the non-SPPT version to each plot 
     return_stats = []
     for i_dnsdir,dnsdir in enumerate(dnsdirs):
         dynsys = pickle.load(open(join(dnsdir,'ens.pickle'),'rb')).dynsys
         for p in params.keys():
             param_vals[p].append(params[p]['fun'](dynsys.config))
-        return_stats.append(pickle.load(open(join(dnsdir,'analysis','rlev_rtime_logsf.pickle'),'rb')))
+        return_stats.append(np.load(join(dnsdir,'analysis',f'distn_{obs_name}.npy')))
         if i_dnsdir == 0:
             obsprop = dynsys.observable_props()
 
     # TODO Add special case to the dataset: non-SPPT
     ctrldir = glob.glob(join(expt_dir,f"abs1_resT21_pertIMP*/"))[0]
-    return_stats_ctrl = pickle.load(open(join(ctrldir,'analysis','rlev_rtime_logsf.pickle'),'rb'))
 
-    # Enumerate all combinations of fixed parameters
-    param_vals_fixed = list(zip(*(param_vals[p] for p in params2fix)))
-    print(f'{param_vals_fixed = }')
-    unique_param_vals_fixed = set(param_vals_fixed)
-    for pvf in unique_param_vals_fixed:
-        print(f'{pvf = }')
-        fixed_param_abbrv = ('_'.join([r'%s%g%s'%(params2fix[i],pvf[i]/params[params2fix[i]]['scale'],params[params2fix[i]]['unit_symbol']) for i in range(len(params2fix))])).replace('.','p')
-        print(f'{fixed_param_abbrv = }')
-        fixed_param_label = ', '.join([
-            r'%s $=%g$ %s'%(params[params2fix[i]]['symbol'],pvf[i]/params[params2fix[i]]['scale'],params[params2fix[i]]['unit_symbol']) 
-            for i in range(len(params2fix))])
-        idx = np.array([i for i in range(len(dnsdirs)) if (param_vals_fixed[i] == pvf)])
-        order = np.argsort([param_vals[param2vary][i] for i in idx])
-        idx = idx[order] 
-        # 1. return period plots and histograms as function of variable parameter
-        for obs_name in obs_names:
+    for obs_name in obs_names:
+        return_stats_ctrl = np.load(join(ctrldir,'analysis',f'distn_{obs_name}.npy'),'rb')
+        # Enumerate all combinations of fixed parameters
+        param_vals_fixed = list(zip(*(param_vals[p] for p in params2fix)))
+        print(f'{param_vals_fixed = }')
+        unique_param_vals_fixed = set(param_vals_fixed)
+        for pvf in unique_param_vals_fixed:
+            print(f'{pvf = }')
+            fixed_param_abbrv = ('_'.join([r'%s%g%s'%(params2fix[i],pvf[i]/params[params2fix[i]]['scale'],params[params2fix[i]]['unit_symbol']) for i in range(len(params2fix))])).replace('.','p')
+            print(f'{fixed_param_abbrv = }')
+            fixed_param_label = ', '.join([
+                r'%s $=%g$ %s'%(params[params2fix[i]]['symbol'],pvf[i]/params[params2fix[i]]['scale'],params[params2fix[i]]['unit_symbol']) 
+                for i in range(len(params2fix))])
+            idx = np.array([i for i in range(len(dnsdirs)) if (param_vals_fixed[i] == pvf)])
+            order = np.argsort([param_vals[param2vary][i] for i in idx])
+            idx = idx[order] 
+            # 1. return period plots and histograms as function of variable parameter
             fig,axes = plt.subplots(ncols=2,figsize=(12,5))
             handles = []
             # Plot the SPPT statistics
             colors = plt.cm.Set1(np.arange(len(idx)))
             for ii,i in enumerate(idx):
                 ax = axes[0]
-                bin_edges = return_stats[i][obs_name]['bin_edges']
+                bin_lows = return_stats[i][obs_name]['bin_edges']
                 bin_centers = (bin_edges[1:]+bin_edges[:-1])/2
                 ax.plot(bin_centers,return_stats[i][obs_name]['hist'], color=colors[ii], marker='.')
                 ax = axes[1]
