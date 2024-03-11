@@ -854,10 +854,10 @@ class FriersonGCM(DynamicalSystem):
 
 def dns(nproc,recompile,i_param):
     tododict = dict({
-        'run':                            0,
+        'run':                            1,
         'summarize':                      1,
         'plot': dict({
-            'snapshots':    0,
+            'snapshots':    1,
             'return_stats': 1,
             }),
         })
@@ -872,10 +872,10 @@ def dns(nproc,recompile,i_param):
     config = FriersonGCM.default_config(base_dir_absolute,base_dir_absolute)
     config['resolution'] = 'T21'
 
-    pert_type_list = ['IMP']        + ['SPPT']*16
-    std_sppt_list = [0.5]           + [0.5,0.1,0.05,0.01]*4
-    tau_sppt_list = [6.0*3600]      + [6.0*3600]*4   + [6.0*3600]*4    + [24.0*3600]*4     + [96.0*3600]*4 
-    L_sppt_list = [500.0*1000]      + [500.0*1000]*4 + [2000.0*1000]*4 + [500.0*1000]*4    + [500.0*1000]*4
+    pert_type_list = ['IMP']        + ['SPPT']*20
+    std_sppt_list = [0.5]           + [0.5,0.3,0.1,0.05,0.01]*4
+    tau_sppt_list = [6.0*3600]      + [6.0*3600]*5   + [6.0*3600]*5    + [24.0*3600]*5     + [96.0*3600]*5 
+    L_sppt_list = [500.0*1000]      + [500.0*1000]*5 + [2000.0*1000]*5 + [500.0*1000]*5    + [500.0*1000]*5
     config['pert_type'] = pert_type_list[i_param]
     if config['pert_type'] == 'SPPT':
         config['SPPT']['tau_sppt'] = tau_sppt_list[i_param]
@@ -996,11 +996,13 @@ def dns(nproc,recompile,i_param):
                 h, = ax.plot(f_sf_mean['fmean'].lat.values, f_sf_mean['fmean'].values, color='black', linestyle='--', linewidth=2, label='mean')
                 handles.append(h)
                 ax.legend(handles=handles,title='Comp. quantiles')
-                # Adjust y axis limits
-                data4range = f_sf_mean['fsf'].sel(lat=slice(20,None))
+                # Adjust x and y axis limits
+                minlat = 30
+                data4range = f_sf_mean['fsf'].sel(lat=slice(minlat,None))
                 ax.set_ylim([data4range.min().item(), data4range.max().item()])
+                ax.set_xlim([minlat,90])
                 ax.set_xlabel('Latitude')
-                fig.savefig(join(plot_dir,f'mean_sf_{obs_name}_{location_suffix}.png'),**pltkwargs)
+                fig.savefig(join(plot_dir,f'mean_sf_{obsprop[obs_name]["abbrv"]}_{location_suffix}.png'),**pltkwargs)
                 plt.close(fig)
 
 
@@ -1103,6 +1105,7 @@ def meta_analyze_dns():
         'fun': lambda config: config['SPPT']['std_sppt'],
         'scale': 1.0,
         'symbol': r'$\sigma_{\mathrm{SPPT}}$',
+        'unit_symbol': '',
         })
 
     params2fix = ['L_sppt','tau_sppt']
@@ -1111,6 +1114,7 @@ def meta_analyze_dns():
     # Specify the pool of files
     dnsdir_pattern = join(expt_dir,f"abs1_resT21_pertSPPT*/")
     dnsdirs = glob.glob(dnsdir_pattern)
+    dnsdirs = [dnsdir for dnsdir in dnsdirs if 'std0p3' not in dnsdir]
     # Select regions of interest
     lat_target = 45.0
     pfull_target = 1000
@@ -1118,24 +1122,28 @@ def meta_analyze_dns():
         'temperature': dict(lat=lat_target,pfull=pfull_target),
         'total_rain': dict(lat=lat_target),
         })
+    minlat = 30
     # TODO compare percentile vs latitude plots
     for obs_name,roi in obs_roi.items():
         location_suffix = '_'.join([r'%s%g'%(roikey,roival) for (roikey,roival) in roi.items()])
+        location_label = ', '.join([r'%s=%g'%(roikey,roival) for (roikey,roival) in roi.items()])
         print(f'{dnsdirs = }')
         param_vals = dict({p: [] for p in params.keys()})
         return_stats = []
+        sfandmean = []
         for i_dnsdir,dnsdir in enumerate(dnsdirs):
             dynsys = pickle.load(open(join(dnsdir,'ens.pickle'),'rb')).dynsys
             for p in params.keys():
                 param_vals[p].append(params[p]['fun'](dynsys.config))
             return_stats.append(np.load(join(dnsdir,'analysis',f'distn_{obs_name}_{location_suffix}.npy')))
+            sfandmean.append(xr.open_dataset(join(dnsdir,'analysis',f'mean_sf_{obs_name}.nc')).sel(lat=slice(minlat,None)))
             if i_dnsdir == 0:
                 obsprop = dynsys.observable_props()
 
-        # TODO Add special case to the dataset: non-SPPT
         ctrldir = glob.glob(join(expt_dir,f"abs1_resT21_pertIMP*/"))[0]
 
         bin_lows_ctrl,hist_ctrl,logsf_ctrl,rtime_ctrl = np.load(join(ctrldir,'analysis',f'distn_{obs_name}_{location_suffix}.npy'))
+        sfandmean_ctrl = xr.open_dataset(join(ctrldir,'analysis',f'mean_sf_{obs_name}.nc')).sel(lat=slice(minlat,None))
         # Enumerate all combinations of fixed parameters
         param_vals_fixed = list(zip(*(param_vals[p] for p in params2fix)))
         print(f'{param_vals_fixed = }')
@@ -1150,11 +1158,44 @@ def meta_analyze_dns():
             idx = np.array([i for i in range(len(dnsdirs)) if (param_vals_fixed[i] == pvf)])
             order = np.argsort([param_vals[param2vary][i] for i in idx])
             idx = idx[order] 
-            # 1. return period plots and histograms as function of variable parameter
+            colors = plt.cm.Set1(np.arange(len(idx)))
+            # ----------------- Means and quantiles at various latitudes --------
+            fig,ax = plt.subplots()
+            handles = []
+            for ii,i in enumerate(idx):
+                xdata = sfandmean[i]['fmean'].lat.values
+                ydata = sfandmean[i]['fmean'].values
+                print(f'{xdata = }')
+                print(f'{ydata = }')
+                h, = ax.plot(sfandmean[i]['fmean'].lat.values, sfandmean[i]['fmean'].values, color=colors[ii], label=r'%g %s'%(param_vals[param2vary][i]/params[param2vary]['scale'],params[param2vary]['unit_symbol']))
+                handles.append(h)
+            h, = ax.plot(sfandmean_ctrl['fmean'].lat.values, sfandmean_ctrl['fmean'].values, color='black', linestyle='--', linewidth=2, label=r'no SPPT')
+            handles.append(h)
+            ax.legend(handles=handles,title=params[param2vary]['symbol'])
+            ax.set_xlabel('Latitude')
+            ax.set_ylabel(r'Mean %s [%s]'%(obsprop[obs_name]['label'],obsprop[obs_name]['unit_symbol']))
+            ax.set_title(fixed_param_label)
+            fig.savefig(join(meta_dir,f'mean_{obsprop[obs_name]["abbrv"]}_asfunof_{param2vary}_{fixed_param_abbrv}.png'), **pltkwargs)
+            plt.close(fig)
+            for i_sf,sf in enumerate(sfandmean[i]['sf'].values):
+                fig,ax = plt.subplots()
+                handles = []
+                for ii,i in enumerate(idx):
+                    h, = ax.plot(sfandmean[i]['fsf'].lat.values, sfandmean[i]['fsf'].sel(sf=sf).values, color=colors[ii], label=r'%g %s'%(param_vals[param2vary][i]/params[param2vary]['scale'],params[param2vary]['unit_symbol']))
+                    handles.append(h)
+                h, = ax.plot(sfandmean_ctrl['fsf'].lat.values, sfandmean_ctrl['fsf'].sel(sf=sf).values, color='black', linestyle='--', linewidth=2, label=r'no SPPT')
+                handles.append(h)
+                ax.legend(handles=handles,title=params[param2vary]['symbol'])
+                ax.set_xlabel('Latitude')
+                ax.set_ylabel(r'Upper %g %s [%s]'%(sf,obsprop[obs_name]['label'],obsprop[obs_name]['unit_symbol']))
+                ax.set_title(fixed_param_label)
+                figname = (f'sf{sf}_{obsprop[obs_name]["abbrv"]}_asfunof_{param2vary}_{fixed_param_abbrv}').replace('.','p')
+                fig.savefig(join(meta_dir,(f'{figname}.png')), **pltkwargs)
+                plt.close(fig)
+            # ----------------- Return period curves at a fixed latitude --------
             fig,axes = plt.subplots(ncols=2,figsize=(12,5))
             handles = []
             # Plot the SPPT statistics
-            colors = plt.cm.Set1(np.arange(len(idx)))
             for ii,i in enumerate(idx):
                 ax = axes[0]
                 bin_lows,hist,logsf,rtime = return_stats[i]
@@ -1178,8 +1219,8 @@ def meta_analyze_dns():
             axes[1].set_ylabel('Return level')
             axes[1].set_xscale('log')
             axes[1].legend(handles=handles, title=params[param2vary]['symbol'], loc=(1.05,0.05))
-            fig.suptitle(fixed_param_label)
-            fig.savefig(join(meta_dir,f'rtime_{obs_name}_{location_suffix}_asfunof_{param2vary}_{fixed_param_abbrv}.png'),**pltkwargs)
+            fig.suptitle(r'%s; %s'%(fixed_param_label,location_label))
+            fig.savefig(join(meta_dir,f'rtime_{obsprop[obs_name]["abbrv"]}_{location_suffix}_asfunof_{param2vary}_{fixed_param_abbrv}.png'),**pltkwargs)
             plt.close(fig)
     
 
