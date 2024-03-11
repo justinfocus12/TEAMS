@@ -115,10 +115,11 @@ def run_periodic_branching(nproc,recompile,i_param):
     config_gcm = FriersonGCM.default_config(base_dir_absolute,base_dir_absolute)
 
     # Parameters to loop over
-    pert_type_list = ['IMP']        + ['SPPT']*16
-    std_sppt_list = [0.5]           + [0.5,0.1,0.05,0.01]*4
-    tau_sppt_list = [6.0*3600]      + [6.0*3600]*4   + [6.0*3600]*4    + [24.0*3600]*4     + [96.0*3600]*4 
-    L_sppt_list = [500.0*1000]      + [500.0*1000]*4 + [2000.0*1000]*4 + [500.0*1000]*4    + [500.0*1000]*4
+    pert_type_list = ['IMP']        + ['SPPT']*20
+    std_sppt_list = [0.5]           + [0.5,0.3,0.1,0.05,0.01]*4
+    tau_sppt_list = [6.0*3600]      + [6.0*3600]*5   + [6.0*3600]*5    + [24.0*3600]*5     + [96.0*3600]*5 
+    L_sppt_list = [500.0*1000]      + [500.0*1000]*5 + [2000.0*1000]*5 + [500.0*1000]*5    + [500.0*1000]*5
+
 
     config_gcm['pert_type'] = pert_type_list[i_param]
     if config_gcm['pert_type'] == 'SPPT':
@@ -159,10 +160,9 @@ def run_periodic_branching(nproc,recompile,i_param):
             })
         })
 
-    # ----------- Configure post-analysis ---------------------
+    # ----------- TODO Configure post-analysis ---------------------
     fndict['plots'] = dict()
-    config_analysis = dict({
-        'dist_names': ['total_rain_eucdist','column_water_vapor_eucdist','surface_pressure_eucdist'],
+    config_analysis = dict() 
 
 
     dist_names = ['temperature','column_water_vapor','surface_pressure','total_rain',]
@@ -435,7 +435,7 @@ def meta_analyze_periodic_branching():
     return
 
 if __name__ == "__main__":
-    procedure = 'meta'
+    procedure = 'run'
     print(f'Got into Main')
     if procedure == 'run':
         nproc = 4 

@@ -1114,7 +1114,6 @@ def meta_analyze_dns():
     # Specify the pool of files
     dnsdir_pattern = join(expt_dir,f"abs1_resT21_pertSPPT*/")
     dnsdirs = glob.glob(dnsdir_pattern)
-    dnsdirs = [dnsdir for dnsdir in dnsdirs if 'std0p3' not in dnsdir]
     # Select regions of interest
     lat_target = 45.0
     pfull_target = 1000

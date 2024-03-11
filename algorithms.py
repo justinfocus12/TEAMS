@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from collections import deque
 import numpy as np
 from numpy.random import default_rng
 import pickle
@@ -437,6 +438,86 @@ class SDEPeriodicBranching(PeriodicBranching):
             'frc': forcing.SuperposedForcing([frc_vector,frc_reseed]),
             })
         return icandf
+
+
+# --------------------- end PeriodicBranching section -------------------------
+
+class ITEAMS(EnsembleAlgorithm):
+    def __init__(self, init_time, init_cond, config, ens, seed):
+        self.set_init_cond(init_time, init_cond)
+        super().__init__(config, ens, seed)
+        return
+    def derive_parameters(self, config):
+        tu = self.ens.dynsys.dt_save
+        self.time_horizon = int(round(config['time_horizon_phys']/tu))
+        self.buffer_time = int(round(config['buffer_time_phys']/tu)) # Time between the end of one interval and the beginning of the next, when generating the initial ensemble. Add this to the END of ancestral trajectories. 
+        self.advance_split_time = int(round(config['advance_split_time_phys']/tu))
+        self.num2drop = config['num2drop']
+        self.seed_min,self.seed_max = config['seed_min'],config['seed_max']
+        return
+    def set_init_cond(self, init_time, init_cond):
+        self.init_time = init_time
+        self.init_cond = init_cond
+        return
+    @staticmethod
+    def label_from_config(config):
+        abbrv_population = (
+                r'N%d_T%g_ast%g_drop%d'%(
+                    config['num_init_mems'],
+                    config['advance_split_time_phys'],
+                    config['num2drop'],
+                    )
+                ).replace('.','p')
+        abbrv_score = self.label_from_score(config)
+        abbrv = '_'.join([
+            'TEAMS',
+            abbrv_population,
+            abbrv_score,
+            ])
+        label = 'TEAMS'
+        return abbrv, label
+    @abstractmethod
+    def score(self, mem):
+        # Score function for a member that already exists in the ensemble 
+        pass
+    @abstractmethod
+    def label_from_score(config):
+        pass
+    def take_next_step(self, saveinfo):
+        if self.terminate:
+            return
+        if self.ens.get_nmem() == 0:
+            self.branching_state = dict({
+                'scores_tdep': [],
+                'scores_max': [],
+                'scores_max_timing': [],
+                'score_target': -np.inf, 
+                'members_active': [],
+                'members_inactive': [],
+                'parent_queue': deque(),
+                'log_weights': [],
+                'multiplicities': [],
+                })
+
+            # Keep track of trunk length
+            parent = None
+            icandf = self.ens.dynsys.generate_default_icandf(self.init_time,self.init_time+self.time_horizon+self.buffer_time)
+            icandf['init_cond'] = self.init_cond
+            branching_state_update = dict({}) # TODO fill in properties that don't depend on the parent's score. 
+        else:
+            parent = self.ens.branching_state['parent_queue'].popleft()
+            duration = self.init_time+self.time_horizon+self.buffer_time-branch_time
+            branch_time = self.branching_state['scores_max_timing'][parent] - self.advance_split_time #TODO
+            icandf = self.generate_icandf_from_parent(parent, branch_time, duration)
+            icandf = self.ens.dynsys.generate_default_icandf(self.init_time,self.init_time+self.time_horizon+self.buffer_time)
+            icandf['init_cond'] = self.init_cond
+
+            
+
+
+
+
+    
 
 
 
