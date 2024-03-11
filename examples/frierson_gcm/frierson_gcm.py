@@ -506,7 +506,7 @@ class FriersonGCM(DynamicalSystem):
         for obs_name,obs_fun in obs_funs.items():
             obs[obs_name] = obs_fun(ds).compute()
         return obs
-    def compute_stats_dns_rotsym(self, fxypt, lon_roll_step_requested, time_block_size, lat_target, lon_target, pfull_target=None, bounds=None):
+    def compute_stats_dns_rotsym(self, fxypt, lon_roll_step_requested, time_block_size, sel, bounds=None):
         # Given a physical input field f(x,y,t), augment it by rotations to compute return periods
         # constant parameters to adjust 
         time_block_size = 25 
@@ -514,13 +514,10 @@ class FriersonGCM(DynamicalSystem):
         dlon = fxypt.lon[:2].diff('lon').item()
         nlon = fxypt['lon'].size
         lon_roll_step_idx = int(round(lon_roll_step_requested/dlon))
-        i_target_lon = np.argmin(np.abs(lon_target - fxypt['lon'].to_numpy()))
-        idx_lon = np.unique(np.mod(np.arange(i_target_lon, i_target_lon+nlon, step=lon_roll_step_idx), nlon))
+        idx_lon = np.arange(0, nlon, step=lon_roll_step_idx)
         # Clip the time axis to contain exactly an integer multiple of the block size
         clip_size = np.mod(fxypt['time'].size, time_block_size)
-        f_subsel = fxypt.sel(lat=lat_target,method='nearest').isel(time=slice(clip_size,None))
-        if 'pfull' in fxypt.dims:
-            f_subsel = f_subsel.sel(pfull=pfull_target,method='nearest')
+        f_subsel = fxypt.sel(sel,method='nearest').isel(time=slice(clip_size,None))
         fconcat = np.concatenate(tuple(f_subsel.isel(lon=i_lon).to_numpy() for i_lon in idx_lon))
         return utils.compute_returnstats_and_histogram(fconcat, time_block_size, bounds=bounds)
     def observable_props(self):
@@ -857,11 +854,11 @@ class FriersonGCM(DynamicalSystem):
 
 def dns(nproc,recompile,i_param):
     tododict = dict({
-        'run':                          0,
-        'analyze':                      1,
+        'run':                            0,
+        'summarize':                      1,
         'plot': dict({
             'snapshots':    0,
-            'return_stats': 0,
+            'return_stats': 1,
             }),
         })
     # Create a small ensemble
@@ -929,55 +926,96 @@ def dns(nproc,recompile,i_param):
             parent = mem
             init_cond = ens.traj_metadata[parent]['filename_restart']
             pickle.dump(ens, open(join(expt_dir,'ens.pickle'),'wb'))
+    # Load the ensemble for further analysis
+    ens = pickle.load(open(join(expt_dir,'ens.pickle'),'rb'))
+    obsprop = ens.dynsys.observable_props()
+    # Make the directory for analysis
     analysis_dir = join(expt_dir,'analysis')
     os.makedirs(analysis_dir, exist_ok=True)
-    if tododict['analyze']:
-        ens = pickle.load(open(join(expt_dir,'ens.pickle'),'rb'))
-        obsprop = ens.dynsys.observable_props()
-
+    # Select regions of interest
+    lat_target = 45.0
+    pfull_target = 1000
+    obs_roi = dict({
+        'temperature': dict(lat=lat_target,pfull=pfull_target),
+        'total_rain': dict(lat=lat_target),
+        })
+    if tododict['summarize']:
         spinup = 700
         nmem = ens.get_nmem()
         all_starts,all_ends = ens.get_all_timespans()
-        mems2analyze = np.where(all_starts >= spinup)[0]
+        mems2summarize = np.where(all_starts >= spinup)[0]
         time_block_size = 25
-        for obs_name in ['temperature','total_rain']:
+        for obs_name,roi in obs_roi.items():
             obs_fun = {obs_name: lambda dsmem: getattr(ens.dynsys, obs_name)(dsmem)}
-            fxypt = xr.concat(ens.compute_observables(obs_fun,mems2analyze)[obs_name], dim='time')
+            fxypt = xr.concat(ens.compute_observables(obs_fun,mems2summarize)[obs_name], dim='time')
             # ----------------- Mean and quantiles at various latitudes ----------
-            sf = np.array([0.1,0.01,0.001]) # complementary quantiles of interest
-            coords_sf = dict({c: fxypt.coords[c] for c in set(fxypt.dims) - {'time'}})
+            roi = {dim: val for (dim,val) in obs_roi[obs_name].items() if dim not in ['lon','lat']}
+            sf = np.array([0.5,0.1,0.01,0.001]) # complementary quantiles of interest
+            coords_sf = dict({c: fxypt.coords[c].to_numpy() for c in set(fxypt.dims) - {'time','lon','pfull'}})
             coords_sf['sf'] = sf
             f_sf = xr.DataArray(coords=coords_sf, dims=tuple(coords_sf.keys()), data=np.nan)
             for i,sfval in enumerate(sf):
-                f_sf.loc[dict(sf=sfval)] = fxypt.quantile(1-sfval, dim=['time','lon'])
-            f_sf.to_netcdf(join(analysis_dir,f'sf_{obs_name}.nc'))
+                f_sf.loc[dict(sf=sfval)] = fxypt.sel(
+                        roi,method='nearest',drop=True).quantile(1-sfval, dim=['time','lon'])
 
-            # ----------------- Return period plots at a fixed latitude --------
-            lat_target = 45.0
-            lon_target = 180.0
+            f_mean = fxypt.sel(roi,method='nearest',drop=True).mean(dim=['time','lon'])
+            f_sf_mean = xr.Dataset(data_vars={'fmean': f_mean, 'fsf': f_sf})
+            f_sf_mean.to_netcdf(join(analysis_dir,f'mean_sf_{obs_name}.nc'))
+            f_sf_mean.close()
+
+            # ----------------- Return period curves at a fixed latitude --------
+            roi = {dim: val for (dim,val) in obs_roi[obs_name].items() if dim not in ['lon']}
             lon_roll_step_requested = 30
-            pfull_target = 1000
-            bin_lows,hist,rtime,logsf = ens.dynsys.compute_stats_dns_rotsym(fxypt, lon_roll_step_requested, time_block_size, lat_target, lon_target, pfull_target)
-            np.save(join(analysis_dir,f'distn_{obs_name}_lat{lat_target:g}_lon{lon_target:g}_pfull{pfull_target:g}.npy'),np.vstack((bin_lows,hist,logsf,rtime)))
+            bin_lows,hist,rtime,logsf = ens.dynsys.compute_stats_dns_rotsym(fxypt, lon_roll_step_requested, time_block_size, roi)
+            location_suffix = '_'.join([r'%s%g'%(roikey,roival) for (roikey,roival) in roi.items()])
+            np.save(join(analysis_dir,f'distn_{obs_name}_{location_suffix}.npy'),np.vstack((bin_lows,hist,logsf,rtime)))
 
 
-        
     plot_dir = join(expt_dir,'plots')
     makedirs(plot_dir,exist_ok=True)
     if utils.find_true_in_dict(tododict['plot']):
-        ens = pickle.load(open(join(expt_dir,'ens.pickle'),'rb'))
-        obsprop = ens.dynsys.observable_props()
 
         if tododict['plot']['return_stats']:
             for obs_name in ['temperature','total_rain']:
-                bin_lows,hist,logsf,rtime = np.load(join(analysis_dir,f'distn_{obs_name}.npy'))
+                # ------------------- Mean and quantiles at various latitudes ------------
+                roi = {dim: val for (dim,val) in obs_roi[obs_name].items() if dim not in ['lon','lat']}
+                location_suffix = ('_'.join([r'%s%g'%(roikey,roival) for (roikey,roival) in roi.items()])).replace('.','p')
+                f_sf_mean = xr.open_dataset(join(analysis_dir,f'mean_sf_{obs_name}.nc'))
+                print(f'{f_sf_mean.coords = }')
+                print(f'{f_sf_mean["sf"].coords = }')
+                fig,ax = plt.subplots()
+                handles = []
+                for i_sfval,sfval in enumerate(f_sf_mean['fsf'].coords['sf'].to_numpy()):
+                    print(f'{i_sfval = }, {sfval = }')
+                    xdata = f_sf_mean.lat.values
+                    ydata = f_sf_mean['fsf'].isel(sf=i_sfval).to_numpy()
+                    print(f'{xdata.shape = }')
+                    print(f'{ydata.shape = }')
+                    h, = ax.plot(xdata, ydata, label=f'{sfval}')
+                    handles.append(h)
+                h, = ax.plot(f_sf_mean['fmean'].lat.values, f_sf_mean['fmean'].values, color='black', linestyle='--', linewidth=2, label='mean')
+                handles.append(h)
+                ax.legend(handles=handles,title='Comp. quantiles')
+                # Adjust y axis limits
+                data4range = f_sf_mean['fsf'].sel(lat=slice(20,None))
+                ax.set_ylim([data4range.min().item(), data4range.max().item()])
+                ax.set_xlabel('Latitude')
+                fig.savefig(join(plot_dir,f'mean_sf_{obs_name}_{location_suffix}.png'),**pltkwargs)
+                plt.close(fig)
+
+
+                # ------------------- Return period plots at a fixed latitude ---------
+                roi = {dim: val for (dim,val) in obs_roi[obs_name].items() if dim not in ['lon']}
+                location_suffix = ('_'.join([r'%s%g'%(roikey,roival) for (roikey,roival) in roi.items()])).replace('.','p')
+                location_label = ', '.join([r'%s=%g'%(roikey,roival) for (roikey,roival) in roi.items()])
+                bin_lows,hist,logsf,rtime = np.load(join(analysis_dir,f'distn_{obs_name}_{location_suffix}.npy'))
                 print(f'{bin_lows[:3] = }')
                 print(f'{hist[:3] = }')
                 print(f'{rtime[:3] = }')
                 bin_mids = bin_lows + 0.5*(bin_lows[1]-bin_lows[0])
-                fig,axes = plt.subplots(ncols=2,figsize=(10,4))
+                fig,axes = plt.subplots(ncols=2,figsize=(12,4),gridspec_kw={'wspace': 0.25})
                 ax = axes[0]
-                ax.plot(bin_lows,hist,color='black',marker='o')
+                ax.plot(bin_lows,hist,color='black',marker='.')
                 ax.set_xlabel(obsprop[obs_name]['label'])
                 ax.set_ylabel('Prob. density')
                 ax.set_yscale('log')
@@ -988,8 +1026,9 @@ def dns(nproc,recompile,i_param):
                 ax.set_ylabel('Return level')
                 ax.set_xscale('log')
                 ax.set_title(obsprop[obs_name]['label'])
+                fig.suptitle(r'%s at %s'%(obsprop[obs_name]['label'],location_label))
                 print(join(plot_dir,f'rtime_{obsprop[obs_name]["abbrv"]}.png'))
-                fig.savefig(join(plot_dir,f'rtime_{obsprop[obs_name]["abbrv"]}.png'),**pltkwargs)
+                fig.savefig(join(plot_dir,f'rtime_{obsprop[obs_name]["abbrv"]}_{location_suffix}.png'),**pltkwargs)
                 plt.close(fig)
 
 
@@ -1069,26 +1108,34 @@ def meta_analyze_dns():
     params2fix = ['L_sppt','tau_sppt']
     param2vary = 'std_sppt'
 
-    obs_names = ['temperature','total_rain']
-
+    # Specify the pool of files
     dnsdir_pattern = join(expt_dir,f"abs1_resT21_pertSPPT*/")
     dnsdirs = glob.glob(dnsdir_pattern)
-    print(f'{dnsdirs = }')
-    param_vals = dict({p: [] for p in params.keys()})
-    return_stats = []
-    for i_dnsdir,dnsdir in enumerate(dnsdirs):
-        dynsys = pickle.load(open(join(dnsdir,'ens.pickle'),'rb')).dynsys
-        for p in params.keys():
-            param_vals[p].append(params[p]['fun'](dynsys.config))
-        return_stats.append(np.load(join(dnsdir,'analysis',f'distn_{obs_name}.npy')))
-        if i_dnsdir == 0:
-            obsprop = dynsys.observable_props()
+    # Select regions of interest
+    lat_target = 45.0
+    pfull_target = 1000
+    obs_roi = dict({
+        'temperature': dict(lat=lat_target,pfull=pfull_target),
+        'total_rain': dict(lat=lat_target),
+        })
+    # TODO compare percentile vs latitude plots
+    for obs_name,roi in obs_roi.items():
+        location_suffix = '_'.join([r'%s%g'%(roikey,roival) for (roikey,roival) in roi.items()])
+        print(f'{dnsdirs = }')
+        param_vals = dict({p: [] for p in params.keys()})
+        return_stats = []
+        for i_dnsdir,dnsdir in enumerate(dnsdirs):
+            dynsys = pickle.load(open(join(dnsdir,'ens.pickle'),'rb')).dynsys
+            for p in params.keys():
+                param_vals[p].append(params[p]['fun'](dynsys.config))
+            return_stats.append(np.load(join(dnsdir,'analysis',f'distn_{obs_name}_{location_suffix}.npy')))
+            if i_dnsdir == 0:
+                obsprop = dynsys.observable_props()
 
-    # TODO Add special case to the dataset: non-SPPT
-    ctrldir = glob.glob(join(expt_dir,f"abs1_resT21_pertIMP*/"))[0]
+        # TODO Add special case to the dataset: non-SPPT
+        ctrldir = glob.glob(join(expt_dir,f"abs1_resT21_pertIMP*/"))[0]
 
-    for obs_name in obs_names:
-        return_stats_ctrl = np.load(join(ctrldir,'analysis',f'distn_{obs_name}.npy'),'rb')
+        bin_lows_ctrl,hist_ctrl,logsf_ctrl,rtime_ctrl = np.load(join(ctrldir,'analysis',f'distn_{obs_name}_{location_suffix}.npy'))
         # Enumerate all combinations of fixed parameters
         param_vals_fixed = list(zip(*(param_vals[p] for p in params2fix)))
         print(f'{param_vals_fixed = }')
@@ -1110,20 +1157,18 @@ def meta_analyze_dns():
             colors = plt.cm.Set1(np.arange(len(idx)))
             for ii,i in enumerate(idx):
                 ax = axes[0]
-                bin_lows = return_stats[i][obs_name]['bin_edges']
-                bin_centers = (bin_edges[1:]+bin_edges[:-1])/2
-                ax.plot(bin_centers,return_stats[i][obs_name]['hist'], color=colors[ii], marker='.')
+                bin_lows,hist,logsf,rtime = return_stats[i]
+                ax.plot(bin_lows,hist,color=colors[ii], marker='.')
                 ax = axes[1]
-                h, = ax.plot(return_stats[i][obs_name]['rtime'],return_stats[i][obs_name]['rlev'],color=colors[ii],marker='.',label=r'%g'%(param_vals[param2vary][i]))
+                h, = ax.plot(rtime,bin_lows,color=colors[ii],marker='.',label=r'%g'%(param_vals[param2vary][i]))
                 ax.set_xscale('log')
                 handles.append(h)
             # Plot the control
             ax = axes[0]
-            bin_edges = return_stats_ctrl[obs_name]['bin_edges']
-            bin_centers = (bin_edges[1:]+bin_edges[:-1])/2
-            ax.plot(bin_centers,return_stats_ctrl[obs_name]['hist'], color='black', marker='.', linestyle='--', linewidth=3)
+            ax.plot(bin_lows_ctrl,hist_ctrl, color='black', marker='.', linestyle='--', linewidth=2)
             ax = axes[1]
-            h, = ax.plot(return_stats_ctrl[obs_name]['rtime'],return_stats_ctrl[obs_name]['rlev'],color='black',marker='.',label=r'no SPPT')
+            h, = ax.plot(rtime_ctrl,bin_lows_ctrl,color='black',marker='.', linestyle='--', linewidth=2, label=r'no SPPT')
+            ax.set_ylim([bin_lows_ctrl[np.argmax(rtime_ctrl>0)],2*bin_lows[-1]-bin_lows[-2]])
             ax.set_xscale('log')
             handles.append(h)
             axes[0].set_xlabel(r'%s'%(obsprop[obs_name]['label']))
@@ -1132,9 +1177,9 @@ def meta_analyze_dns():
             axes[1].set_xlabel('Return time')
             axes[1].set_ylabel('Return level')
             axes[1].set_xscale('log')
-            axes[1].legend(handles=handles, title=params[param2vary]['symbol'], loc='lower right')
+            axes[1].legend(handles=handles, title=params[param2vary]['symbol'], loc=(1.05,0.05))
             fig.suptitle(fixed_param_label)
-            fig.savefig(join(meta_dir,f'rtime_{obsprop[obs_name]["abbrv"]}_asfunof_{param2vary}_{fixed_param_abbrv}.png'),**pltkwargs)
+            fig.savefig(join(meta_dir,f'rtime_{obs_name}_{location_suffix}_asfunof_{param2vary}_{fixed_param_abbrv}.png'),**pltkwargs)
             plt.close(fig)
     
 
@@ -1147,7 +1192,7 @@ if __name__ == "__main__":
     print(f'Got into Main')
     nproc = 4
     recompile = False
-    procedure = 'run'
+    procedure = 'meta'
     if procedure == 'run':
         idx_param = [int(v) for v in sys.argv[1:]]
         for i_param in idx_param:
