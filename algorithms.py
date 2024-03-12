@@ -88,7 +88,7 @@ class PeriodicBranching(EnsembleAlgorithm):
         # Must return a dictionary
         pass
     @abstractmethod
-    def generate_icandf_from_parent(self, parent, branch_time, duration):
+    def generate_icandf_from_parent(self, parent, branch_time):
         pass
     def append_obs_dict(self, obs_dict_new):
         for name in self.obs_dict_names():
@@ -175,17 +175,13 @@ class PeriodicBranching(EnsembleAlgorithm):
     # Utility functions for collecting all trajectories from a particular branch
     def get_tree_subset(self, branch_group):
         all_init_times,all_fin_times = self.ens.get_all_timespans()
-        print(f'\n{all_init_times = }')
         split_time = self.init_time + self.ens.dynsys.t_burnin + branch_group*self.interbranch_interval
-        print(f'{split_time = }')
         nmem = self.ens.get_nmem()
         mems_nontrunk = np.setdiff1d(range(nmem), self.branching_state['trunk_lineage'])
         mems_branch = [mem for mem in mems_nontrunk if self.branch_times[mem] == split_time]
         #mems_branch = len(self.branching_state['trunk_lineage']) + branch_group*self.branches_per_group + np.arange(self.branches_per_group)
         tidxs_branch = []
         for i_mem,mem in enumerate(mems_branch):
-            print(f'{mem = }, {next(self.ens.memgraph.predecessors(mem)) = }')
-            print(f'{self.ens.traj_metadata[mem]["icandf"]["init_cond"] = }')
             tidxs_branch.append(split_time - all_init_times[mem] + np.arange(self.branch_duration))
 
         i_mem_trunk_init = np.searchsorted(self.branching_state['trunk_lineage_init_times'], split_time, side='right') - 1
@@ -200,12 +196,10 @@ class PeriodicBranching(EnsembleAlgorithm):
         print(f'{time = }')
         pairwise_fun_vals_list = []
         for mem0 in mems_trunk:
-            pairwise_fun_vals_list.append(self.ens.compute_pairwise_observables([pairwise_fun], mem0, mems_branch))[0]
-            print(f'{pair_list[-1]["temperature"][0].shape = }')
+            pairwise_fun_vals_list.append(self.ens.compute_pairwise_observables([pairwise_fun], mem0, mems_branch)[0])
         # Repackage into the right shape
         pairwise_fun_vals_array = np.zeros((len(mems_branch), len(time)))
         for i_mem1,mem1 in enumerate(mems_branch):
-            print(f'{pair_list[0][pair_name][i_mem1] = }')
             pairwise_fun_vals_array[i_mem1,:] = np.concatenate([d[i_mem1] for d in pairwise_fun_vals_list])[tidx_trunk]
         return time,pairwise_fun_vals_array
     # ************** Extreme observable *****************
@@ -239,33 +233,31 @@ class PeriodicBranching(EnsembleAlgorithm):
             print(f'About to compute distances for {branch_group = }')
             time,dists_local = self.compute_pairwise_fun_local(dist_fun, branch_group)
             split_times[branch_group] = time[0]
-            dists[branch_group,:,:] = dists_local[dist_name].copy()
-        # Compute RMSD, using only the last two branch members
-        mems_trunk = self.branching_state['trunk_lineage']
-        if len(mems_trunk) == 1:
-            mems_rmsd = [len(mems_trunk)-1]*2
-        else:
-            mems_rmsd = [len(mems_trunk)-i for i in [1,2]]
-        # Also compute other summary stats besides RMSE, like Lyapunov exponents and changeover times from exponential to diffusive growth. 
-        return split_times,dists,rmses
-    def analyze_pert_growth(self, pert_growth):
-        split_times,rmses,rmsds,dists = [pert_growth[key] for key in ['split_times','rmses','rmsds','dists']]
-        dist_names = list(rmses.keys())
-        ngroups,nbranches,ntimes = dists[dist_names[0]].shape
-        lyapunov_exponents = dict()
-        for dist_name in dist_names:
-            lyapunov_exponents[dist_name] = np.zeros(ngroups)
-            tmin = 1
-            for group in range(ngroups):
-                if np.max(rmses[dist_name][group]) >= 0.25*rmsds[dist_name]:
-                    tmax = np.where(rmses[dist_name][group] >= 0.25*rmsds[dist_name])[0][0]
-                else:
-                    tmax = max(tmin+1,len(rmses[dist_name][group])) - 1
-                print(f'{tmin = }, {tmax = }')
-                linmod = linregress(np.arange(tmin,tmax+1), np.log(rmses[dist_name][group][tmin:tmax+1]))
-                lyapunov_exponents[dist_name][group] = linmod.slope/self.ens.dynsys.dt_save
-        print(f'{lyapunov_exponents = }')
-        return lyapunov_exponents
+            dists[branch_group,:,:] = dists_local.copy()
+        return split_times,dists
+    def summarize_pert_growth(self, dists):
+        ngroups,nbranches,ntimes = dists.shape
+        rmsd = np.sqrt(np.mean(dists[:,:,-1]**2))
+        rmses = np.sqrt(np.mean(dists**2, axis=1))
+        # Three measures of error growt 
+        lyap_expons = np.zeros(ngroups) # RMSE ~ exp(lyap_expon*t)
+        diff_expons = np.zeros(ngroups) # RMSE ~ t**(diff_expon)
+        thalfsat = np.zeros(ngroups, dtype=int) # RMSE(thalfsat)/RMSD = 1/2
+        for group in range(ngroups):
+            log_rmse = np.log(rmses[group,:])
+            thalfsat[group] = max(2,np.where(rmses[group,:] >= 0.5*np.max(rmses[group,:]))[0][0])
+            diff_expons[group] = linregress(
+                    np.log(np.arange(1,thalfsat[group])), 
+                    np.log(rmses[group,1:thalfsat[group]])
+                    ).slope
+            lyap_expons[group] = linregress(
+                    np.arange(1,thalfsat[group]),
+                    np.log(rmses[group,1:thalfsat[group]])
+                    ).slope
+        return thalfsat,diff_expons,lyap_expons,rmses,rmsd
+    def compute_fractional_saturation_time(self, dists):
+        pass
+
     @classmethod
     def analyze_pert_growth_meta(cls, pert_growth_list):
         # Compare characteristics of perturbation growth as a function of various independent variables
@@ -284,49 +276,26 @@ class PeriodicBranching(EnsembleAlgorithm):
                 for i_frac,frac in enumerate(fracs):
                     t2fracsat[dist_name][i_pg,i_frac] = np.mean(np.argmax(rmse/rmsd > frac, axis=1))
         return fracs,t2fracsat
-    def plot_pert_growth(self, pert_growth, lyap, fndict, labels=None, abbrvs=None, logscale=True):
-        split_times,rmses,rmsds,dists = [pert_growth[key] for key in ['split_times','rmses','rmsds','dists']]
-
-        dist_names = list(rmses.keys())
-        ngroups,nbranches,ntimes = dists[dist_names[0]].shape
+    def plot_pert_growth(self, split_times, dists, thalfsat, diff_expons, lyap_expons, rmses, rmsd, plot_dir, plot_suffix, logscale=False):
+        ngroups,nbranches,ntimes = dists.shape
         tu = self.ens.dynsys.dt_save
-        if labels is None: labels = dict({dist_name: f'Dist(CTRL,PERT) ({dist_name})' for dist_name in dist_names})
-        if abbrvs is None: abbrvs = dict({dist_name: dist_name for dist_name in dist_names})
         for branch_group in range(min(3,ngroups)):
-            time = split_times[branch_group] + np.arange(rmses[dist_names[0]].shape[1])
-            for dist_name in dist_names:
-                fig,ax = plt.subplots(figsize=(12,5))
-                for i_mem1 in range(nbranches):
-                    ax.plot(time*tu, dists[dist_name][branch_group,i_mem1,:], color='tomato',)
-                hrmse, = ax.plot(time*tu, rmses[dist_name][branch_group,:], color='black', label='RMSE')
-                hrmsd = ax.axhline(rmsds[dist_name],label='RMSD', color='black', linestyle='--')
-                hlyap, = ax.plot(time[1:]*tu, np.minimum(rmsds[dist_name], rmses[dist_name][branch_group,1]*np.exp(lyap[dist_name][branch_group]*(time[1:]-time[1])*tu)), color='dodgerblue')
-                ax.legend(handles=[hrmse,hrmsd,hlyap])
-                ax.set_ylabel(labels[dist_name])
-                ax.set_xlabel('time')
-                if logscale: ax.set_yscale('log')
-                fig.savefig(fndict[dist_name][branch_group], **pltkwargs)
-                plt.close(fig)
-        for dist_name in dist_names:
-            fig,ax = plt.subplots()
-            ax.plot(split_times,lyap[dist_name],color='black',marker='o')
-            ax.set_xlabel('split_time')
-            ax.set_ylabel('Lyapunov exponent')
-            fig.savefig(fndict[dist_name]['lyap_exp'], **pltkwargs)
-            plt.close(fig)
-        # TODO
-        # 1. Aggregate the RMSE into one plot to measure error growth averaged and separately 
-        time = np.arange(ntimes)
-        for dist_name in dist_names:
-            fig,ax = plt.subplots()
-            for branch_group in range(ngroups):
-                ax.plot(time, rmses[dist_name][branch_group,:], color=plt.cm.rainbow(branch_group/(ngroups-1)))
-            ax.axhline(rmsds[dist_name], color='black', linestyle='--')
+            time = split_times[branch_group] + np.arange(ntimes)
+            print(f'{time = }')
+            fig,ax = plt.subplots(figsize=(12,5))
+            for i_mem1 in range(nbranches):
+                ax.plot(time*tu, dists[branch_group,i_mem1,:], color='tomato',)
+            hrmse, = ax.plot(time*tu, rmses[branch_group,:], color='black', label='RMSE')
+            hrmsd = ax.axhline(rmsd,label='RMSD', color='black', linestyle='--')
+            hlyap, = ax.plot(time[1:]*tu, np.minimum(rmsd, rmses[branch_group,1]*np.exp(lyap_expons[branch_group]*(time[1:]-time[1]))), color='dodgerblue', label="Exponential growth")
+            hdiff, = ax.plot(time[1:]*tu, np.minimum(rmsd, rmses[branch_group,1]*(time[1:]-time[1])**diff_expons[branch_group]), color='green', label="Diffusive growth")
+            hthalf = ax.axvline((time[0]+thalfsat[branch_group])*tu, color='gray', label=r'$\frac{1}{2}$-saturation time')
+            ax.legend(handles=[hrmse,hrmsd,hlyap,hdiff,hthalf])
+            ax.set_ylabel('Distance')
             ax.set_xlabel('time')
             if logscale: ax.set_yscale('log')
-            fig.savefig(fndict[dist_name]['rmse'], **pltkwargs)
+            fig.savefig(join(plot_dir,r'pert_growth_group%d_%s.png'%(branch_group,plot_suffix)), **pltkwargs)
             plt.close(fig)
-        # 2. Make this a classmethod
         return
     @classmethod 
     def plot_pert_growth_meta(cls, indep_var_list, fracsat, t2fracsat, savefile, ivlabel, tu=1, fracsat_ref=None, t2fracsat_ref=None):
@@ -356,39 +325,30 @@ class PeriodicBranching(EnsembleAlgorithm):
         fig.savefig(savefile, **pltkwargs)
         plt.close(fig)
         return
-    def plot_obs_spaghetti(self, obs_funs, branch_group, plotdir, ylabels=None, titles=None, abbrvs=None):
+    def plot_obs_spaghetti(self, obs_fun, branch_group, plotdir, ylabel='', title='', abbrv=''):
         print(f'\n\nPlotting group {branch_group}')
-        obs_names = list(obs_funs.keys())
-        if titles is None: titles = dict({obs_name: '' for obs_name in obs_names})
-        if ylabels is None: ylabels = dict({obs_name: '' for obs_name in obs_names})
-        if abbrvs is None: abbrvs = dict({obs_name: obs_name for obs_name in obs_names})
-        # Plot all the observables from a single group of branches, along with the control 
-        # TODO recover split times from init_times. Better yet, track it in the algorithm to begin with
         # Get all timespans
         time,mems_trunk,tidx_trunk,mems_branch,tidxs_branch = self.get_tree_subset(branch_group)
         print(f'{mems_branch = }')
         tu = self.ens.dynsys.dt_save
 
-        obs_dict_branch = self.ens.compute_observables(obs_funs, mems_branch)
-        obs_dict_trunk = self.ens.compute_observables(obs_funs, mems_trunk)
-
-        for obs_name in obs_names:
-            print(f'============== Plotting observable {obs_name} ============= ')
-            fig,ax = plt.subplots(figsize=(12,5))
-            # For trunk, restrict to the times of interest
-            hctrl, = ax.plot(time*tu, np.concatenate(obs_dict_trunk[obs_name])[tidx_trunk], linestyle='--', color='black', linewidth=2, zorder=1, label='CTRL')
-            for i_mem,mem in enumerate(mems_branch):
-                print(f'{mem = }, {next(self.ens.memgraph.predecessors(mem)) = }')
-                print(f'{self.ens.traj_metadata[mem]["icandf"]["init_cond"] = }')
-                hpert, = ax.plot(time*tu, obs_dict_branch[obs_name][i_mem][tidxs_branch[i_mem]], linestyle='-', color='tomato', linewidth=1, zorder=0, label='PERT')
-            #ax.axvline(split_time*tu, color='tomato')
-            ax.legend(handles=[hctrl,hpert])
-            ax.set_xlabel('time')
-            ax.set_ylabel(ylabels[obs_name])
-            ax.set_title(titles[obs_name])
-            #ax.set_xlim([time[0],time[-1]+1])
-            fig.savefig(join(plotdir,r'%s_group%d.png'%(abbrvs[obs_name],branch_group)), **pltkwargs)
-            plt.close(fig)
+        obs_branch = [self.ens.compute_observables([obs_fun], mem)[0] for mem in mems_branch]
+        obs_trunk = np.concatenate([self.ens.compute_observables([obs_fun], mem)[0] for mem in mems_trunk])
+        print(f'{obs_branch = }')
+        print(f'{obs_trunk = }')
+        fig,ax = plt.subplots(figsize=(12,5))
+        # For trunk, restrict to the times of interest
+        hctrl, = ax.plot(time*tu, obs_trunk[tidx_trunk], linestyle='--', color='black', linewidth=2, zorder=1, label='CTRL')
+        for i_mem,mem in enumerate(mems_branch):
+            hpert, = ax.plot(time*tu, obs_branch[i_mem][tidxs_branch[i_mem]], linestyle='-', color='tomato', linewidth=1, zorder=0, label='PERT')
+        #ax.axvline(split_time*tu, color='tomato')
+        ax.legend(handles=[hctrl,hpert])
+        ax.set_xlabel('time')
+        ax.set_ylabel(ylabel)
+        ax.set_title(title)
+        #ax.set_xlim([time[0],time[-1]+1])
+        fig.savefig(join(plotdir,r'%s_group%d.png'%(abbrv,branch_group)), **pltkwargs)
+        plt.close(fig)
         return
         
 class ODEPeriodicBranching(PeriodicBranching):
@@ -477,8 +437,12 @@ class ITEAMS(EnsembleAlgorithm):
         label = 'TEAMS'
         return abbrv, label
     @abstractmethod
-    def score(self, mem):
-        # Score function for a member that already exists in the ensemble 
+    def score_components(self, t, x):
+        # Something directly computable from the system state. Return a dictionary
+        pass
+    @abstractmethod
+    def score_combined(self, t, sccomp):
+        # Scalar score used for splitting
         pass
     @abstractmethod
     def label_from_score(config):
@@ -499,18 +463,30 @@ class ITEAMS(EnsembleAlgorithm):
                 'multiplicities': [],
                 })
 
-            # Keep track of trunk length
             parent = None
             icandf = self.ens.dynsys.generate_default_icandf(self.init_time,self.init_time+self.time_horizon+self.buffer_time)
             icandf['init_cond'] = self.init_cond
-            branching_state_update = dict({}) # TODO fill in properties that don't depend on the parent's score. 
         else:
             parent = self.ens.branching_state['parent_queue'].popleft()
-            duration = self.init_time+self.time_horizon+self.buffer_time-branch_time
             branch_time = self.branching_state['scores_max_timing'][parent] - self.advance_split_time #TODO
-            icandf = self.generate_icandf_from_parent(parent, branch_time, duration)
-            icandf = self.ens.dynsys.generate_default_icandf(self.init_time,self.init_time+self.time_horizon+self.buffer_time)
-            icandf['init_cond'] = self.init_cond
+            icandf = self.generate_icandf_from_parent(parent, branch_time)
+
+        # ---------------- Run the new trajectory --------------
+        new_score_components = self.ens.branch_or_plant(icandf, self.score_components)
+        # ----------------------------------------------------------------------
+
+        # Update the state
+        new_score_combined = self.score_combined(new_score_components)
+        self.branching_state['scores_tdep'].append(new_score_combined)
+        self.branching_state['scores_max'].append(np.nanmax(new_score_combined))
+        self.branching_state['scores_max_timing'].append(np.nanargmax(new_score_combined))
+        memact = self.branching_state['members_active']
+        log_active_weight = logsumexp([self.branching_state['log_weights'][ma] for ma in memact], b=[self.branching_state['multiplicities'][ma] for ma in memact])
+
+        # TODO finish updating this state
+        return
+
+
 
             
 

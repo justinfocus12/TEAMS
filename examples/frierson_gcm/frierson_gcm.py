@@ -471,15 +471,47 @@ class FriersonGCM(DynamicalSystem):
             runavg += da.shift(time=i_delay).isel(time=day_end_tidx)
         runavg *= 1.0/steps_per_day
         return runavg
+    @staticmethod
+    def sel_from_roi(da,roi):
+        slice_sels = {key: val for (key,val) in roi.items() if isinstance(val,slice)}
+        nonslice_sels = {key: val for (key,val) in roi.items() if not isinstance(val,slice)}
+        return da.sel(slice_sels).sel(nonslice_sels, method='nearest')
+    @staticmethod
+    def label_from_roi(roi):
+        abbrvs = []
+        labels = []
+        for key,val in roi.items():
+            if isinstance(val,slice):
+                abbrvs.append(r'%s%g-%g'%(key,val.start,val.stop))
+                labels.append(r'$%s\in(%g,%g)$'%(key,val.start,val.stop))
+            else:
+                abbrvs.append(r'%s%g'%(key,val))
+                labels.append(r'$%s=%g$'%(key,val))
+        abbrv = ('_'.join(abbrvs)).replace('.','p')
+        label = ', '.join(labels)
+        return abbrv,label
+
     # --------------- Distance functions ----------------------
+    @staticmethod
+    def dist_euclidean_tdep(da0,da1,roi):
+        t0 = da0.time.to_numpy()
+        t1 = da1.time.to_numpy()
+        tsel = dict(time=slice(max(t0[0],t1[0]),min(t0[-1],t1[-1])+1))
+        f0,f1 = [FriersonGCM.sel_from_roi(da.sel(tsel), roi) for da in [da0,da1]]
+        cos_weight = xr.ones_like(f0) * np.cos(np.deg2rad(f0['lat']))
+        dimsum = set(f0.dims)-{'time'}
+        D2 = (cos_weight*(f0-f1)**2).sum(dim=dimsum) / cos_weight.sum(dim=dimsum)
+        return np.sqrt(D2).compute().to_numpy()
+
     def compute_pairwise_observables(self, pairwise_funs, md0, md1list, root_dir): # Distance is the main application here 
-        pairwise_fun_vals = [[] for pwf in pairwise_fun] # List of lists
+        pairwise_fun_vals = [[] for pwf in pairwise_funs] # List of lists
         ds0 = xr.open_mfdataset(join(root_dir,md0['filename_traj']), decode_times=False)
         for i_md1,md1 in enumerate(md1list):
             ds1 = xr.open_mfdataset(join(root_dir,md1['filename_traj']), decode_times=False)
             pairwise_fun_vals.append([])
             for i_pwf,pwf in enumerate(pairwise_funs):
                 pairwise_fun_vals[i_pwf].append(pwf(ds0,ds1))
+        print(f'{len(pairwise_fun_vals) = }')
         return pairwise_fun_vals
     def distance_props(self):
         obsprop = self.observable_props()
@@ -501,10 +533,9 @@ class FriersonGCM(DynamicalSystem):
     # --------------- Observable functions ---------------------
     def compute_observables(self, obs_funs, metadata, root_dir):
         ds = xr.open_mfdataset(join(root_dir,metadata['filename_traj']), decode_times=False)
-        obs_name = list(obs_funs.keys())
-        obs = dict()
-        for obs_name,obs_fun in obs_funs.items():
-            obs[obs_name] = obs_fun(ds).compute()
+        obs = []
+        for i_fun,fun in enumerate(obs_funs):
+            obs.append(fun(ds).compute())
         return obs
     def compute_stats_dns_rotsym(self, fxypt, lon_roll_step_requested, time_block_size, sel, bounds=None):
         # Given a physical input field f(x,y,t), augment it by rotations to compute return periods

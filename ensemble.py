@@ -48,20 +48,15 @@ class Ensemble(ABC):
             mems = np.arange(self.get_nmem())
         return np.array([self.traj_metadata[mem]['icandf']['frc'].get_forcing_times()[0] for mem in mems])
     def compute_pairwise_observables(self, pair_funs, mem0, mem1list):
+        print(f'{mem0 = }, {mem1list = }')
         md0 = self.traj_metadata[mem0]
         md1list = [self.traj_metadata[mem1] for mem1 in mem1list]
         return self.dynsys.compute_pairwise_observables(pair_funs, md0, md1list, self.root_dir)
         
-    def compute_observables(self, obs_funs, mems):
+    def compute_observables(self, obs_funs, mem):
         # args_dict and kwargs_dict should have a different value for each obs_name
-        obs_names = list(obs_funs.keys())
-        obs_dict = dict({obs_name: [] for obs_name in obs_names})
-        for i_mem,mem in enumerate(mems):
-            metadata = self.traj_metadata[mem]
-            obs_dict_mem = self.dynsys.compute_observables(obs_funs, metadata, self.root_dir)
-            for obs_name in obs_names:
-                obs_dict[obs_name].append(obs_dict_mem[obs_name])
-        return obs_dict
+        metadata = self.traj_metadata[mem]
+        return self.dynsys.compute_observables(obs_funs, metadata, self.root_dir)
 
     def compute_observables_along_lineage(self, obs_funs, mem_leaf):
         mems = sorted(nx.ancestors(self.memgraph, mem_leaf) | {mem_leaf})

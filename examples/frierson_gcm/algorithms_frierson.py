@@ -95,14 +95,14 @@ class FriersonGCMPeriodicBranching(algorithms.PeriodicBranching):
 
 def run_periodic_branching(nproc,recompile,i_param):
     tododict = dict({
-        'run_pebr':                1,
+        'run_pebr':                0,
         'analyze_pebr': dict({
             'measure_pert_growth':           1,
             'analyze_pert_growth':           1,
             }),
         'plot_pebr': dict({
             'observables':    1,
-            'fields':         1,
+            'fields':         0,
             'pert_growth':    1,
             'response':       0,
             }),
@@ -204,86 +204,62 @@ def run_periodic_branching(nproc,recompile,i_param):
                 })
             alg.take_next_step(saveinfo)
             pickle.dump(alg, open(alg_filename, 'wb'))
+    # -------------------- Post-analysis -----------------------------
+    dist_roi = dict({
+        'temperature': dict(lat=slice(35,55),lon=slice(150,210),pfull=500),
+        'total_rain': dict(lat=slice(35,55),lon=slice(150,210))
+        })
+    obs_roi = dict({
+        'temperature': dict(lat=45,lon=180,pfull=500),
+        'total_rain': dict(lat=45,lon=180),
+        })
+    alg = pickle.load(open(fndict['alg']['alg'], 'rb'))
+    obsprop = alg.ens.dynsys.observable_props()
     if utils.find_true_in_dict(tododict['analyze_pebr']):
-        alg = pickle.load(open(fndict['alg']['alg'], 'rb'))
-        if tododict['analyze_pebr']['measure_pert_growth'] and (not exists(fndict['analysis']['pert_growth'])):
-            obsprop = alg.ens.dynsys.observable_props()
-            lat = 45.0
-            lon = 180.0
-            pfull = 500.0
-            latlonsel = dict(lat=slice(lat-10,lat+10),lon=slice(lon-30,lon+30))
-            def dist_euclidean(ds0,ds1,field_name):
-                t0 = ds0.time.to_numpy()
-                t1 = ds1.time.to_numpy()
-                tsel = dict(time=slice(max(t0[0],t1[0]),min(t0[-1],t1[-1])+1))
-                f0 = getattr(alg.ens.dynsys, field_name)(ds0).sel(tsel).sel(latlonsel)
-                f1 = getattr(alg.ens.dynsys, field_name)(ds1).sel(tsel).sel(latlonsel)
-                if 'pfull' in f0.dims:
-                    f0 = f0.sel(pfull=pfull,method='nearest')
-                    f1 = f1.sel(pfull=pfull,method='nearest')
-                # TODO add a cosine weighting 
-                return np.sqrt(((f0-f1)**2).sum(dim=set(f0.dims)-{'time'})).compute().to_numpy()
-            def rmsd_euclidean(ds0,ds1,field_name):
-                f0 = getattr(alg.ens.dynsys, field_name)(ds0).sel(latlonsel)#.compute().to_numpy()
-                f1 = getattr(alg.ens.dynsys, field_name)(ds1).sel(latlonsel)#.compute().to_numpy()
-                if 'pfull' in f0.dims:
-                    f0 = f0.sel(pfull=pfull,method='nearest')
-                    f1 = f1.sel(pfull=pfull,method='nearest')
-                f0 = f0.stack(latlon=['lat','lon']).transpose('time','latlon').to_numpy()
-                f1 = f1.stack(latlon=['lat','lon']).transpose('time','latlon').to_numpy()
-                D2mat = np.add.outer(np.sum(f0**2, axis=1), np.sum(f1**2, axis=1)) - 2*f0.dot(f1.T)
-                return np.sqrt(np.mean(D2mat))
-            def dist_rolling_window(ds0,ds1,field_name,window):
-                t0 = ds0.time.to_numpy()
-                t1 = ds1.time.to_numpy()
-                tsel = dict(time=slice(max(t0[0],t1[0]),min(t0[-1],t1[-1])+1))
-                nt = tsel.stop - tsel.start + 1
-                f0 = getattr(alg.ens.dynsys, field_name)(ds0).sel(tsel).sel(lat=lat,lon=lon,method='nearest')
-                f1 = getattr(alg.ens.dynsys, field_name)(ds1).sel(tsel).sel(lat=lat,lon=lon,method='nearest')
-                if 'pfull' in f0.dims:
-                    f0 = f0.sel(pfull=pfull,method='nearest')
-                    f1 = f1.sel(pfull=pfull,method='nearest')
-                f0 = f0.compute().to_numpy()
-                f1 = f1.compute().to_numpy()
-                D2 = np.convolve((f0 - f1)**2, np.ones(window), 'full')[:nt]
-                D2[:window] = np.nan
-                return D2
-            def rmsd_rolling_window(ds0,ds1,field_name,window):
-                f0 = getattr(alg.ens.dynsys, field_name)(ds0).sel(tsel).sel(lat=lat,lon=lon,method='nearest')
-                f1 = getattr(alg.ens.dynsys, field_name)(ds1).sel(tsel).sel(lat=lat,lon=lon,method='nearest')
-                if 'pfull' in f0.dims:
-                    f0 = f0.sel(pfull=pfull,method='nearest')
-                    f1 = f1.sel(pfull=pfull,method='nearest')
-                f0 = f0.compute().to_numpy()
-                f1 = f1.compute().to_numpy()
-                n0 = len(f0)
-                n1 = len(f1)
-                F0 = np.vstack(tuple(np.roll(f0,lag) for lag in range(window))).T[window:]
-                F1 = np.vstack(tuple(np.roll(f1,lag) for lag in range(window))).T[window:]
-                D2mat = np.add.outer(np.sum(F0**2, axis=1), np.sum(F1**2, axis=1)) - 2*F0.dot(F1.T)
-                return np.sqrt(np.mean(D2mat))
-
-
-
-            dist_funs = dict({'tdep': dict(), 'rmsd': dict()})
-            for field_name in ['temperature','total_rain','column_water_vapor','surface_pressure']:
-                dist_funs['tdep'][field_name] = lambda ds0,ds1,field_name=field_name: dist_euclidean(ds0,ds1,field_name)
-                dist_funs['rmsd'][field_name] = lambda ds0,ds1,field_name=field_name: rmsd_euclidean(ds0,ds1,field_name)
-            pert_growth = alg.measure_pert_growth(dist_funs)
-            pickle.dump(pert_growth, open(fndict['analysis']['pert_growth'], 'wb'))
-        else:
-            pert_growth = pickle.load(open(fndict['analysis']['pert_growth'], 'rb'))
-        if tododict['analyze_pebr']['analyze_pert_growth'] and (not exists(fndict['analysis']['lyap_exp'])):
-            lyapunov_exponents = alg.analyze_pert_growth(pert_growth)
-            pickle.dump(lyapunov_exponents, open(fndict['analysis']['lyap_exp'], 'wb'))
+        if tododict['analyze_pebr']['measure_pert_growth']:
+            for field_name in ['temperature','total_rain']:
+                dist_fun = lambda ds0,ds1: alg.ens.dynsys.dist_euclidean_tdep(
+                        *(getattr(alg.ens.dynsys,field_name)(ds) for ds in [ds0,ds1]),
+                        dist_roi[field_name])
+                split_times,dists = alg.measure_pert_growth(dist_fun)
+                location_abbrv,location_label = alg.ens.dynsys.label_from_roi(dist_roi[field_name]) 
+                filename = (r'dist_%s_%s'%(obsprop[field_name]['abbrv'],location_abbrv)).replace('.','p')
+                np.save(join(dirdict['analysis'],f'{filename}.npy'), dists)
+            np.save(join(dirdict['analysis'],'split_times.npy'), split_times)
+        if tododict['analyze_pebr']['analyze_pert_growth']:
+            split_times = np.load(join(dirdict['analysis'],'split_times.npy'))
+            for field_name in ['temperature','total_rain']:
+                location_abbrv,location_label = alg.ens.dynsys.label_from_roi(dist_roi[field_name]) 
+                dist_filename = (r'dist_%s_%s'%(obsprop[field_name]['abbrv'],location_abbrv)).replace('.','p')
+                dists = np.load(join(dirdict['analysis'],f'{dist_filename}.npy'))
+                thalfsat,diff_expons,lyap_expons,rmses,rmsd = alg.summarize_pert_growth(dists)
+                np.savez(
+                        join(dirdict['analysis'], r'pert_growth_summary_%s_%s.npz'%(obsprop[field_name]['abbrv'],location_abbrv)),
+                        thalfsat=thalfsat, diff_expons=diff_expons, lyap_expons=lyap_expons,rmses=rmses,rmsd=np.array([rmsd]))
     if utils.find_true_in_dict(tododict['plot_pebr']):
-        lat = 45.0
-        lon = 180.0
-        pfull = 500.0
         alg = pickle.load(open(join(dirdict['alg'],'alg.pickle'),'rb'))
+        # ----------------- Perturbation growth ---------------------------
+        if tododict['plot_pebr']['pert_growth']:
+            split_times = np.load(join(dirdict['analysis'],'split_times.npy'))
+            for field_name in ['temperature','total_rain']:
+                location_abbrv,location_label = alg.ens.dynsys.label_from_roi(dist_roi[field_name]) 
+                pgs = np.load(join(dirdict['analysis'],r'pert_growth_summary_%s_%s.npz'%(obsprop[field_name]['abbrv'],location_abbrv)))
+                dist_filename = (r'dist_%s_%s'%(obsprop[field_name]['abbrv'],location_abbrv)).replace('.','p')
+                dists = np.load(join(dirdict['analysis'],f'{dist_filename}.npy'))
+                plot_suffix = r'%s_%s'%(obsprop[field_name]['abbrv'],location_abbrv)
+                alg.plot_pert_growth(split_times, dists, pgs['thalfsat'], pgs['diff_expons'], pgs['lyap_expons'], pgs['rmses'], pgs['rmsd'].item(), dirdict['plots'], plot_suffix, logscale=True)
+        # ---------------- Observables -------------------
+        if tododict['plot_pebr']['observables']:
+            for obs_name in ['temperature','total_rain']:
+                obs_fun = lambda dsmem: alg.ens.dynsys.sel_from_roi(getattr(alg.ens.dynsys, obs_name)(dsmem), obs_roi[obs_name])
+                roi_abbrv,roi_label = alg.ens.dynsys.label_from_roi(obs_roi[obs_name])
+                obs_abbrv = r'%s_%s'%(obsprop[obs_name]['abbrv'],roi_abbrv)
+                obs_label = r'%s at %s'%(obsprop[obs_name]['label'],roi_label)
+                obs_unit = r'[%s]'%(obsprop[obs_name]['unit_symbol'])
+                for branch_group in range(min(3,alg.num_branch_groups)): #range(alg.branching_state['next_branch_group']):
+                    alg.plot_obs_spaghetti(obs_fun, branch_group, dirdict['plots'], ylabel=obs_unit, title=obs_label, abbrv=obs_abbrv)
         if tododict['plot_pebr']['fields']:
             # Plot a panel of ensemble members each day 
-            obsprop = alg.ens.dynsys.observable_props()
             obs_funs = dict()
             for obs_name in ['temperature']:
                 obs_funs[obs_name] = lambda dsmem,obs_name=obs_name: getattr(alg.ens.dynsys, obs_name)(dsmem).sel(lat=slice(lat-20,lat+20),lon=slice(lon-45,lon+45)).sel(pfull=pfull,method='nearest')
@@ -328,32 +304,6 @@ def run_periodic_branching(nproc,recompile,i_param):
                         if exists(filename): os.remove(filename)
                         fig.savefig(filename, **pltkwargs)
                         plt.close(fig)
-        if tododict['plot_pebr']['observables']:
-            obsprop = alg.ens.dynsys.observable_props()
-            obs_funs = dict()
-            for obs_name in ['temperature']:
-                obs_funs[obs_name] = lambda dsmem,obs_name=obs_name: getattr(alg.ens.dynsys, obs_name)(dsmem).sel(lat=lat,lon=lon,pfull=pfull,method='nearest')
-            for obs_name in ['r_sppt_g','total_rain','column_water_vapor','surface_pressure']:
-                obs_funs[obs_name] = lambda dsmem,obs_name=obs_name: getattr(alg.ens.dynsys, obs_name)(dsmem).sel(lat=lat,lon=lon,method='nearest')
-            obs_names = list(obs_funs.keys())
-            obs_abbrvs = dict()
-            obs_labels = dict()
-            obs_units = dict()
-            for obs_name in obs_names:
-                obs_abbrvs[obs_name] = obsprop[obs_name]['abbrv']
-                if obs_name == 'temperature':
-                    locstr = r'$(\lambda,\phi,p)=(%g^\circ,%g^\circ,%g hPa)$'%(lon,lat,pfull)
-                else:
-                    locstr = r'$(\lambda,\phi)=(%g^\circ,%g^\circ)$'%(lon,lat)
-                obs_labels[obs_name] = r'%s at %s'%(obsprop[obs_name]['label'],locstr)
-                obs_abbrvs[obs_name] = obsprop[obs_name]['abbrv']
-                obs_units[obs_name] = r'[%s]'%(obsprop[obs_name]['unit_symbol'])
-            for branch_group in range(min(3,alg.num_branch_groups)): #range(alg.branching_state['next_branch_group']):
-                alg.plot_obs_spaghetti(obs_funs, branch_group, dirdict['plots'], ylabels=obs_units, titles=obs_labels, abbrvs=obs_abbrvs)
-        if tododict['plot_pebr']['pert_growth']:
-            pert_growth_dict = pickle.load(open(fndict['analysis']['pert_growth'],'rb'))
-            lyap_dict = pickle.load(open(fndict['analysis']['lyap_exp'],'rb'))
-            alg.plot_pert_growth(pert_growth_dict, lyap_dict, fndict['plots'], logscale=True)
     return
 
 def meta_analyze_periodic_branching():
