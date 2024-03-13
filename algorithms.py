@@ -466,24 +466,38 @@ class ITEAMS(EnsembleAlgorithm):
             parent = None
             icandf = self.ens.dynsys.generate_default_icandf(self.init_time,self.init_time+self.time_horizon+self.buffer_time)
             icandf['init_cond'] = self.init_cond
+            new_log_weight = 0.0
         else:
             parent = self.ens.branching_state['parent_queue'].popleft()
             branch_time = self.branching_state['scores_max_timing'][parent] - self.advance_split_time #TODO
             icandf = self.generate_icandf_from_parent(parent, branch_time)
+            new_log_weight = self.branching_state['log_weights'][parent]
 
         # ---------------- Run the new trajectory --------------
         new_score_components = self.ens.branch_or_plant(icandf, self.score_components)
         # ----------------------------------------------------------------------
 
-        # Update the state
+        new_mem = self.ens.get_nmem() - 1
         new_score_combined = self.score_combined(new_score_components)
+        success = (new_score_combined > self.branching_state['score_target'])
+        memact = self.branching_state['members_active']
+        log_active_weight_old = logsumexp([self.branching_state['log_weights'][ma] for ma in memact], b=[self.branching_state['multiplicities'][ma] for ma in memact])
+
+        # Update the state
         self.branching_state['scores_tdep'].append(new_score_combined)
         self.branching_state['scores_max'].append(np.nanmax(new_score_combined))
         self.branching_state['scores_max_timing'].append(np.nanargmax(new_score_combined))
-        memact = self.branching_state['members_active']
-        log_active_weight = logsumexp([self.branching_state['log_weights'][ma] for ma in memact], b=[self.branching_state['multiplicities'][ma] for ma in memact])
-
-        # TODO finish updating this state
+        self.branching_state['log_weights'].append(new_log_weight)
+        if succcess:
+            self.branching_state['members_active'].append(new_mem)
+            self.branching_state['multiplicities'].append(1)
+        else:
+            self.branching_state['multiplicities'].append(0)
+            self.branching_state['multiplicities'][parent] += 1
+        logZ = np.log1p(np.exp(new_log_weight - log_active_weight_old))
+        for ma in self.branching_scores['members_active']:
+            self.branching_state['log_weights'] -= logZ
+        # TODO build up the MCMC infrastructure
         return
 
 
