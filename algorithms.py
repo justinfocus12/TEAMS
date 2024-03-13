@@ -403,15 +403,18 @@ class SDEPeriodicBranching(PeriodicBranching):
 # --------------------- end PeriodicBranching section -------------------------
 
 class ITEAMS(EnsembleAlgorithm):
+    # TEAMS starting from a fixed initial condition. The TEAMS algorithm may wrap this, or just be similar; TBD
     def __init__(self, init_time, init_cond, config, ens, seed):
-        self.set_init_cond(init_time, init_cond)
+        self.set_init_cond(init_time, init_cond) # Unlike for general Algorithms, an initial condition is mandatory
         super().__init__(config, ens, seed)
         return
     def derive_parameters(self, config):
+        self.autonomy = config['autonomy'] # True if this single family is isolated, False if part of a team.
         tu = self.ens.dynsys.dt_save
         self.time_horizon = int(round(config['time_horizon_phys']/tu))
         self.buffer_time = int(round(config['buffer_time_phys']/tu)) # Time between the end of one interval and the beginning of the next, when generating the initial ensemble. Add this to the END of ancestral trajectories. 
         self.advance_split_time = int(round(config['advance_split_time_phys']/tu))
+        self.population_size = config['population_size']
         self.num2drop = config['num2drop']
         self.seed_min,self.seed_max = config['seed_min'],config['seed_max']
         return
@@ -423,7 +426,7 @@ class ITEAMS(EnsembleAlgorithm):
     def label_from_config(config):
         abbrv_population = (
                 r'N%d_T%g_ast%g_drop%d'%(
-                    config['num_init_mems'],
+                    config['population_size'],
                     config['advance_split_time_phys'],
                     config['num2drop'],
                     )
@@ -441,11 +444,14 @@ class ITEAMS(EnsembleAlgorithm):
         # Something directly computable from the system state. Return a dictionary
         pass
     @abstractmethod
-    def score_combined(self, t, sccomp):
-        # Scalar score used for splitting
+    def score_combined(self, t, sccomps):
+        # Scalar score used for splitting, which is derived from sccomp; e.g., a time average
         pass
     @abstractmethod
     def label_from_score(config):
+        pass
+    @abstractmethod
+    def generate_icandf_from_parent(self, parent, branch_time):
         pass
     def take_next_step(self, saveinfo):
         if self.terminate:
@@ -455,7 +461,7 @@ class ITEAMS(EnsembleAlgorithm):
                 'scores_tdep': [],
                 'scores_max': [],
                 'scores_max_timing': [],
-                'score_target': -np.inf, 
+                'score_levels': [-np.inf], 
                 'members_active': [],
                 'members_inactive': [],
                 'parent_queue': deque(),
@@ -479,13 +485,13 @@ class ITEAMS(EnsembleAlgorithm):
 
         new_mem = self.ens.get_nmem() - 1
         new_score_combined = self.score_combined(new_score_components)
-        success = (new_score_combined > self.branching_state['score_target'])
+        success = (new_score_combined > self.branching_state['score_levels'])
         memact = self.branching_state['members_active']
         log_active_weight_old = logsumexp([self.branching_state['log_weights'][ma] for ma in memact], b=[self.branching_state['multiplicities'][ma] for ma in memact])
 
         # Update the state
         self.branching_state['scores_tdep'].append(new_score_combined)
-        self.branching_state['scores_max'].append(np.nanmax(new_score_combined))
+        self.branching_state['scores_max'].append(np.nanmax(new_score_combined[:self.time_horizon-1]))
         self.branching_state['scores_max_timing'].append(np.nanargmax(new_score_combined))
         self.branching_state['log_weights'].append(new_log_weight)
         if succcess:
@@ -497,7 +503,29 @@ class ITEAMS(EnsembleAlgorithm):
         logZ = np.log1p(np.exp(new_log_weight - log_active_weight_old))
         for ma in self.branching_scores['members_active']:
             self.branching_state['log_weights'] -= logZ
-        # TODO build up the MCMC infrastructure
+
+        # Raise level? TODO allow the next level to be set by an external meta-manager, in between calls to take_next_step 
+        if len(self.branching_state['parent_queue']) == 0 and self.autonomy:
+            self.raise_level_replenish_queue()
+            # otherwise, the external caller will raise the level
+        return
+    def raise_level_replenish_queue(self):
+        assert len(self.branching_state['parent_queue']) == 0
+        scores_active = np.array([self.branching_state['scores_max'][ma] for ma in self.branching_state['members_active']])
+        if len(scores_active) > 1: # Past the startup phase
+            order = np.argsort(scores_active)
+            num_leq = np.cumsum([self.branching_state['multiplicities'][order[j]] for j in range(len(order))])
+            next_level = scores_active[order[np.where(num_leq >= self.num2drop)[0][0]]]
+            self.branching_state['score_levels'].append(next_level)
+            if next_level >= scores_active[order[-1]]:
+                self.terminate = True
+            # Re-populate the parent queue
+            self.branching_state['members_active'] = [ma for ma in self.branching_state['members_active'] if sef.branching_state['scores_max'][ma] > next_level]
+        parent_pool = self.rng.permutation(np.concatenate(tuple([parent]*self.branching_state['multiplicities'][parent] for parent in self.branching_state['members_active']))) # TODO consider weighting parents' occurrence in this pool by weight
+        lenpp = len(parent_pool)
+        deficit = self.population_size - len(scores_active)
+        for i in range(deficit):
+            self.branching_state['parent_queue'].append(parent_pool[i % lenpp])
         return
 
 

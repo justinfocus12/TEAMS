@@ -526,6 +526,13 @@ class FriersonGCM(DynamicalSystem):
                 'label': r'Eucl. Dist. (%s)'%(opf['label']),
                 'cmap': opf['cmap'],
                 })
+        # 3D fields, Euclidean distance
+        distprop['horizontal_velocity_eucdist'] = dict({
+            'abbrv': r'UV_EUC',
+            'unit_symbol': 'm/s',
+            'label': 'Eucl. Dist. ($u,v$)',
+            'cmap': obsprop['zonal_velocity']['unit_symbol'],
+            })
         return distprop
 
 
@@ -551,7 +558,9 @@ class FriersonGCM(DynamicalSystem):
         f_subsel = fxypt.sel(sel,method='nearest').isel(time=slice(clip_size,None))
         fconcat = np.concatenate(tuple(f_subsel.isel(lon=i_lon).to_numpy() for i_lon in idx_lon))
         return utils.compute_returnstats_and_histogram(fconcat, time_block_size, bounds=bounds)
-    def observable_props(self):
+    @staticmethod
+    def observable_props():
+        # each key in this dictionary must also be the name of a static method
         obslib = dict()
         obslib['r_sppt_g'] = dict({
             "abbrv": "RSPPT",

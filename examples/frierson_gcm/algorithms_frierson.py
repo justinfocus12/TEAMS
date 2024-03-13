@@ -1,4 +1,3 @@
-# Instantiation of EnsembleMember class on Frierson GCM
 i = 0
 print(f'--------------Beginning imports-------------')
 import numpy as np
