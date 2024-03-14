@@ -86,7 +86,7 @@ class FriersonGCMITEAMS(algorithms.ITEAMS):
             conv = np.convolve(
                     np.ones(compval['tavg'])/compval['tavg'],
                     sccomps.sel(component=compkey).to_numpy(),
-                    mode='full')[:sccomps['time'].size-(compval['tavg']+1)]
+                    mode='full')[:sccomps['time'].size-(compval['tavg']-1)]
             conv[:compval['tavg']-1] = np.nan
             score += compval['weight']*conv
             total_weight += compval['weight']
@@ -176,11 +176,11 @@ def iteams(nproc,recompile,i_param):
         'num_levels_max': 6,
         'seed_min': 1000,
         'seed_max': 10000,
-        'population_size': 5,
-        'time_horizon_phys': 12,
-        'buffer_time_phys': 4,
-        'advance_split_time_phys': 3,
-        'num2drop': 2,
+        'population_size': 3,
+        'time_horizon_phys': 6,
+        'buffer_time_phys': 2,
+        'advance_split_time_phys': 2,
+        'num2drop': 1,
         'score_components': dict({
             'rainrate': dict({
                 'observable': 'total_rain',

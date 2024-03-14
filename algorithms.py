@@ -5,6 +5,7 @@ from numpy.random import default_rng
 import pickle
 from scipy import sparse as sps
 from scipy.stats import linregress 
+from scipy.special import logsumexp, softmax
 from os.path import join, exists
 from os import makedirs
 import copy as copylib
@@ -467,8 +468,14 @@ class ITEAMS(EnsembleAlgorithm):
             icandf['init_cond'] = self.init_cond
             new_log_weight = 0.0
         else:
-            parent = self.ens.branching_state['parent_queue'].popleft()
+            print(f'{self.branching_state = }')
+            parent = self.branching_state['parent_queue'].popleft()
+            init_time_parent,fin_time_parent = self.ens.get_member_timespan(parent)
             branch_time = self.branching_state['scores_max_timing'][parent] - self.advance_split_time #TODO
+            print(f'{branch_time = }')
+            if branch_time < init_time_parent:
+                branch_time = init_time_parent
+                print(f'...modified to {branch_time = }')
             icandf = self.generate_icandf_from_parent(parent, branch_time)
             new_log_weight = self.branching_state['log_weights'][parent]
 
@@ -477,25 +484,30 @@ class ITEAMS(EnsembleAlgorithm):
         # ----------------------------------------------------------------------
 
         new_mem = self.ens.get_nmem() - 1
+        init_time_new,fin_time_new = self.ens.get_member_timespan(new_mem)
         new_score_combined = self.score_combined(new_score_components)
-        success = (new_score_combined > self.branching_state['score_levels'])
-        memact = self.branching_state['members_active']
-        log_active_weight_old = logsumexp([self.branching_state['log_weights'][ma] for ma in memact], b=[self.branching_state['multiplicities'][ma] for ma in memact])
+        new_score_max = np.nanmax(new_score_combined[:self.time_horizon-1])
+        success = (new_score_max > self.branching_state['score_levels'])
 
         # Update the state
         self.branching_state['scores_tdep'].append(new_score_combined)
-        self.branching_state['scores_max'].append(np.nanmax(new_score_combined[:self.time_horizon-1]))
-        self.branching_state['scores_max_timing'].append(np.nanargmax(new_score_combined))
+        self.branching_state['scores_max'].append(new_score_max)
+        self.branching_state['scores_max_timing'].append(init_time_new+np.nanargmax(new_score_combined))
         self.branching_state['log_weights'].append(new_log_weight)
-        if succcess:
+        if success:
             self.branching_state['members_active'].append(new_mem)
             self.branching_state['multiplicities'].append(1)
         else:
             self.branching_state['multiplicities'].append(0)
             self.branching_state['multiplicities'][parent] += 1
+
+        # Update the weights
+        memact = self.branching_state['members_active']
+        log_active_weight_old = logsumexp([self.branching_state['log_weights'][ma] for ma in memact], b=[self.branching_state['multiplicities'][ma] for ma in memact])
         logZ = np.log1p(np.exp(new_log_weight - log_active_weight_old))
-        for ma in self.branching_scores['members_active']:
-            self.branching_state['log_weights'] -= logZ
+        print(f'{logZ = }')
+        for ma in self.branching_state['members_active']:
+            self.branching_state['log_weights'][ma] -= logZ
 
         # Raise level? TODO allow the next level to be set by an external meta-manager, in between calls to take_next_step 
         if len(self.branching_state['parent_queue']) == 0 and self.autonomy:
@@ -513,12 +525,13 @@ class ITEAMS(EnsembleAlgorithm):
             if (len(self.branching_state['score_levels']) >= self.num_levels_max) or (next_level >= scores_active[order[-1]]):
                 self.terminate = True
             # Re-populate the parent queue
-            self.branching_state['members_active'] = [ma for ma in self.branching_state['members_active'] if sef.branching_state['scores_max'][ma] > next_level]
+            self.branching_state['members_active'] = [ma for ma in self.branching_state['members_active'] if self.branching_state['scores_max'][ma] > next_level]
         parent_pool = self.rng.permutation(np.concatenate(tuple([parent]*self.branching_state['multiplicities'][parent] for parent in self.branching_state['members_active']))) # TODO consider weighting parents' occurrence in this pool by weight
         lenpp = len(parent_pool)
         deficit = self.population_size - len(scores_active)
         for i in range(deficit):
             self.branching_state['parent_queue'].append(parent_pool[i % lenpp])
+        print(f'The replenished queue is {self.branching_state["parent_queue"] = }')
         return
 
 
