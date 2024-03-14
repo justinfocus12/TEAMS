@@ -410,6 +410,7 @@ class ITEAMS(EnsembleAlgorithm):
         return
     def derive_parameters(self, config):
         self.autonomy = config['autonomy'] # True if this single family is isolated, False if part of a team.
+        self.num_levels_max = config['num_levels_max']
         tu = self.ens.dynsys.dt_save
         self.time_horizon = int(round(config['time_horizon_phys']/tu))
         self.buffer_time = int(round(config['buffer_time_phys']/tu)) # Time between the end of one interval and the beginning of the next, when generating the initial ensemble. Add this to the END of ancestral trajectories. 
@@ -424,21 +425,16 @@ class ITEAMS(EnsembleAlgorithm):
         return
     @staticmethod
     def label_from_config(config):
-        abbrv_population = (
+        abbrv = (
                 r'N%d_T%g_ast%g_drop%d'%(
                     config['population_size'],
+                    config['time_horizon_phys'],
                     config['advance_split_time_phys'],
                     config['num2drop'],
                     )
                 ).replace('.','p')
-        abbrv_score = self.label_from_score(config)
-        abbrv = '_'.join([
-            'TEAMS',
-            abbrv_population,
-            abbrv_score,
-            ])
-        label = 'TEAMS'
-        return abbrv, label
+        label = 'ITEAMS'
+        return abbrv, label 
     @abstractmethod
     def score_components(self, t, x):
         # Something directly computable from the system state. Return a dictionary
@@ -446,9 +442,6 @@ class ITEAMS(EnsembleAlgorithm):
     @abstractmethod
     def score_combined(self, t, sccomps):
         # Scalar score used for splitting, which is derived from sccomp; e.g., a time average
-        pass
-    @abstractmethod
-    def label_from_score(config):
         pass
     @abstractmethod
     def generate_icandf_from_parent(self, parent, branch_time):
@@ -480,7 +473,7 @@ class ITEAMS(EnsembleAlgorithm):
             new_log_weight = self.branching_state['log_weights'][parent]
 
         # ---------------- Run the new trajectory --------------
-        new_score_components = self.ens.branch_or_plant(icandf, self.score_components)
+        new_score_components = self.ens.branch_or_plant(icandf, self.score_components, saveinfo, parent=parent)
         # ----------------------------------------------------------------------
 
         new_mem = self.ens.get_nmem() - 1
@@ -517,7 +510,7 @@ class ITEAMS(EnsembleAlgorithm):
             num_leq = np.cumsum([self.branching_state['multiplicities'][order[j]] for j in range(len(order))])
             next_level = scores_active[order[np.where(num_leq >= self.num2drop)[0][0]]]
             self.branching_state['score_levels'].append(next_level)
-            if next_level >= scores_active[order[-1]]:
+            if (len(self.branching_state['score_levels']) >= self.num_levels_max) or (next_level >= scores_active[order[-1]]):
                 self.terminate = True
             # Re-populate the parent queue
             self.branching_state['members_active'] = [ma for ma in self.branching_state['members_active'] if sef.branching_state['scores_max'][ma] > next_level]

@@ -92,6 +92,8 @@ class FriersonGCMPeriodicBranching(algorithms.PeriodicBranching):
             })
         return icandf
 
+    # TODO post-analysis functions specific to FriersonGCM
+
 def run_periodic_branching(nproc,recompile,i_param):
     tododict = dict({
         'run_pebr':                0,
@@ -148,28 +150,11 @@ def run_periodic_branching(nproc,recompile,i_param):
     for dirname in list(dirdict.values()):
         makedirs(dirname, exist_ok=True)
 
-    # Enumerate filenames
-    fndict = dict({
-        'alg': dict({
-            'alg': join(dirdict['alg'],'alg.pickle'),
-            }),
-        'analysis': dict({
-            'pert_growth': join(dirdict['analysis'],'pert_growth.pickle'),
-            'lyap_exp': join(dirdict['analysis'],'lyap_exp.pickle')
-            })
-        })
 
     # ----------- TODO Configure post-analysis ---------------------
-    fndict['plots'] = dict()
     config_analysis = dict() 
 
 
-    dist_names = ['temperature','column_water_vapor','surface_pressure','total_rain',]
-    for dist_name in dist_names:
-        fndict['plots'][dist_name] = dict({'rmse': join(dirdict['plots'],f'rmse_dist{dist_name}')})
-        fndict['plots'][dist_name]['lyap_exp'] = join(dirdict['plots'], f'lyap_exp_dist{dist_name}')
-        for branch_group in range(config_algo['num_branch_groups']):
-            fndict['plots'][dist_name][branch_group] = join(dirdict['plots'],f'pert_growth_bg{branch_group}_dist{dist_name}.png')
 
     root_dir = dirdict['alg']
     alg_filename = join(dirdict['alg'],'alg.pickle')
@@ -212,7 +197,7 @@ def run_periodic_branching(nproc,recompile,i_param):
         'temperature': dict(lat=45,lon=180,pfull=500),
         'total_rain': dict(lat=45,lon=180),
         })
-    alg = pickle.load(open(fndict['alg']['alg'], 'rb'))
+    alg = pickle.load(open(alg_filename, 'rb'))
     obsprop = alg.ens.dynsys.observable_props()
     if utils.find_true_in_dict(tododict['analyze_pebr']):
         if tododict['analyze_pebr']['measure_pert_growth']:
