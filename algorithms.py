@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from collections import deque
+import pprint
 import numpy as np
 from numpy.random import default_rng
 import pickle
@@ -129,7 +130,8 @@ class PeriodicBranching(EnsembleAlgorithm):
             if self.init_cond is not None:
                 icandf['init_cond'] = self.init_cond
         elif self.branching_state['trunk_lineage_fin_times'][-1] < self.init_time + self.trunk_duration: # TODO make this more flexible; we could start branching as soon as the burnin time is exceeded
-            print(f'{self.branching_state = }')
+            print(f'self.branching_state = ')
+            pprint.pprint(self.branching_state)
             print(f'{self.ens.root_dir = }')
             print(f'{self.ens.memgraph.number_of_nodes() = }')
             parent = self.branching_state['trunk_lineage'][-1]
@@ -150,7 +152,8 @@ class PeriodicBranching(EnsembleAlgorithm):
         else:
             # decide whom to branch off of 
             trunk_segment_2branch = np.searchsorted(self.branching_state['trunk_lineage_fin_times'], self.branching_state['next_branch_time'], side='left')
-            print(f'{self.branching_state = }')
+            print(f'self.branching_state = ')
+            pprint.pprint(self.branching_state)
             print(f'{trunk_segment_2branch = }')
             parent = self.branching_state['trunk_lineage'][trunk_segment_2branch]
             icandf = self.generate_icandf_from_parent(parent, self.branching_state['next_branch_time'], self.branch_duration)
@@ -456,22 +459,28 @@ class ITEAMS(EnsembleAlgorithm):
                 'scores_max': [],
                 'scores_max_timing': [],
                 'score_levels': [-np.inf], 
+                'goals_at_birth': [],
                 'members_active': [],
-                'members_inactive': [],
                 'parent_queue': deque(),
                 'log_weights': [],
                 'multiplicities': [],
+                'branch_times': [],
                 })
 
             parent = None
             icandf = self.ens.dynsys.generate_default_icandf(self.init_time,self.init_time+self.time_horizon+self.buffer_time)
             icandf['init_cond'] = self.init_cond
             log_active_weight_old = -np.inf
+            branch_time = self.init_time
         else:
-            print(f'{self.branching_state = }')
+            print(f'self.branching_state = ')
+            pprint.pprint(self.branching_state)
             parent = self.branching_state['parent_queue'].popleft()
             init_time_parent,fin_time_parent = self.ens.get_member_timespan(parent)
-            branch_time = self.branching_state['scores_max_timing'][parent] - self.advance_split_time #TODO
+            assert self.branching_state['scores_max'][parent] > self.branching_state['score_levels'][-1]
+            first_exceedance_time_parent = init_time_parent + np.where(self.branching_state['scores_tdep'][parent]  > self.branching_state['score_levels'][-1])[0][0]
+            # TODO correct the branch timing
+            branch_time = first_exceedance_time_parent - self.advance_split_time #TODO
             print(f'{branch_time = }')
             if branch_time < init_time_parent:
                 branch_time = init_time_parent
@@ -489,9 +498,12 @@ class ITEAMS(EnsembleAlgorithm):
         init_time_new,fin_time_new = self.ens.get_member_timespan(new_mem)
         new_score_combined = self.score_combined(new_score_components)
         new_score_max = np.nanmax(new_score_combined[:self.time_horizon-1])
+        self.branching_state['goals_at_birth'].append(self.branching_state['score_levels'][-1])
+        self.branching_state['branch_times'].append(branch_time)
         self.branching_state['scores_tdep'].append(new_score_combined)
         self.branching_state['scores_max'].append(new_score_max)
         self.branching_state['scores_max_timing'].append(init_time_new+np.nanargmax(new_score_combined))
+        self.branching_state['branch_times'].append(branch_time)
         success = (new_score_max > self.branching_state['score_levels'][-1])
         memact = self.branching_state['members_active']
         # Update the weights
@@ -536,9 +548,43 @@ class ITEAMS(EnsembleAlgorithm):
             self.branching_state['parent_queue'].append(parent_pool[i % lenpp])
         print(f'The replenished queue is {self.branching_state["parent_queue"] = }')
         return
+    # ----------------------- Plotting functions --------------------------------
+    def plot_obs_spaghetti(self, obs_fun, plotdir, ylabel='', title='', abbrv='', is_score=False):
+        # Get all timespans
+        tu = self.ens.dynsys.dt_save
+        nmem = self.ens.get_nmem()
+        obs = [self.ens.compute_observables([obs_fun], mem)[0] for mem in range(nmem)]
+        # TODO update this generic plotting function to extract time span from the metadata
+        print(f'{obs[0] = }')
+        fig,axes = plt.subplots(ncols=2,figsize=(20,5),width_ratios=[3,1],sharey=is_score)
+        ax = axes[0]
+        for mem in range(nmem):
+            if mem == 0:
+                kwargs = {'color': 'black', 'linestyle': '--', 'linewidth': 2, 'zorder': 1}
+            else:
+                kwargs = {'color': plt.cm.rainbow(mem/nmem), 'linestyle': '-', 'linewidth': 1, 'zorder': 0}
+            tinit,tfin = self.ens.get_member_timespan(mem)
+            h, = ax.plot(np.arange(tinit,tfin)*tu, obs[mem], **kwargs)
+            tbr = self.branching_state['branch_times'][mem]
+            tmx = self.branching_state['scores_max_timing'][mem]
+            ax.plot(tbr*tu, obs[mem][tmx-tinit], markerfacecolor="None", markeredgecolor=kwargs['color'], markeredgewidth=3, marker='o')
+            ax.plot(tmx*tu, obs[mem][tmx-tinit], markerfacecolor="None", markeredgecolor=kwargs['color'], markeredgewidth=3, marker='x')
+        ax.set_xlabel('time')
+        ax.set_ylabel(ylabel)
+        ax.set_title(title)
+        ax = axes[1]
+        ax.scatter(np.arange(nmem), self.branching_state['scores_max'], color='gray', marker='o')
+        ax.plot(np.arange(nmem), self.branching_state['goals_at_birth'], color='gray', linestyle='--')
+        ax.set_xlabel('Generation')
+        ax.set_ylabel('')
+        #ax.set_xlim([time[0],time[-1]+1])
+        fig.savefig(join(plotdir,r'spaghetti_%s.png'%(abbrv)), **pltkwargs)
+        plt.close(fig)
+        return
 
 
-
+class SDEITEAMS(ITEAMS):
+    pass
             
 
 

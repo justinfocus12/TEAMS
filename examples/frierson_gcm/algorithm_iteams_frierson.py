@@ -151,6 +151,7 @@ def iteams(nproc,recompile,i_param,seed_inc):
 
     tododict = dict({
         'run_iteams':             1,
+        'plot_spaghetti':         1,
         })
     base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
@@ -173,13 +174,13 @@ def iteams(nproc,recompile,i_param,seed_inc):
     param_abbrv_gcm,param_label_gcm = FriersonGCM.label_from_config(config_gcm)
     config_algo = dict({
         'autonomy': True,
-        'num_levels_max': 10,
+        'num_levels_max': 5,
         'seed_min': 1000,
         'seed_max': 10000,
-        'population_size': 20,
-        'time_horizon_phys': 30,
-        'buffer_time_phys': 5,
-        'advance_split_time_phys': 8,
+        'population_size': 4,
+        'time_horizon_phys': 15,
+        'buffer_time_phys': 0,
+        'advance_split_time_phys': 3,
         'num2drop': 1,
         'score_components': dict({
             'rainrate': dict({
@@ -198,6 +199,7 @@ def iteams(nproc,recompile,i_param,seed_inc):
     dirdict = dict({
         'alg': join(scratch_dir, date_str, sub_date_str, param_abbrv_gcm, param_abbrv_algo)
         })
+    dirdict['plots'] = join(dirdict['alg'], 'plots')
     for dirname in list(dirdict.values()):
         makedirs(dirname, exist_ok=True)
     root_dir = dirdict['alg']
@@ -233,6 +235,24 @@ def iteams(nproc,recompile,i_param,seed_inc):
                 })
             alg.take_next_step(saveinfo)
             pickle.dump(alg, open(alg_filename, 'wb'))
+    alg = pickle.load(open(alg_filename, 'rb'))
+    if tododict['plot_spaghetti']:
+        obsprop = alg.ens.dynsys.observable_props()
+        obs_rois = [
+                ('total_rain',dict(lat=45,lon=180)),
+                ('column_water_vapor',dict(lat=45,lon=180)),
+                ('temperature',dict(lat=45,lon=180,pfull=750)),
+                ]
+        for (obs_name,roi) in obs_rois:
+            is_score = (obs_name in list(alg.score_params['components'].keys()))
+            def obs_fun(dsmem):
+                da = alg.ens.dynsys.sel_from_roi(getattr(alg.ens.dynsys, obs_name)(dsmem), roi)
+                return da
+            abbrv_obs = obsprop[obs_name]['abbrv']
+            abbrv_roi,label_roi = alg.ens.dynsys.label_from_roi(roi)
+            title = r'%s at %s'%(obsprop[obs_name]['label'],label_roi)
+            abbrv = r'%s_%s'%(abbrv_obs,abbrv_roi)
+            alg.plot_obs_spaghetti(obs_fun, dirdict['plots'], title=title, abbrv=abbrv, is_score=is_score)
     return
 
 if __name__ == "__main__":
@@ -241,7 +261,7 @@ if __name__ == "__main__":
     if procedure == 'run':
         nproc = 4 
         recompile = 0 
-        i_param = int(sys.argv[1])
+        i_param = 2 #int(sys.argv[1])
         seed_inc = 0 #int(sys.argv[1])
         iteams(nproc,recompile,i_param,seed_inc)
 

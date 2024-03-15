@@ -480,13 +480,36 @@ class FriersonGCM(DynamicalSystem):
     def label_from_roi(roi):
         abbrvs = []
         labels = []
+        coord_disps = dict({
+            'lat': dict({
+                'symbol': r'$\phi$',
+                'scale': 1.0,
+                'unit_symbol': r'$^\circ$',
+                }),
+            'lon': dict({
+                'symbol': r'$\lambda$',
+                'scale': 1.0,
+                'unit_symbol': r'$^\circ$',
+                }),
+            'pfull': dict({
+                'symbol': r'$\sigma$',
+                'scale': 1/1000,
+                'unit_symbol': '',
+                }),
+            })
         for key,val in roi.items():
             if isinstance(val,slice):
                 abbrvs.append(r'%s%g-%g'%(key,val.start,val.stop))
-                labels.append(r'$%s\in(%g,%g)$'%(key,val.start,val.stop))
+                labels.append(r'%s$\in$(%g,%g)%s'%(
+                    coord_disps[key]['symbol'],
+                    val.start*coord_disps[key]['scale'],
+                    val.stop*coord_disps[key]['scale']
+                    ))
             else:
                 abbrvs.append(r'%s%g'%(key,val))
-                labels.append(r'$%s=%g$'%(key,val))
+                labels.append(r'%s=%g'%(
+                    coord_disps[key]['symbol'],
+                    val*coord_disps[key]['scale']))
         abbrv = ('_'.join(abbrvs)).replace('.','p')
         label = ', '.join(labels)
         return abbrv,label
