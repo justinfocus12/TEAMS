@@ -466,7 +466,7 @@ class ITEAMS(EnsembleAlgorithm):
             parent = None
             icandf = self.ens.dynsys.generate_default_icandf(self.init_time,self.init_time+self.time_horizon+self.buffer_time)
             icandf['init_cond'] = self.init_cond
-            new_log_weight = 0.0
+            log_active_weight_old = -np.inf
         else:
             print(f'{self.branching_state = }')
             parent = self.branching_state['parent_queue'].popleft()
@@ -477,23 +477,33 @@ class ITEAMS(EnsembleAlgorithm):
                 branch_time = init_time_parent
                 print(f'...modified to {branch_time = }')
             icandf = self.generate_icandf_from_parent(parent, branch_time)
-            new_log_weight = self.branching_state['log_weights'][parent]
+            memact = self.branching_state['members_active']
+            log_active_weight_old = logsumexp([self.branching_state['log_weights'][ma] for ma in memact], b=[self.branching_state['multiplicities'][ma] for ma in memact])
 
         # ---------------- Run the new trajectory --------------
         new_score_components = self.ens.branch_or_plant(icandf, self.score_components, saveinfo, parent=parent)
         # ----------------------------------------------------------------------
 
+        # Update the state
         new_mem = self.ens.get_nmem() - 1
         init_time_new,fin_time_new = self.ens.get_member_timespan(new_mem)
         new_score_combined = self.score_combined(new_score_components)
         new_score_max = np.nanmax(new_score_combined[:self.time_horizon-1])
-        success = (new_score_max > self.branching_state['score_levels'])
-
-        # Update the state
         self.branching_state['scores_tdep'].append(new_score_combined)
         self.branching_state['scores_max'].append(new_score_max)
         self.branching_state['scores_max_timing'].append(init_time_new+np.nanargmax(new_score_combined))
-        self.branching_state['log_weights'].append(new_log_weight)
+        success = (new_score_max > self.branching_state['score_levels'][-1])
+        memact = self.branching_state['members_active']
+        # Update the weights
+        if parent is None:
+            self.branching_state['log_weights'].append(0.0)
+        else:
+            if success:
+                logZ = np.log1p(np.exp(self.branching_state['log_weights'][parent] - log_active_weight_old))
+                print(f'{logZ = }')
+                for ma in self.branching_state['members_active']:
+                    self.branching_state['log_weights'][ma] -= logZ
+            self.branching_state['log_weights'].append(self.branching_state['log_weights'][parent])
         if success:
             self.branching_state['members_active'].append(new_mem)
             self.branching_state['multiplicities'].append(1)
@@ -501,13 +511,6 @@ class ITEAMS(EnsembleAlgorithm):
             self.branching_state['multiplicities'].append(0)
             self.branching_state['multiplicities'][parent] += 1
 
-        # Update the weights
-        memact = self.branching_state['members_active']
-        log_active_weight_old = logsumexp([self.branching_state['log_weights'][ma] for ma in memact], b=[self.branching_state['multiplicities'][ma] for ma in memact])
-        logZ = np.log1p(np.exp(new_log_weight - log_active_weight_old))
-        print(f'{logZ = }')
-        for ma in self.branching_state['members_active']:
-            self.branching_state['log_weights'][ma] -= logZ
 
         # Raise level? TODO allow the next level to be set by an external meta-manager, in between calls to take_next_step 
         if len(self.branching_state['parent_queue']) == 0 and self.autonomy:
@@ -528,7 +531,7 @@ class ITEAMS(EnsembleAlgorithm):
             self.branching_state['members_active'] = [ma for ma in self.branching_state['members_active'] if self.branching_state['scores_max'][ma] > next_level]
         parent_pool = self.rng.permutation(np.concatenate(tuple([parent]*self.branching_state['multiplicities'][parent] for parent in self.branching_state['members_active']))) # TODO consider weighting parents' occurrence in this pool by weight
         lenpp = len(parent_pool)
-        deficit = self.population_size - len(scores_active)
+        deficit = self.population_size - len(self.branching_state['members_active'])
         for i in range(deficit):
             self.branching_state['parent_queue'].append(parent_pool[i % lenpp])
         print(f'The replenished queue is {self.branching_state["parent_queue"] = }')

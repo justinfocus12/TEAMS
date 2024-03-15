@@ -147,7 +147,7 @@ class FriersonGCMITEAMS(algorithms.ITEAMS):
         return icandf
 
 
-def iteams(nproc,recompile,i_param):
+def iteams(nproc,recompile,i_param,seed_inc):
 
     tododict = dict({
         'run_iteams':             1,
@@ -173,13 +173,13 @@ def iteams(nproc,recompile,i_param):
     param_abbrv_gcm,param_label_gcm = FriersonGCM.label_from_config(config_gcm)
     config_algo = dict({
         'autonomy': True,
-        'num_levels_max': 6,
+        'num_levels_max': 10,
         'seed_min': 1000,
         'seed_max': 10000,
-        'population_size': 3,
-        'time_horizon_phys': 6,
-        'buffer_time_phys': 2,
-        'advance_split_time_phys': 2,
+        'population_size': 20,
+        'time_horizon_phys': 30,
+        'buffer_time_phys': 5,
+        'advance_split_time_phys': 8,
         'num2drop': 1,
         'score_components': dict({
             'rainrate': dict({
@@ -194,7 +194,6 @@ def iteams(nproc,recompile,i_param):
             }),
         })
     param_abbrv_algo,param_label_algo = FriersonGCMITEAMS.label_from_config(config_algo)
-    seed = 849582 # TODO make this a command-line argument
 
     dirdict = dict({
         'alg': join(scratch_dir, date_str, sub_date_str, param_abbrv_gcm, param_abbrv_algo)
@@ -217,7 +216,7 @@ def iteams(nproc,recompile,i_param):
         else:
             gcm = FriersonGCM(config_gcm, recompile=recompile)
             ens = Ensemble(gcm, root_dir=root_dir)
-            alg = FriersonGCMITEAMS(init_time, init_cond, config_algo, ens, seed)
+            alg = FriersonGCMITEAMS(init_time, init_cond, config_algo, ens, gcm.seed_min+seed_inc)
             alg.set_init_cond(init_time,init_cond)
 
         alg.ens.dynsys.set_nproc(nproc)
@@ -242,8 +241,9 @@ if __name__ == "__main__":
     if procedure == 'run':
         nproc = 4 
         recompile = 0 
-        i_param = 1 #int(sys.argv[1])
-        iteams(nproc,recompile,i_param)
+        i_param = int(sys.argv[1])
+        seed_inc = 0 #int(sys.argv[1])
+        iteams(nproc,recompile,i_param,seed_inc)
 
 
 
