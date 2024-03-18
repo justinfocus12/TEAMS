@@ -126,14 +126,14 @@ class Lorenz96ODE(ODESystem): # TODO make a superclass Lorenz96, and a sibling s
     @staticmethod
     def observable_props():
         obslib = dict({
-            'xk': dict({
-                'abbrv': 'xk',
-                'label': r'$x_k$',
+            'x0': dict({
+                'abbrv': 'x0',
+                'label': r'$x_0$',
                 'cmap': 'coolwarm',
                 }),
-            'Ek': dict({
-                'abbrv': 'Ek',
-                'label': r'$\frac{1}{2}x_k^2$',
+            'E0': dict({
+                'abbrv': 'E0',
+                'label': r'$\frac{1}{2}x_0^2$',
                 'cmap': 'coolwarm',
                 }),
             'E': dict({
@@ -148,10 +148,10 @@ class Lorenz96ODE(ODESystem): # TODO make a superclass Lorenz96, and a sibling s
                 }),
             })
         return obslib
-    def xk(self, t, x, k=0):
-        return x[:,k]
-    def Ek(self, t, x, k=0):
-        return x[:,k]**2/2
+    def x0(self, t, x):
+        return x[:,0]
+    def E0(self, t, x):
+        return x[:,0]**2/2
     def E(self, t, x):
         return np.sum(x**2, axis=1)/2
     def Emax(self, t, x):

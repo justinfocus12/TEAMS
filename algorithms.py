@@ -93,7 +93,7 @@ class DirectNumericalSimulation(EnsembleAlgorithm):
         tidx = time - all_starts[first_mem] - 1
         memset = np.arange(first_mem,last_mem+1)
         return time,memset,tidx
-    def compute_return_stats(self, obs_funs2concat, time_block_size, spinup, statsdir, abbrv=''):
+    def compute_return_stats(self, obs_funs2concat, time_block_size, spinup, outfile):
         nmem = self.ens.get_nmem()
         init_time = spinup
         fin_time = init_time + time_block_size * int((self.ens.get_member_timespan(nmem-1)[1] - init_time) / time_block_size)
@@ -110,7 +110,7 @@ class DirectNumericalSimulation(EnsembleAlgorithm):
             for i_fun in range(len(obs_funs2concat))))
         bin_lows,hist,rtime,logsf = utils.compute_returnstats_and_histogram(fconcat, time_block_size)
         np.savez(
-                join(statsdir,r'%s_returnstats.npz'%(abbrv)), 
+                outfile, 
                 bin_lows=bin_lows,
                 hist=hist,
                 rtime=rtime,
@@ -124,14 +124,22 @@ class DirectNumericalSimulation(EnsembleAlgorithm):
         obs_seg = np.concatenate(tuple(self.ens.compute_observables([obs_fun], mem)[0] for mem in memset))[tidx]
         h, = ax.plot(time*tu, obs_seg, **linekwargs)
         return h
-    def plot_return_curves(self, rlev, rtime, fig, ax):
+    @classmethod
+    def plot_return_curves(cls, return_stats_filename, fig, ax):
+        rst = np.load(returnstats_filename)
+        rtime = rst['rtime']
+        rlev = rst['bin_lows']
         ax.plot(rtime,rlev,color='black',marker='.')
         ax.set_ylim([rlev[np.argmax(rtime>0)],2*rlev[-1]-rlev[-2]])
         ax.set_xlabel('Return time')
         ax.set_ylabel('Return level')
         ax.set_xscale('log')
         return 
-    def plot_histogram(self, bin_lows, hist, fig, ax):
+    @classmethod
+    def plot_histogram(cls, return_stats_filename, fig, ax):
+        rst = np.load(returnstats_filename)
+        bin_lows = rst['bin_lows']
+        hist = rst['hist']
         ax.plot(bin_lows,hist,color='black',marker='.')
         ax.set_yscale('log')
         return

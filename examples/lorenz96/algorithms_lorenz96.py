@@ -59,7 +59,7 @@ class Lorenz96SDEDirectNumericalSimulation(algorithms.SDEDirectNumericalSimulati
             for name in self.obs_dict_names()
             })
         return obs_dict
-    def plot_dns_segment(self, plotdir, tspan_phys=None):
+    def plot_dns_segment(self, outfile, tspan_phys=None):
         tu = self.ens.dynsys.dt_save
         K = self.ens.dynsys.ode.K
         nmem = self.ens.get_nmem()
@@ -87,21 +87,30 @@ class Lorenz96SDEDirectNumericalSimulation(algorithms.SDEDirectNumericalSimulati
         im = ax.pcolormesh(time*tu, np.arange(K), x_seg.T, shading='nearest', cmap='BrBG')
         ax.set_xlabel('Time')
         ax.set_ylabel(r'$k$')
-        abbrv_tspan = (r'%g-%g'%(tspan[0]*tu, tspan[1]*tu)).replace('.','p')
-        filename = join(plotdir,r'x_%s.png'%(abbrv_tspan))
-        fig.savefig(filename, **pltkwargs)
+        fig.savefig(outfile, **pltkwargs)
         plt.close(fig)
         return
-    def plot_return_stats(self, returnstats_filename, output_filename, obsprop):
-        rst = np.load(returnstats_filename)
-        bin_lows,hist,logsf,rtime = rst['bin_lows'],rst['hist'],rst['logsf'],rst['rtime']
-        fig,axes = plt.subplots(ncols=2,figsize=(12,4),gridspec_kw={'wspace': 0.25})
-        ax = axes[0]
-        self.plot_return_curves(bin_lows, rtime, fig, ax)
+    @staticmethod
+    def plot_return_stats(returnstats_filename, output_filename, obsprop):
+        fig,ax = plt.subplots()
+        self.plot_return_curves(returnstats_filename, fig, ax)
         ax.set_xlabel(r'Return time')
         ax.set_ylabel(r'%s Return level'%(obsprop['label']))
-        ax = axes[1]
-        self.plot_histogram(bin_lows, hist, fig, ax)
+        fig.savefig(output_filename, **pltkwargs)
+        plt.close(fig)
+        return
+    @classmethod
+    def plot_return_stats_meta(cls, returnstats_filenames, output_filename, obsprop, labels):
+        fig,axes = plt.subplots(ncols=2,figsize=(12,4),gridspec_kw={'wspace': 0.25})
+        for rsf in returnstats_filenames:
+            rst = np.load(rsf)
+            bin_lows,hist,logsf,rtime = rst['bin_lows'],rst['hist'],rst['logsf'],rst['rtime']
+            ax = axes[1]
+            self.plot_histogram(bin_lows, hist, fig, ax)
+            ax = axes[0]
+            cls.plot_return_curves(bin_lows, rtime, fig, ax)
+        ax.set_xlabel(r'Return time')
+        ax.set_ylabel(r'%s Return level'%(obsprop['label']))
         ax.set_ylabel('Probability density')
         ax.set_xlabel(obsprop['label'])
         fig.savefig(output_filename, **pltkwargs)
@@ -109,8 +118,8 @@ class Lorenz96SDEDirectNumericalSimulation(algorithms.SDEDirectNumericalSimulati
         return
 
 
-def experimental_params():
-    # TODO
+
+
 
 
         
