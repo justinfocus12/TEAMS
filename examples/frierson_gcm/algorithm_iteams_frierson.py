@@ -79,7 +79,6 @@ class FriersonGCMITEAMS(algorithms.ITEAMS):
             scores.append(field.mean(dim=set(field.dims) - {'time'}))
         return xr.concat(scores, dim='component').assign_coords(component=list(self.score_params['components'].keys()))
     def score_combined(self, sccomps):
-        # In principle, this could get arbitrarily complicated. 
         score = np.zeros(sccomps.time.size)
         total_weight = 0.0
         for compkey,compval in self.score_params['components'].items():
@@ -122,7 +121,7 @@ class FriersonGCMITEAMS(algorithms.ITEAMS):
         print(f'{init_time_parent = }, {branch_time = }, {fin_time_parent = }')
         init_cond = self.ens.traj_metadata[parent]['icandf']['init_cond']
         init_time = init_time_parent
-        fin_time = init_time + self.time_horizon + self.buffer_time
+        fin_time = init_time + self.time_horizon #+ self.buffer_time
         new_seed = self.rng.integers(low=self.seed_min, high=self.seed_max)
         # TODO consider carefully whether we need to distinguish procedure based on SPPT vs. other kinds of forcing
         if init_time_parent < branch_time:

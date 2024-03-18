@@ -86,8 +86,8 @@ class FriersonGCM(DynamicalSystem):
         # OS stuff
         resource.setrlimit(resource.RLIMIT_STACK, (-1,-1)) # TODO should this really go here?
         return
-    @classmethod
-    def label_from_config(cls, config):
+    @staticmethod
+    def label_from_config(config):
         abbrv_physconst = r'abs%g'%(config['abs'])
         abbrv_domain = r'res%s'%(config['resolution'])
         abbrv_pert = r'pert%s'%(config['pert_type'])
@@ -107,8 +107,8 @@ class FriersonGCM(DynamicalSystem):
         abbrv = (r'%s_%s_%s'%(abbrv_physconst,abbrv_domain,abbrv_pert)).replace('.','p')
         label = r"%s, $A=%g$"%(config['resolution'],config['abs'])
         return abbrv,label
-    @classmethod
-    def default_config(cls, source_dir_absolute, base_dir_absolute):
+    @staticmethod
+    def default_config(source_dir_absolute, base_dir_absolute):
         config = dict({
             'resolution': 'T21',
             'abs': 1.0, # atmospheric absorption coefficient (larger means more greenhouse) 
@@ -134,8 +134,8 @@ class FriersonGCM(DynamicalSystem):
             'pert_frac': 0.001,
             })
         return config
-    @classmethod
-    def default_namelist(cls):
+    @staticmethod
+    def default_namelist():
         # TODO integrate this namelist more flexibly with the default namelist
         # This goes on top of the base namelist
         nml = dict({

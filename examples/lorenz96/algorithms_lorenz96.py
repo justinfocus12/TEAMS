@@ -40,140 +40,78 @@ class Lorenz96SDEPeriodicBranching(algorithms.SDEPeriodicBranching):
             })
         return obs_dict
 
-
-def periodic_branching(systype):
-    tododict = dict({
-        'run_pebr':                0,
-        'analyze_pebr': dict({
-            'measure_pert_growth':           0,
-            'analyze_pert_growth':           1,
-            }),
-        'plot_pebr': dict({
-            'observables':    0,
-            'pert_growth':    1,
-            'response':       0,
-            }),
-        })
-    DynSysClass = {'ODE': Lorenz96ODE, 'SDE': Lorenz96SDE}[systype]
-    AlgClass = {'ODE': Lorenz96ODEPeriodicBranching, 'SDE': Lorenz96SDEPeriodicBranching}[systype]
-    config_dynsys = DynSysClass.default_config()
-    scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/lorenz96"
-    date_str = "2024-02-24"
-    sub_date_str = "1"
-    param_abbrv_dynsys,param_label_dynsys = DynSysClass.label_from_config(config_dynsys)
-    config_algo = dict({
-        'seed_min': 1000,
-        'seed_max': 100000,
-        'branches_per_group': 16, 
-        'interbranch_interval_phys': 5.0,
-        'branch_duration_phys': 15.0,
-        'num_branch_groups': 50,
-        'max_member_duration_phys': 20.0,
-        })
-    param_abbrv_algo,param_label_algo = AlgClass.label_from_config(config_algo)
-    seed = 849582 # TODO make this a command-line argument
-
-    # Set up directories
-    dirdict = dict({
-        'alg': join(scratch_dir, date_str, sub_date_str, param_abbrv_dynsys, param_abbrv_algo)
-        })
-    dirdict['analysis'] = join(dirdict['alg'],'analysis')
-    dirdict['plots'] = join(dirdict['alg'],'plots')
-    for dirname in list(dirdict.values()):
-        makedirs(dirname, exist_ok=True)
-
-    # Enumerate filenames
-    dist_names = ['euclidean']
-    fndict = dict({
-        'alg': dict({
-            'alg': join(dirdict['alg'],'alg.pickle'),
-            }),
-        'analysis': dict({
-            'pert_growth': join(dirdict['analysis'],'pert_growth.pickle'),
-            'lyap_exp': join(dirdict['analysis'],'lyap_exp.pickle')
+class Lorenz96ODEDirectNumericalSimulation(algorithms.ODEDirectNumericalSimulation):
+    def obs_dict_names(self):
+        return ['x0','E0','E','Emax']
+    def obs_fun(self, t, x):
+        obs_dict = dict({
+            name: getattr(self.ens.dynsys, f'observable_{name}')(t,x)
+            for name in self.obs_dict_names()
             })
-        })
-    fndict['plots'] = dict()
-    for dist_name in dist_names:
-        fndict['plots'][dist_name] = dict({'rmse': join(dirdict['plots'],f'rmse_dist{dist_name}')})
-        fndict['plots'][dist_name]['lyap_exp'] = join(dirdict['plots'], f'lyap_exp_dist{dist_name}')
-        for branch_group in range(config_algo['num_branch_groups']):
-            fndict['plots'][dist_name][branch_group] = join(dirdict['plots'],f'pert_growth_bg{branch_group}_dist{dist_name}.png')
+        return obs_dict
 
-
-    root_dir = dirdict['alg']
-
-    if tododict['run_pebr']:
-        if exists(fndict['alg']['alg']):
-            alg = pickle.load(open(fndict['alg']['alg'], 'rb'))
+class Lorenz96SDEDirectNumericalSimulation(algorithms.SDEDirectNumericalSimulation):
+    def obs_dict_names(self):
+        return ['x0','E0','E','Emax']
+    def obs_fun(self, t, x):
+        obs_dict = dict({
+            name: getattr(self.ens.dynsys.ode, f'observable_{name}')(t,x)
+            for name in self.obs_dict_names()
+            })
+        return obs_dict
+    def plot_dns_segment(self, plotdir, tspan_phys=None):
+        tu = self.ens.dynsys.dt_save
+        K = self.ens.dynsys.ode.K
+        nmem = self.ens.get_nmem()
+        if tspan_phys is None:
+            _,fin_time = self.ens.get_member_timespan(nmem-1)
+            tspan = [fin_time-int(15/tu),fin_time]
         else:
-            dynsys = DynSysClass(config_dynsys)
-            ens = Ensemble(dynsys,root_dir)
-            alg = AlgClass(config_algo, ens, seed)
+            tspan = [int(t/tu) for t in tspan_phys]
 
-        mem = 0
-        while not (alg.terminate):
-            mem = alg.ens.get_nmem()
-            print(f'----------- Starting member {mem} ----------------')
-            saveinfo = dict(filename=f'mem{mem}.npz')
-            alg.take_next_step(saveinfo)
-            pickle.dump(alg, open(fndict['alg']['alg'], 'wb'))
+        fig,axes = plt.subplots(ncols=2, figsize=(16,4))
+        # Left: timeseries
+        ax = axes[0]
+        handles = []
+        for k in [K//2-1,K//2,K//2+1]:
+            obs_fun = lambda t,x: x[:,k]
+            h = self.plot_obs_segment(obs_fun, tspan, fig, ax, label=r'$x_{%g}$'%(k))
+            handles.append(h)
+        ax.legend(handles=handles)
 
-    if utils.find_true_in_dict(tododict['analyze_pebr']):
-        alg = pickle.load(open(fndict['alg']['alg'], 'rb'))
-        if tododict['analyze_pebr']['measure_pert_growth']:
-            def dist_euclidean_tdep(t0,x0,t1,x1):
-                trange = np.array([max(t0[0],t1[0]),min(t0[-1],t1[-1])+1])
-                tidx0 = np.arange(trange[0],trange[1])-t0[0]
-                tidx1 = np.arange(trange[0],trange[1])-t1[0]
-                return np.sqrt(np.sum((x0[tidx0] - x1[tidx1])**2, axis=1))
-            def rmsd_euclidean(t0,x0,t1,x1):
-                D2mat = np.add.outer(np.sum(x0**2, axis=1), np.sum(x1**2, axis=1)) - 2*x0.dot(x1.T)
-                return np.sqrt(np.mean(D2mat))
-            dist_funs = dict({
-                'tdep': dict({
-                    'euclidean': dist_euclidean_tdep,
-                    }),
-                'rmsd': dict({
-                    'euclidean': rmsd_euclidean,
-                    })
-                })
-            pert_growth = alg.measure_pert_growth(dist_funs, )
-            pickle.dump(pert_growth, open(fndict['analysis']['pert_growth'], 'wb'))
-        else:
-            pert_growth = pickle.load(open(fndict['analysis']['pert_growth'], 'rb'))
-        if tododict['analyze_pebr']['analyze_pert_growth']:
-            lyapunov_exponents = alg.analyze_pert_growth(pert_growth)
-            pickle.dump(lyapunov_exponents, open(fndict['analysis']['lyap_exp'], 'wb'))
-
-
-
-    if utils.find_true_in_dict(tododict['plot_pebr']):
-        alg = pickle.load(open(fndict['alg']['alg'], 'rb'))
-        tu = alg.ens.dynsys.dt_save
-        obsprop = alg.ens.dynsys.observable_props()
-        if tododict['plot_pebr']['pert_growth']:
-            pert_growth_dict = pickle.load(open(fndict['analysis']['pert_growth'],'rb'))
-            lyap_dict = pickle.load(open(fndict['analysis']['lyap_exp'],'rb'))
-            alg.plot_pert_growth(pert_growth_dict, lyap_dict, fndict['plots'], logscale=(systype=='ODE'))
-        if tododict['plot_pebr']['observables']:
-            print(f'plotting observables')
-            obs_names = ['x0','E0','E','Emax']
-            obs_funs = dict()
-            obs_abbrvs = dict()
-            obs_labels = dict()
-            for obs_name in obs_names:
-                obs_funs[obs_name] = getattr(alg.ens.dynsys, f'observable_{obs_name}')
-                obs_abbrvs[obs_name] = obsprop[obs_name]['abbrv']
-                obs_labels[obs_name] = obsprop[obs_name]['label']
-            for branch_group in range(alg.branching_state['next_branch_group']+1):
-                alg.plot_obs_spaghetti(obs_funs, branch_group, dirdict['plots'], labels=obs_labels, abbrvs=obs_abbrvs)
-
-        # TODO implement methods for pairwise distances, maybe localized, and plot those divergences too 
+        # Right: Hovmoller
+        ax = axes[1]
+        time,memset,tidx = self.get_member_subset(tspan)
+        obs_fun = lambda t,x: x
+        x_seg = np.concatenate(tuple(self.ens.compute_observables([obs_fun], mem)[0] for mem in memset), axis=0)[tidx,:]
+        im = ax.pcolormesh(time*tu, np.arange(K), x_seg.T, shading='nearest', cmap='BrBG')
+        ax.set_xlabel('Time')
+        ax.set_ylabel(r'$k$')
+        abbrv_tspan = (r'%g-%g'%(tspan[0]*tu, tspan[1]*tu)).replace('.','p')
+        filename = join(plotdir,r'x_%s.png'%(abbrv_tspan))
+        fig.savefig(filename, **pltkwargs)
+        plt.close(fig)
+        return
+    def plot_return_stats(self, returnstats_filename, output_filename, obsprop):
+        rst = np.load(returnstats_filename)
+        bin_lows,hist,logsf,rtime = rst['bin_lows'],rst['hist'],rst['logsf'],rst['rtime']
+        fig,axes = plt.subplots(ncols=2,figsize=(12,4),gridspec_kw={'wspace': 0.25})
+        ax = axes[0]
+        self.plot_return_curves(bin_lows, rtime, fig, ax)
+        ax.set_xlabel(r'Return time')
+        ax.set_ylabel(r'%s Return level'%(obsprop['label']))
+        ax = axes[1]
+        self.plot_histogram(bin_lows, hist, fig, ax)
+        ax.set_ylabel('Probability density')
+        ax.set_xlabel(obsprop['label'])
+        fig.savefig(output_filename, **pltkwargs)
+        plt.close(fig)
+        return
 
 
-if __name__ == "__main__":
-    systypes = ['ODE','SDE']
-    systype = systypes[int(sys.argv[1])]
-    print(f'{systype = }')
-    periodic_branching(systype)
+def experimental_params():
+    # TODO
+
+
+        
+

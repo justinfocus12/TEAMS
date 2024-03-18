@@ -18,13 +18,15 @@ rcParams.update({
 pltkwargs = dict(bbox_inches="tight",pad_inches=0.2)
 from ensemble import Ensemble
 import forcing
+import utils
 
 
 
 class EnsembleAlgorithm(ABC):
-    def __init__(self, config, ens, seed):
+    def __init__(self, config, ens):
         self.ens = ens
-        self.seed_init = seed
+        self.seed_min,self.seed_max = config['seed_min'],config['seed_max']
+        self.seed_init = config['seed_min'] + config['seed_inc_init'] 
         self.rng = default_rng(self.seed_init) 
         self.terminate = False
         self.derive_parameters(config)
@@ -41,9 +43,105 @@ class EnsembleAlgorithm(ABC):
         # Based on the current state of the ensemble, provide the arguments (icandf, obs_fun, parent) to give to ens.branch_or_plant. Don't modify ens right here.
         pass
 
+class DirectNumericalSimulation(EnsembleAlgorithm):
+    # This is unfinished and maybe should never be used. 
+    @staticmethod
+    def label_from_config(config):
+        abbrv = 'DNS_si%d'%(config['seed_inc_init'])
+        label = r'DNS ($\delta$seed %g)'%(config['seed_inc_init'])
+        return abbrv,label
+    def derive_parameters(self, config):
+        tu = self.ens.dynsys.dt_save
+        # The following size parameters should be adjustable
+        self.max_member_duration = int(config['max_member_duration_phys']/tu)
+        self.num_chunks_max = config['num_chunks_max']
+        self.init_cond = None
+        self.init_time = 0
+        return
+    @abstractmethod
+    def generate_icandf_from_parent(self, parent):
+        pass
+    def set_init_cond(self, init_time, init_cond):
+        self.init_time = init_time
+        self.init_cond = init_cond
+        return
+    def set_simulation_capacity(self, num_new_chunks, max_member_duration_phys):
+        self.max_member_duration = int(max_member_duration_phys/self.ens.dynsys.dt_save)
+        self.num_chunks_max += num_new_chunks
+        return
+    def take_next_step(self, saveinfo):
+        nmem = self.ens.get_nmem()
+        self.terminate = (self.terminate or (nmem >= self.num_chunks_max))
+        if self.terminate:
+            return
+        if nmem == 0:
+            parent = None
+            icandf = self.ens.dynsys.generate_default_icandf(self.init_time,self.init_time+self.max_member_duration)
+        else:
+            parent = nmem-1
+            icandf = self.generate_icandf_from_parent(parent)
+        obs_fun = lambda t,x: None
+        self.ens.branch_or_plant(icandf, obs_fun, saveinfo, parent=parent)
+        return
+    # ---------------- Quantitative analysis ----------------------------------------
+    def get_member_subset(self, tspan): # returned member timespan excludes tspan[0] by convention
+        all_starts,all_ends = self.ens.get_all_timespans()
+        first_mem = np.where(all_starts <= tspan[0])[0][-1]
+        last_mem = np.where(all_ends >= tspan[1])[0][0]
+        time = 1 + np.arange(tspan[0],tspan[1])
+        print(f'{time = }')
+        tidx = time - all_starts[first_mem] - 1
+        memset = np.arange(first_mem,last_mem+1)
+        return time,memset,tidx
+    def compute_return_stats(self, obs_funs2concat, time_block_size, spinup, statsdir, abbrv=''):
+        nmem = self.ens.get_nmem()
+        init_time = spinup
+        fin_time = init_time + time_block_size * int((self.ens.get_member_timespan(nmem-1)[1] - init_time) / time_block_size)
+        tspan = [init_time, fin_time]
+        time,memset,tidx = self.get_member_subset(tspan)
+        #obs = np.concatenate(tuple(self.ens.compute_obser
+        f = [[] for fun in obs_funs2concat]
+        for mem in memset:
+            f_mem = self.ens.compute_observables(obs_funs2concat, mem)
+            for i_fun,fun in enumerate(obs_funs2concat):
+                f[i_fun].append(f_mem[i_fun])
+        fconcat = np.concatenate(tuple(
+            np.concatenate(tuple(f[i_fun][i_mem] for i_mem in range(len(memset))))
+            for i_fun in range(len(obs_funs2concat))))
+        bin_lows,hist,rtime,logsf = utils.compute_returnstats_and_histogram(fconcat, time_block_size)
+        np.savez(
+                join(statsdir,r'%s_returnstats.npz'%(abbrv)), 
+                bin_lows=bin_lows,
+                hist=hist,
+                rtime=rtime,
+                logsf=logsf)
+        return
+     
+    # ------------------ Plotting -----------------------------
+    def plot_obs_segment(self, obs_fun, tspan, fig, ax, **linekwargs):
+        time,memset,tidx = self.get_member_subset(tspan)
+        tu = self.ens.dynsys.dt_save
+        obs_seg = np.concatenate(tuple(self.ens.compute_observables([obs_fun], mem)[0] for mem in memset))[tidx]
+        h, = ax.plot(time*tu, obs_seg, **linekwargs)
+        return h
+    def plot_return_curves(self, rlev, rtime, fig, ax):
+        ax.plot(rtime,rlev,color='black',marker='.')
+        ax.set_ylim([rlev[np.argmax(rtime>0)],2*rlev[-1]-rlev[-2]])
+        ax.set_xlabel('Return time')
+        ax.set_ylabel('Return level')
+        ax.set_xscale('log')
+        return 
+    def plot_histogram(self, bin_lows, hist, fig, ax):
+        ax.plot(bin_lows,hist,color='black',marker='.')
+        ax.set_yscale('log')
+        return
+
+
+
+
+
 class PeriodicBranching(EnsembleAlgorithm):
     def derive_parameters(self, config):
-        self.seed_min,self.seed_max = config['seed_min'],config['seed_max']
         # Determine branching number
         self.branches_per_group = config['branches_per_group'] # How many different members to spawn from the same initial condition
         tu = self.ens.dynsys.dt_save
@@ -67,11 +165,12 @@ class PeriodicBranching(EnsembleAlgorithm):
     @staticmethod
     def label_from_config(config):
         abbrv_population = (
-                r"bpg%d_ibi%.1f_bd%.1f_mmd%.1f"%(
+                r"bpg%d_ibi%.1f_bd%.1f_mmd%.1f_si%d"%(
                     config["branches_per_group"],
                     config["interbranch_interval_phys"],
                     config["branch_duration_phys"],
-                    config['max_member_duration_phys']
+                    config['max_member_duration_phys'],
+                    config['seed_inc_init']
                     )
                 ).replace(".","p")
         abbrv = '_'.join([
@@ -150,8 +249,7 @@ class PeriodicBranching(EnsembleAlgorithm):
                 branching_state_update['on_trunk'] = False
             branch_times_update = parent_fin_time
         else:
-            # decide whom to branch off of 
-            trunk_segment_2branch = np.searchsorted(self.branching_state['trunk_lineage_fin_times'], self.branching_state['next_branch_time'], side='left')
+            # decide whom to branch off of trunk_segment_2branch = np.searchsorted(self.branching_state['trunk_lineage_fin_times'], self.branching_state['next_branch_time'], side='left')
             print(f'self.branching_state = ')
             pprint.pprint(self.branching_state)
             print(f'{trunk_segment_2branch = }')
@@ -354,6 +452,35 @@ class PeriodicBranching(EnsembleAlgorithm):
         fig.savefig(join(plotdir,r'%s_group%d.png'%(abbrv,branch_group)), **pltkwargs)
         plt.close(fig)
         return
+
+class ODEDirectNumericalSimulation(DirectNumericalSimulation):
+    def generate_icandf_from_parent(self, parent):
+        init_time_parent,fin_time_parent = self.ens.get_member_timespan(parent)
+        parent_t,parent_x = self.ens.dynsys.load_trajectory(self.ens.traj_metadata[parent], self.ens.root_dir, tspan=[fin_time_parent]*2)
+        init_cond = parent_x[0]
+        impulse = np.zeros(self.ens.dynsys.impulse_dim)
+        icandf = dict({
+            'init_cond': init_cond,
+            'frc': forcing.OccasionalVectorForcing(fin_time_parent, fin_time_parent+self.chunk_size, [fin_time_parent], [impulse])
+            })
+        return icandf
+
+class SDEDirectNumericalSimulation(DirectNumericalSimulation):
+    def generate_icandf_from_parent(self, parent):
+        init_time_parent,fin_time_parent = self.ens.get_member_timespan(parent)
+        mdp = self.ens.traj_metadata[parent]
+        parent_t,parent_x = self.ens.dynsys.load_trajectory(mdp, self.ens.root_dir, tspan=[fin_time_parent]*2)
+        init_cond = parent_x[0]
+        init_rngstate = mdp['fin_rngstate']
+        frc_reseed = forcing.OccasionalReseedForcing(fin_time_parent, fin_time_parent+self.max_member_duration, [], [])
+        frc_vector = forcing.OccasionalVectorForcing(fin_time_parent, fin_time_parent+self.max_member_duration, [], [])
+        icandf = dict({
+            'init_cond': parent_x[0],
+            'init_rngstate': init_rngstate,
+            'frc': forcing.SuperposedForcing([frc_vector,frc_reseed]),
+            })
+        return icandf
+
         
 class ODEPeriodicBranching(PeriodicBranching):
     # where the system of interest is an ODE
@@ -421,7 +548,6 @@ class ITEAMS(EnsembleAlgorithm):
         self.advance_split_time = int(round(config['advance_split_time_phys']/tu))
         self.population_size = config['population_size']
         self.num2drop = config['num2drop']
-        self.seed_min,self.seed_max = config['seed_min'],config['seed_max']
         return
     def set_init_cond(self, init_time, init_cond):
         self.init_time = init_time
@@ -430,11 +556,12 @@ class ITEAMS(EnsembleAlgorithm):
     @staticmethod
     def label_from_config(config):
         abbrv = (
-                r'N%d_T%g_ast%g_drop%d'%(
+                r'N%d_T%g_ast%g_drop%d_si%d'%(
                     config['population_size'],
                     config['time_horizon_phys'],
                     config['advance_split_time_phys'],
                     config['num2drop'],
+                    config['seed_inc_init'],
                     )
                 ).replace('.','p')
         label = 'ITEAMS'
@@ -584,7 +711,26 @@ class ITEAMS(EnsembleAlgorithm):
 
 
 class SDEITEAMS(ITEAMS):
-    pass
+    def generate_icandf_from_parent(self, parent, branch_time):
+        init_time_parent,fin_time_parent = self.ens.get_member_timespan(parent)
+        assert init_time_parent <= branch_time < init_time_parent + self.time_horizon
+        mdp = self.ens.traj_metadata[parent]
+        if branch_time == init_time_parent:
+            init_cond = mdp['icandf']['init_cond']
+        else:
+            parent_t,parent_x = self.ens.dynsys.load_trajectory(mdp, self.ens.root_dir, tspan=[branch_time]*2)
+            init_cond = parent_x[0]
+        seed = self.rng.integers(low=self.seed_min,high=self.seed_max)
+        init_rngstate = default_rng(seed=seed).bit_generator.state 
+        frc_reseed = forcing.OccasionalReseedForcing(branch_time, fin_time_parent, [branch_time], [seed])
+        frc_vector = forcing.OccasionalVectorForcing(branch_time, fin_time_parent, [], [])
+        icandf = dict({
+            'init_cond': parent_x[0],
+            'init_rngstate': init_rngstate,
+            'frc': forcing.SuperposedForcing([frc_vector,frc_reseed]),
+            })
+        return icandf
+
             
 
 

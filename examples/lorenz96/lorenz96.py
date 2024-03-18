@@ -4,6 +4,7 @@ from scipy import sparse as sps
 from os.path import join, exists
 from os import makedirs
 import sys
+import pickle
 import matplotlib
 import matplotlib.pyplot as plt
 matplotlib.rcParams.update({
@@ -14,6 +15,9 @@ pltkwargs = dict(bbox_inches="tight",pad_inches=0.2)
 sys.path.append("../..")
 from dynamicalsystem import ODESystem,SDESystem
 import forcing
+from ensemble import Ensemble
+import utils
+
 
 class Lorenz96ODE(ODESystem): # TODO make a superclass Lorenz96, and a sibling subclass Lorenz96SDE
     def __init__(self, config):
@@ -22,7 +26,7 @@ class Lorenz96ODE(ODESystem): # TODO make a superclass Lorenz96, and a sibling s
     @staticmethod
     def default_config():
         config = dict({'K': 40, 'F': 6.0, 'dt_step': 0.001, 'dt_save': 0.05,})
-        config['t_burnin'] = int(10/config['dt_save'])
+        config['t_burnin'] = 0 #int(10/config['dt_save'])
         config['frc'] = dict({
             'type': 'impulsive',
             'impulsive': dict({
@@ -49,14 +53,14 @@ class Lorenz96ODE(ODESystem): # TODO make a superclass Lorenz96, and a sibling s
             abbrv_noise_wave = "wv"
             abbrv_noise_wave += "-".join([f"{wn:g}" for wn in w['wavenumbers']]) + "_"
             abbrv_noise_wave += "-".join([f"{mag:g}" for mag in w['wavenumber_magnitudes']])
-            label_noise_wave = ", ".join(["$F_{%g}=%g"%(wn,mag) for (wn,mag) in zip(w['wavenumbers'],w['wavenumber_magnitudes'])])
+            label_noise_wave = ", ".join(["$F_{%g}=%g$"%(wn,mag) for (wn,mag) in zip(w['wavenumbers'],w['wavenumber_magnitudes'])])
         else:
             abbrv_noise_wave = "wvnil"
         if len(w['sites']) > 0:
             abbrv_noise_site = "site"
             abbrv_noise_site += "-".join([f"{site:g}" for site in w['sites']]) + "_"
             abbrv_noise_site += "-".join([f"{mag:g}" for mag in w['site_magnitudes']])
-            label_noise_site += ", ".join(["$\mathcal{F}_{%g}=%g"%(site,mag) for (site,mag) in zip(w['sites'],w['site_magnitudes'])])
+            label_noise_site += ", ".join(["$\mathcal{F}_{%g}=%g$"%(site,mag) for (site,mag) in zip(w['sites'],w['site_magnitudes'])])
         else:
             abbrv_noise_site = "sitenil"
         abbrv = "_".join([abbrv_kf,abbrv_noise_type,abbrv_noise_wave,abbrv_noise_site]).replace('.','p')
@@ -104,26 +108,32 @@ class Lorenz96ODE(ODESystem): # TODO make a superclass Lorenz96, and a sibling s
     # --------------- Common observable functions --------
     def compute_observables(self, obs_funs, metadata, root_dir):
         t,x = Lorenz96ODE.load_trajectory(metadata, root_dir)
-        obs_dict = dict()
-        obs_names = list(obs_funs.keys())
-        for obs_name,obs_fun in obs_funs.items():
-            obs_dict[obs_name] = obs_fun(t,x)
-        return obs_dict
+        obs = []
+        for i_fun,fun in enumerate(obs_funs):
+            obs.append(fun(t,x))
+        return obs
+    def compute_stats_dns_rotsym(self, fk, k_roll_step, time_block_size, bounds=None):
+        # Given a physical input field f(k), augment it by rotations to compute return periods
+        # constant parameters to adjust 
+        time_block_size = 10
+        # Concatenate a long array of timeseries at different longitudes
+        ksubset = np.arange(0, self.K, step=k_roll_step)
+        # Clip the time axis to contain exactly an integer multiple of the block size
+        ntimes = fk.shape[0]
+        clip_size = np.mod(ntimes, time_block_size)
+        fconcat = np.concatenate(tuple(fk[:,k] for k in ksubset))
+        return utils.compute_returnstats_and_histogram(fconcat, time_block_size, bounds=bounds)
     @staticmethod
     def observable_props():
         obslib = dict({
-            't': dict({
-                'abbrv': 't',
-                'label': 'Time',
-                }),
-            'x0': dict({
-                'abbrv': 'x0',
-                'label': r'$x_0$',
+            'xk': dict({
+                'abbrv': 'xk',
+                'label': r'$x_k$',
                 'cmap': 'coolwarm',
                 }),
-            'E0': dict({
-                'abbrv': 'E0',
-                'label': r'$\frac{1}{2}x_0^2$',
+            'Ek': dict({
+                'abbrv': 'Ek',
+                'label': r'$\frac{1}{2}x_k^2$',
                 'cmap': 'coolwarm',
                 }),
             'E': dict({
@@ -138,17 +148,13 @@ class Lorenz96ODE(ODESystem): # TODO make a superclass Lorenz96, and a sibling s
                 }),
             })
         return obslib
-    def observable_t(self, t, x):
-        return t
-    def observable_x(self, t, x):
-        return x
-    def observable_x0(self, t, x):
-        return x[:,0]
-    def observable_E0(self, t, x):
-        return x[:,0]**2/2
-    def observable_E(self, t, x):
+    def xk(self, t, x, k=0):
+        return x[:,k]
+    def Ek(self, t, x, k=0):
+        return x[:,k]**2/2
+    def E(self, t, x):
         return np.sum(x**2, axis=1)/2
-    def observable_Emax(self, t, x):
+    def Emax(self, t, x):
         return np.max(x**2, axis=1)/2
     # -------------- Distance functions --------------
     def distance(self, t0, x0, t1, x1, dist_name):
@@ -166,12 +172,9 @@ class Lorenz96ODE(ODESystem): # TODO make a superclass Lorenz96, and a sibling s
         elif ax is None:
             raise Exception("You can't just give me a fig without an axis")
         return fig,ax
-    def plot_hovmoller(self, t, x, fig=None, ax=None):
-        fig,ax = self.check_fig_ax(fig,ax)
+    def plot_hovmoller(self, t, x, fig, ax):
         im = ax.pcolormesh(t*self.dt_save, np.arange(self.K), x.T, shading='nearest', cmap='BrBG')
-        ax.set_xlabel('Time')
-        ax.set_ylabel('Longitude $k$')
-        return fig,ax,im
+        return im
     def plot_site_timeseries(self, t, x, k, linekw, fig=None, ax=None, ):
         fig,ax = self.check_fig_ax(fig,ax)
         h, = ax.plot(t*self.dt_save, x[:,k], **linekw)
@@ -260,29 +263,12 @@ class Lorenz96SDE(SDESystem):
         return
     def diffusion(self, t, x):
         return self.diffusion_matrix
-    def distance(self, t0, x0, t1, x1, name):
-        return self.ode.distance(t0, x0, t1, x1, name)
+    # ------------- Forwarded methods (can this be automated?) ---------------
     def compute_observables(self, obs_funs, metadata, root_dir):
         return self.ode.compute_observables(obs_funs, metadata, root_dir)
     def compute_pairwise_observables(self, pair_funs, md0, md1list, root_dir):
-        return self.ode.compute_pairwise_observables(pair_funs, md0, md1list, root_dir)
+        return self.ode.compute_pairwise_observables(self, pair_funs, md0, md1list, root_dir)
     @staticmethod
     def observable_props():
-        return Lorenz96ODE.observable_props() 
-    def observable_t(self, t, x):
-        return self.ode.observable_t(t,x)
-    def observable_x(self, t, x):
-        return self.ode.observable_x(t,x)
-    def observable_x0(self, t, x):
-        return self.ode.observable_x0(t,x)
-    def observable_E0(self, t, x):
-        return self.ode.observable_E0(t,x)
-    def observable_E(self, t, x):
-        return self.ode.observable_E(t,x)
-    def observable_Emax(self, t, x):
-        return self.ode.observable_Emax(t,x)
-
-
-
-
+        return Lorenz96ODE.observable_props()
 
