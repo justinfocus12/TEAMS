@@ -65,9 +65,9 @@ class DirectNumericalSimulation(EnsembleAlgorithm):
         self.init_time = init_time
         self.init_cond = init_cond
         return
-    def set_simulation_capacity(self, num_new_chunks, max_member_duration_phys):
+    def set_simulation_capacity(self, num_chunks_max, max_member_duration_phys):
         self.max_member_duration = int(max_member_duration_phys/self.ens.dynsys.dt_save)
-        self.num_chunks_max += num_new_chunks
+        self.num_chunks_max = num_chunks_max
         return
     def take_next_step(self, saveinfo):
         nmem = self.ens.get_nmem()
@@ -89,7 +89,6 @@ class DirectNumericalSimulation(EnsembleAlgorithm):
         first_mem = np.where(all_starts <= tspan[0])[0][-1]
         last_mem = np.where(all_ends >= tspan[1])[0][0]
         time = 1 + np.arange(tspan[0],tspan[1])
-        print(f'{time = }')
         tidx = time - all_starts[first_mem] - 1
         memset = np.arange(first_mem,last_mem+1)
         return time,memset,tidx
@@ -115,6 +114,9 @@ class DirectNumericalSimulation(EnsembleAlgorithm):
                 hist=hist,
                 rtime=rtime,
                 logsf=logsf)
+        if rtime[-1] == rtime[-2]:
+            print(f'{hist = }')
+            print(f'{rtime = }')
         return
      
     # ------------------ Plotting -----------------------------
@@ -125,24 +127,28 @@ class DirectNumericalSimulation(EnsembleAlgorithm):
         h, = ax.plot(time*tu, obs_seg, **linekwargs)
         return h
     @classmethod
-    def plot_return_curves(cls, return_stats_filename, fig, ax):
-        rst = np.load(returnstats_filename)
+    def plot_return_curves(cls, return_stats_filename, fig, ax, **linekwargs):
+        rst = np.load(return_stats_filename)
         rtime = rst['rtime']
         rlev = rst['bin_lows']
-        ax.plot(rtime,rlev,color='black',marker='.')
+        h, = ax.plot(rtime,rlev,**linekwargs)
         ax.set_ylim([rlev[np.argmax(rtime>0)],2*rlev[-1]-rlev[-2]])
         ax.set_xlabel('Return time')
         ax.set_ylabel('Return level')
         ax.set_xscale('log')
-        return 
+        return h
     @classmethod
-    def plot_histogram(cls, return_stats_filename, fig, ax):
-        rst = np.load(returnstats_filename)
+    def plot_histogram(cls, return_stats_filename, fig, ax, orientation='vertical', **linekwargs):
+        rst = np.load(return_stats_filename)
         bin_lows = rst['bin_lows']
         hist = rst['hist']
-        ax.plot(bin_lows,hist,color='black',marker='.')
-        ax.set_yscale('log')
-        return
+        if orientation == 'vertical':
+            h, = ax.plot(bin_lows,hist,**linekwargs)
+            ax.set_yscale('log')
+        else:
+            h, = ax.plot(hist[hist>0],bin_lows[hist>0],**linekwargs)
+            ax.set_xscale('log')
+        return h 
 
 
 

@@ -90,25 +90,32 @@ class Lorenz96SDEDirectNumericalSimulation(algorithms.SDEDirectNumericalSimulati
         fig.savefig(outfile, **pltkwargs)
         plt.close(fig)
         return
-    @staticmethod
-    def plot_return_stats(returnstats_filename, output_filename, obsprop):
-        fig,ax = plt.subplots()
-        self.plot_return_curves(returnstats_filename, fig, ax)
+    @classmethod
+    def plot_return_stats(cls, return_stats_filename, output_filename, obsprop):
+        fig,axes = plt.subplots(ncols=2,figsize=(10,5),sharey=True)
+        ax = axes[0]
+        cls.plot_return_curves(return_stats_filename, fig, ax)
         ax.set_xlabel(r'Return time')
         ax.set_ylabel(r'%s Return level'%(obsprop['label']))
+        ax = axes[1]
+        cls.plot_histogram(return_stats_filename, fig, ax, orientation='horizontal')
+        ax.set_xlabel(r'Probability density')
+        ax.set_ylabel('')
+        ax.yaxis.set_tick_params(which='both',labelbottom=True)
         fig.savefig(output_filename, **pltkwargs)
         plt.close(fig)
         return
     @classmethod
-    def plot_return_stats_meta(cls, returnstats_filenames, output_filename, obsprop, labels):
-        fig,axes = plt.subplots(ncols=2,figsize=(12,4),gridspec_kw={'wspace': 0.25})
-        for rsf in returnstats_filenames:
-            rst = np.load(rsf)
-            bin_lows,hist,logsf,rtime = rst['bin_lows'],rst['hist'],rst['logsf'],rst['rtime']
-            ax = axes[1]
-            self.plot_histogram(bin_lows, hist, fig, ax)
+    def plot_return_stats_meta(cls, return_stats_filenames, output_filename, obsprop, labels):
+        fig,axes = plt.subplots(ncols=2,figsize=(12,4),gridspec_kw={'wspace': 0.25}, sharey=True)
+        handles = []
+        for i_param,rsf in enumerate(return_stats_filenames):
+            color = plt.cm.Set1(i_param)
             ax = axes[0]
-            cls.plot_return_curves(bin_lows, rtime, fig, ax)
+            h = cls.plot_return_curves(rsf, fig, ax, color=color, marker='.', label=labels[i_param])
+            handles.append(h)
+            ax = axes[1]
+            self.plot_histogram(rsf, fig, ax, orientation='horizontal', color=color, marker='.')
         ax.set_xlabel(r'Return time')
         ax.set_ylabel(r'%s Return level'%(obsprop['label']))
         ax.set_ylabel('Probability density')

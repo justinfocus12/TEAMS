@@ -36,7 +36,7 @@ def experimental_paramset(i_param):
         'seed_max': 100000,
         'seed_inc_init': seed_incs[i_param], # add to seed_min
         'max_member_duration_phys': 50.0,
-        'num_chunks_max': 50,
+        'num_chunks_max': 5,
         })
 
     config_analysis = dict({
@@ -44,7 +44,7 @@ def experimental_paramset(i_param):
         'return_stats': dict({
             'time_block_size_phys': 12,
             'spinup_phys': 30,
-            'k_roll_step': 10, # step size for augmenting Lorenz96 with rotational symmetry 
+            'k_roll_step': 50, # step size for augmenting Lorenz96 with rotational symmetry 
             })
         # Other possible parameters: method used for fitting GEV, threshold for GPD, ...
         })
@@ -94,6 +94,42 @@ def experimental_workflow(i_param):
             })
     return config_dynsys,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict
 
+def meta_dns_workflow(idx_param):
+    scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/"
+    date_str = "2024-03-18"
+    sub_date_str = "0"
+    mfd = dict() # meta-filedict
+    mdd = dict() # meta-plots
+    mdd['analysis'] = join(scratch_dir,date_str,sub_date_str,'meta_analysis')
+    mdd['plots'] = join(scratch_dir,date_str,sub_date_str,'meta_plots')
+
+
+    expt_labels = []
+    expt_abbrvs = []
+    filedicts = []
+    for i in idx_param:
+        _,_,_,expt_label,expt_abbrv,_,filedict = experimental_workflow(i_param)
+        expt_labels.append(expt_label)
+        expt_abbrvs.append(expt_abbrvs)
+        filedicts.append(filedict)
+    mfd['return_stats'] = dict()
+    obs_names = list(filedicts[0]['return_stats'].keys())
+    obsprop = Lorenz96ODE.observable_props()
+    for obs_name in obs_names:
+        mfd['return_stats'][obs_name] = dict({
+            'plots': join(mdd['analysis'], r'return_stats_%s.png'%(obsprop[obs_name]['abbrv'])),
+            })
+    return mdd,mfd,filedicts,expt_labels,expt_abbrvs
+
+def meta_dns_procedure(idx_param):
+    mdd,mfd,filedicts,expt_labels,expt_abbrvs = meta_dns_workflow(idx_param)
+    # Plot return stats 
+    obs_names = list(mfd['return_stats'].keys())
+    obsprop = Lorenz96ODE.observable_props()
+    for obs_name in obs_names:
+        return_stats_filenames = [fd['return_stats'][obs_name]['analysis'] for fd in filedicts]
+        L96SDEDNS.plot_return_stats_meta(return_stats_filenames, mfd['return_stats'][obs_name]['plots'], obsprop, labels)
+    return
 
 def run_dns(dirdict,filedict,config_dynsys,config_algo):
     root_dir = dirdict['data']
@@ -107,8 +143,9 @@ def run_dns(dirdict,filedict,config_dynsys,config_algo):
         alg = L96SDEDNS(config_algo, ens)
     nmem = alg.ens.get_nmem()
     alg.ens.set_root_dir(root_dir)
-    num_new_chunks = config_algo['num_chunks_max']-nmem
-    alg.set_simulation_capacity(num_new_chunks, config_algo['max_member_duration_phys'])
+    alg.set_simulation_capacity(config_algo['num_chunks_max'], config_algo['max_member_duration_phys'])
+    num_new_chunks = alg.num_chunks_max - nmem
+    print(f'{num_new_chunks = }')
     if num_new_chunks > 0:
         alg.terminate = False
     while not (alg.terminate):
@@ -121,16 +158,19 @@ def run_dns(dirdict,filedict,config_dynsys,config_algo):
 
 def analyze_dns(config,tododict,dirdict,filedict):
     alg = pickle.load(open(filedict['alg'], 'rb'))
+    tu = alg.ens.dynsys.dt_save
     obs_names = list(filedict['return_stats'].keys())
     if tododict['return_stats']:
+        cfrs = config['return_stats']
         K = alg.ens.dynsys.ode.K
         for obs_name in obs_names:
             obs_funs2concat = []
-            for kshift in np.arange(0,K,step=config['return_stats']['k_roll_step'],dtype=int):
+            for kshift in np.arange(0,K,step=cfrs['k_roll_step'],dtype=int):
+                print(f'{kshift = }')
                 obs_funs2concat.append(
                         lambda t,x,kshift=kshift: getattr(alg.ens.dynsys.ode, obs_name)(t,np.roll(x,kshift,axis=1)))
             alg.compute_return_stats(
-                    obs_funs2concat, int(config['time_block_size_phys']/tu), int(config['spinup_phys']/tu), filedict['return_stats'][obs_name]['analysis'])
+                    obs_funs2concat, int(cfrs['time_block_size_phys']/tu), int(cfrs['spinup_phys']/tu), filedict['return_stats'][obs_name]['analysis'])
     # TODO: do autocorrelation, cross-correlation analysis
     return
 
@@ -145,7 +185,7 @@ def plot_dns(tododict,dirdict,filedict):
             L96SDEDNS.plot_return_stats(filedict['return_stats'][obs_name]['analysis'], filedict['return_stats'][obs_name]['plots'], obsprop[obs_name])
     return
 
-def dns_workflow(i_param):
+def dns_procedure(i_param):
     tododict = dict({
         'run':                   1,
         'analysis': dict({
@@ -155,7 +195,7 @@ def dns_workflow(i_param):
         'plots': dict({
             'return_stats':  1,
             'autocorrelation': 1,
-            'timeseries':   1,
+            'basic_vis':   1,
             }),
         })
 
@@ -166,13 +206,33 @@ def dns_workflow(i_param):
         run_dns(dirdict,filedict,config_dynsys,config_algo)
     if utils.find_true_in_dict(tododict['analysis']):
         analyze_dns(config_analysis,tododict['analysis'],dirdict,filedict)
-    if utils.find_true_in_dict(tododict['plot']):
+    if utils.find_true_in_dict(tododict['plots']):
         plot_dns(tododict['plots'],dirdict,filedict)
 
-        if tododict['plot']['timeseries']:
-            alg.plot_dns_segment(dirdict['plots'])
+    return
 
-def dns_meta_analysis():
+
+
+def dns_meta_analysis_procedure(idx_param):
+    tododict = dict({
+        'analysis': dict({
+            'return_stats': 1,
+            'autocorrelation': 1,
+            }),
+        'plots': dict({
+            'return_stats':  1,
+            'autocorrelation': 1,
+            'basic_vis':   1,
+            }),
+        })
+    expt_labels = []
+    expt_abbrvs = []
+    filedicts = []
+    for i in idx_param:
+        _,_,_,expt_label,expt_abbrv,_,filedict = experimental_workflow(i_param)
+        expt_labels.append(expt_label)
+        expt_abbrvs.append(expt_abbrvs)
+        filedicts.append(filedict)
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/"
     date_str = "2024-03-17"
     sub_date_str = "0"
@@ -200,4 +260,4 @@ def dns_meta_analysis():
 
 if __name__ == "__main__":
     i_param = int(sys.argv[1])
-    dns_workflow(i_param)
+    dns_procedure(i_param)

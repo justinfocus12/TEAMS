@@ -65,9 +65,10 @@ def convert_logsf_to_rtime(logsf, T):
 def compute_returnstats_and_histogram(f, time_block_size, bounds=None):
     if bounds is None:
         bounds = [np.min(f),np.max(f)]
-    bins = np.linspace(bounds[0],bounds[1],30)
-    hist,bin_edges = np.histogram(f, density=True, bins=bins)
+    bins = np.linspace(bounds[0]-1e-10,bounds[1]+1e-10,30)
+    hist,bin_edges = np.histogram(f, density=False, bins=bins)
     rlev,rtime,logsf = compute_return_time_block_maxima(f, time_block_size)
     idx = np.searchsorted(rlev, bin_edges[:-1])
+    print(f'{idx = }')
     return bin_edges[:-1], hist, rtime[idx], logsf[idx]
 
