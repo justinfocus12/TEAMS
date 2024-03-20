@@ -99,7 +99,7 @@ class Lorenz96SDEDirectNumericalSimulation(algorithms.SDEDirectNumericalSimulati
         ax.set_ylabel(r'%s Return level'%(obsprop['label']))
         ax = axes[1]
         cls.plot_histogram(return_stats_filename, fig, ax, orientation='horizontal')
-        ax.set_xlabel(r'Probability density')
+        ax.set_xlabel(r'Counts')
         ax.set_ylabel('')
         ax.yaxis.set_tick_params(which='both',labelbottom=True)
         fig.savefig(output_filename, **pltkwargs)
@@ -114,12 +114,15 @@ class Lorenz96SDEDirectNumericalSimulation(algorithms.SDEDirectNumericalSimulati
             ax = axes[0]
             h = cls.plot_return_curves(rsf, fig, ax, color=color, marker='.', label=labels[i_param])
             handles.append(h)
+            ax.set_xlabel(r'Return time')
+            ax.set_ylabel(r'%s Return level'%(obsprop['label']))
             ax = axes[1]
-            self.plot_histogram(rsf, fig, ax, orientation='horizontal', color=color, marker='.')
-        ax.set_xlabel(r'Return time')
-        ax.set_ylabel(r'%s Return level'%(obsprop['label']))
-        ax.set_ylabel('Probability density')
-        ax.set_xlabel(obsprop['label'])
+            cls.plot_histogram(rsf, fig, ax, orientation='horizontal', color=color, marker='.')
+            ax.set_xlabel(r'Counts')
+            ax.set_ylabel('')
+            ax.yaxis.set_tick_params(which='both', labelbottom=True)
+            ax.set_xlabel(obsprop['label'])
+        axes[0].legend(handles=handles)
         fig.savefig(output_filename, **pltkwargs)
         plt.close(fig)
         return

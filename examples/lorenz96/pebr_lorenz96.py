@@ -17,8 +17,36 @@ sys.path.append('../..')
 from lorenz96 import Lorenz96ODE,Lorenz96SDE
 from ensemble import Ensemble
 import forcing
-from algorithms_lorenz96 import Lorenz96ODEPeriodicBranching, Lorenz96SDEPeriodicBranching
+from algorithms_lorenz96 import Lorenz96ODEPeriodicBranching as L96ODEPeBr, Lorenz96SDEPeriodicBranching as L96SDEPeBr
 import utils
+
+def pebr_paramset(i_param):
+    F4s = [3.0,1.0,0.5,0.25,0.0]
+    seed_incs = [0,0,0,0,0] # In theory we could make an unraveled array of (F4,seed)
+    # Minimal labels to differentiate them 
+    expt_labels = [r'$F_4=%g$'%(F4) for F4 in F4s]
+    expt_abbrvs = [(r'F4eq%g'%(F4)).replace('.','p') for F4 in F4s]
+    config_dynsys = Lorenz96SDE.default_config()
+    config_dynsys['frc']['white']['wavenumber_magnitudes'][0] = F4s[i_param]
+    config_algo = dict({
+        'seed_min': 1000,
+        'seed_max': 100000,
+        'seed_inc_init': seed_incs[i_param], # added to seed_min to generate first seed
+        'branches_per_group': 16, 
+        'interbranch_interval_phys': 5.0,
+        'branch_duration_phys': 15.0,
+        'num_branch_groups': 5,
+        'max_member_duration_phys': 20.0,
+        })
+    return config_dynsys,config_algo,expt_labels[i_param],expt_abbrvs[i_param]
+
+def pebr_workflow(i_param):
+    config_dynsys,config_algo,expt_label,expt_abbrv = pebr_paramset(i_param)
+    scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/lorenz96"
+    date_str = "2024-02-24"
+    sub_date_str = "1"
+    param_abbrv_dynsys,param_label_dynsys = Lorenz96SDE.label_from_config(config_dynsys)
+    param_abbrv_algo,param_label_algo = L96SDEPeBr.label_from_config(config_algo)
 
 def periodic_branching(systype):
     tododict = dict({
@@ -33,24 +61,19 @@ def periodic_branching(systype):
             'response':       0,
             }),
         })
-    DynSysClass = {'ODE': Lorenz96ODE, 'SDE': Lorenz96SDE}[systype]
-    AlgClass = {'ODE': Lorenz96ODEPeriodicBranching, 'SDE': Lorenz96SDEPeriodicBranching}[systype]
-    config_dynsys = DynSysClass.default_config()
     scratch_dir = "/net/hstor001.ib/pog/001/ju26596/TEAMS_results/examples/lorenz96"
     date_str = "2024-02-24"
     sub_date_str = "1"
     param_abbrv_dynsys,param_label_dynsys = DynSysClass.label_from_config(config_dynsys)
-    config_algo = dict({
-        'seed_min': 1000,
-        'seed_max': 100000,
-        'branches_per_group': 16, 
-        'interbranch_interval_phys': 5.0,
-        'branch_duration_phys': 15.0,
-        'num_branch_groups': 50,
-        'max_member_duration_phys': 20.0,
-        })
     param_abbrv_algo,param_label_algo = AlgClass.label_from_config(config_algo)
-    seed = 849582 # TODO make this a command-line argument
+
+    dirdict = dict()
+    dirdict['expt'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_dynsys, param_abbrv_algo)
+    dirdict['data'] = join(dirdict['expt'], 'data')
+    dirdict['analysis'] = join(dirdict['expt'], 'analysis')
+    dirdict['plots'] = join(dirdict['expt'], 'plots')
+    for dirname in list(dirdict.values()):
+        makedirs(dirname, exist_ok=True)
 
     # Set up directories
     dirdict = dict({

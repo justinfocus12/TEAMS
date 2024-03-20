@@ -138,7 +138,7 @@ class Lorenz96ODE(ODESystem): # TODO make a superclass Lorenz96, and a sibling s
                 }),
             'E': dict({
                 'abbrv': 'E',
-                'label': r'$\sum_k \frac{1}{2}x_k^2$',
+                'label': r'$\frac{1}{2}\overline{x_k^2}$',
                 'cmap': 'coolwarm',
                 }),
             'Emax': dict({
@@ -153,7 +153,7 @@ class Lorenz96ODE(ODESystem): # TODO make a superclass Lorenz96, and a sibling s
     def E0(self, t, x):
         return x[:,0]**2/2
     def E(self, t, x):
-        return np.sum(x**2, axis=1)/2
+        return np.mean(x**2, axis=1)/2
     def Emax(self, t, x):
         return np.max(x**2, axis=1)/2
     # -------------- Distance functions --------------

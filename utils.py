@@ -60,6 +60,7 @@ def compute_return_time_block_maxima(x,T):
 def convert_logsf_to_rtime(logsf, T):
     # log-survival function to return period
     rtime = -T / np.log(-np.expm1(logsf))
+    rtime[rtime <= T] = np.nan
     return rtime
 
 def compute_returnstats_and_histogram(f, time_block_size, bounds=None):

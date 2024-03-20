@@ -21,7 +21,7 @@ import forcing
 from algorithms_lorenz96 import Lorenz96ODEDirectNumericalSimulation as L96ODEDNS, Lorenz96SDEDirectNumericalSimulation as L96SDEDNS
 import utils
 
-def experimental_paramset(i_param):
+def dns_paramset(i_param):
     # Organize the array of parameters as well as the output files 
     F4s = [3.0,1.0,0.5,0.25,0.0]
     seed_incs = [0,0,0,0,0] # In theory we could make an unraveled array of (F4,seed)
@@ -36,7 +36,7 @@ def experimental_paramset(i_param):
         'seed_max': 100000,
         'seed_inc_init': seed_incs[i_param], # add to seed_min
         'max_member_duration_phys': 50.0,
-        'num_chunks_max': 5,
+        'num_chunks_max': 100,
         })
 
     config_analysis = dict({
@@ -44,18 +44,18 @@ def experimental_paramset(i_param):
         'return_stats': dict({
             'time_block_size_phys': 12,
             'spinup_phys': 30,
-            'k_roll_step': 50, # step size for augmenting Lorenz96 with rotational symmetry 
+            'k_roll_step': 4, # step size for augmenting Lorenz96 with rotational symmetry 
             })
         # Other possible parameters: method used for fitting GEV, threshold for GPD, ...
         })
 
     return config_dynsys,config_algo,config_analysis,expt_labels[i_param],expt_abbrvs[i_param]
 
-def experimental_workflow(i_param):
-    config_dynsys,config_algo,config_analysis,expt_label,expt_abbrv = experimental_paramset(i_param)
+def dns_workflow(i_param):
+    config_dynsys,config_algo,config_analysis,expt_label,expt_abbrv = dns_paramset(i_param)
     # Organize output directories
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/"
-    date_str = "2024-03-18"
+    date_str = "2024-03-19"
     sub_date_str = "0"
     param_abbrv_dynsys,param_label_dynsys = Lorenz96SDE.label_from_config(config_dynsys)
     param_abbrv_algo,param_label_algo = L96SDEDNS.label_from_config(config_algo)
@@ -96,19 +96,21 @@ def experimental_workflow(i_param):
 
 def meta_dns_workflow(idx_param):
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/"
-    date_str = "2024-03-18"
+    date_str = "2024-03-19"
     sub_date_str = "0"
     mfd = dict() # meta-filedict
-    mdd = dict() # meta-plots
+    mdd = dict() # meta-dirdict
     mdd['analysis'] = join(scratch_dir,date_str,sub_date_str,'meta_analysis')
     mdd['plots'] = join(scratch_dir,date_str,sub_date_str,'meta_plots')
+    for meta_dir in list(mdd.values()):
+        makedirs(meta_dir, exist_ok=True)
 
 
     expt_labels = []
     expt_abbrvs = []
     filedicts = []
-    for i in idx_param:
-        _,_,_,expt_label,expt_abbrv,_,filedict = experimental_workflow(i_param)
+    for i_param in idx_param:
+        _,_,_,expt_label,expt_abbrv,_,filedict = dns_workflow(i_param)
         expt_labels.append(expt_label)
         expt_abbrvs.append(expt_abbrvs)
         filedicts.append(filedict)
@@ -117,7 +119,7 @@ def meta_dns_workflow(idx_param):
     obsprop = Lorenz96ODE.observable_props()
     for obs_name in obs_names:
         mfd['return_stats'][obs_name] = dict({
-            'plots': join(mdd['analysis'], r'return_stats_%s.png'%(obsprop[obs_name]['abbrv'])),
+            'plots': join(mdd['plots'], r'return_stats_%s.png'%(obsprop[obs_name]['abbrv'])),
             })
     return mdd,mfd,filedicts,expt_labels,expt_abbrvs
 
@@ -128,7 +130,7 @@ def meta_dns_procedure(idx_param):
     obsprop = Lorenz96ODE.observable_props()
     for obs_name in obs_names:
         return_stats_filenames = [fd['return_stats'][obs_name]['analysis'] for fd in filedicts]
-        L96SDEDNS.plot_return_stats_meta(return_stats_filenames, mfd['return_stats'][obs_name]['plots'], obsprop, labels)
+        L96SDEDNS.plot_return_stats_meta(return_stats_filenames, mfd['return_stats'][obs_name]['plots'], obsprop[obs_name], expt_labels)
     return
 
 def run_dns(dirdict,filedict,config_dynsys,config_algo):
@@ -200,7 +202,7 @@ def dns_procedure(i_param):
         })
 
     # Quantities of interest for statistics. These should be registered as observables under the system.
-    config_dynsys,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = experimental_workflow(i_param)
+    config_dynsys,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = dns_workflow(i_param)
 
     if tododict['run']:
         run_dns(dirdict,filedict,config_dynsys,config_algo)
@@ -211,53 +213,11 @@ def dns_procedure(i_param):
 
     return
 
-
-
-def dns_meta_analysis_procedure(idx_param):
-    tododict = dict({
-        'analysis': dict({
-            'return_stats': 1,
-            'autocorrelation': 1,
-            }),
-        'plots': dict({
-            'return_stats':  1,
-            'autocorrelation': 1,
-            'basic_vis':   1,
-            }),
-        })
-    expt_labels = []
-    expt_abbrvs = []
-    filedicts = []
-    for i in idx_param:
-        _,_,_,expt_label,expt_abbrv,_,filedict = experimental_workflow(i_param)
-        expt_labels.append(expt_label)
-        expt_abbrvs.append(expt_abbrvs)
-        filedicts.append(filedict)
-    scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/"
-    date_str = "2024-03-17"
-    sub_date_str = "0"
-    exptset_dir = join(scratch_dir,date_str,sub_date_str)
-    meta_dir = join(expt_dir,'meta')
-    makedirs(meta_dir,exist_ok=True)
-    algdirs = []
-    labels = []
-    abbrvs = []
-    for i_param in range(4):
-        config_dynsys,config_algo,label,abbrv = experimental_paramset(i_param)
-        labels.append(label)
-        abbrvs.append(abbrv)
-
-        
-    algdirs = glob.glob(join(meta_dir,'L96*/DNS_si0*/'))
-    print(f'{algdirs = }')
-    qois = ['Ek','E']
-    obsprop = Lorenz96SDE.observable_props()
-
-    # All return plots atop each other
-    for qoi in qois:
-        returnstats_filenames = [join(algdir,r'%s_returnstats.npz'%(obsprop[qoi]['abbrv'])) for algdir in algdirs]
-
-
 if __name__ == "__main__":
-    i_param = int(sys.argv[1])
-    dns_procedure(i_param)
+    procedure = sys.argv[1]
+    idx_param = [int(v) for v in sys.argv[2:]]
+    if procedure == 'single':
+        for i_param in idx_param:
+            dns_procedure(i_param)
+    elif procedure == 'meta':
+        meta_dns_procedure(idx_param)
