@@ -263,10 +263,10 @@ class PeriodicBranching(EnsembleAlgorithm):
                 branching_state_update['on_trunk'] = False
             branch_times_update = parent_fin_time
         else:
-            # decide whom to branch off of trunk_segment_2branch = np.searchsorted(self.branching_state['trunk_lineage_fin_times'], self.branching_state['next_branch_time'], side='left')
+            # decide whom to branch off of 
+            trunk_segment_2branch = np.searchsorted(self.branching_state['trunk_lineage_fin_times'], self.branching_state['next_branch_time'], side='left')
             print(f'self.branching_state = ')
             pprint.pprint(self.branching_state)
-            print(f'{trunk_segment_2branch = }')
             parent = self.branching_state['trunk_lineage'][trunk_segment_2branch]
             icandf = self.generate_icandf_from_parent(parent, self.branching_state['next_branch_time'], self.branch_duration)
             branching_state_update = dict()
@@ -339,7 +339,7 @@ class PeriodicBranching(EnsembleAlgorithm):
                 pass
 
     # ************** Perturbation growth ****************
-    def measure_pert_growth(self, dist_fun):
+    def measure_pert_growth(self, dist_fun, outfile):
         # Save a statistical analysis of RMSE growth to a specified directory
         ngroups = self.branching_state['next_branch_group']+1
         split_times = np.zeros(ngroups, dtype=int)
@@ -350,7 +350,11 @@ class PeriodicBranching(EnsembleAlgorithm):
             time,dists_local = self.compute_pairwise_fun_local(dist_fun, branch_group)
             split_times[branch_group] = time[0]
             dists[branch_group,:,:] = dists_local.copy()
-        return split_times,dists
+        np.savez(
+                outfile,
+                split_times=split_times,
+                dists=dists)
+        return 
     def summarize_pert_growth(self, dists):
         ngroups,nbranches,ntimes = dists.shape
         rmsd = np.sqrt(np.mean(dists[:,:,-1]**2))
@@ -392,6 +396,15 @@ class PeriodicBranching(EnsembleAlgorithm):
                 for i_frac,frac in enumerate(fracs):
                     t2fracsat[dist_name][i_pg,i_frac] = np.mean(np.argmax(rmse/rmsd > frac, axis=1))
         return fracs,t2fracsat
+    def plot_dispersion(self, split_time, dists, fig, ax):
+        tu = self.ens.dynsys.dt_save
+        nbranches,ntimes = dists.shape
+        time = split_time + np.arange(ntimes)
+        for i_mem1 in range(nbranches):
+            ax.plot(time*tu, dists[i_mem1,:], color='tomato',)
+        rmse = np.sqrt(np.mean(dists**2, axis=0))
+        hrmse, = ax.plot(time*tu, rmse, color='black', label='RMSE')
+        return 
     def plot_pert_growth(self, split_times, dists, thalfsat, diff_expons, lyap_expons, rmses, rmsd, plot_dir, plot_suffix, logscale=False):
         ngroups,nbranches,ntimes = dists.shape
         tu = self.ens.dynsys.dt_save
@@ -441,18 +454,15 @@ class PeriodicBranching(EnsembleAlgorithm):
         fig.savefig(savefile, **pltkwargs)
         plt.close(fig)
         return
-    def plot_obs_spaghetti(self, obs_fun, branch_group, plotdir, ylabel='', title='', abbrv=''):
+    def plot_obs_spaghetti(self, obs_fun, branch_group, outfile, ylabel='', title='', abbrv=''):
         print(f'\n\nPlotting group {branch_group}')
         # Get all timespans
         time,mems_trunk,tidx_trunk,mems_branch,tidxs_branch = self.get_tree_subset(branch_group)
-        print(f'{mems_branch = }')
         tu = self.ens.dynsys.dt_save
 
         obs_branch = [self.ens.compute_observables([obs_fun], mem)[0] for mem in mems_branch]
         obs_trunk = np.concatenate([self.ens.compute_observables([obs_fun], mem)[0] for mem in mems_trunk])
-        print(f'{obs_branch = }')
-        print(f'{obs_trunk = }')
-        fig,ax = plt.subplots(figsize=(12,5))
+        fig,ax = plt.subplots()
         # For trunk, restrict to the times of interest
         hctrl, = ax.plot(time*tu, obs_trunk[tidx_trunk], linestyle='--', color='black', linewidth=2, zorder=1, label='CTRL')
         for i_mem,mem in enumerate(mems_branch):
@@ -463,7 +473,7 @@ class PeriodicBranching(EnsembleAlgorithm):
         ax.set_ylabel(ylabel)
         ax.set_title(title)
         #ax.set_xlim([time[0],time[-1]+1])
-        fig.savefig(join(plotdir,r'%s_group%d.png'%(abbrv,branch_group)), **pltkwargs)
+        fig.savefig(outfile, **pltkwargs)
         plt.close(fig)
         return
 
@@ -538,7 +548,7 @@ class SDEPeriodicBranching(PeriodicBranching):
             frc_reseed = forcing.OccasionalReseedForcing(branch_time, branch_time+duration, [branch_time], [seed])
         frc_vector = forcing.OccasionalVectorForcing(branch_time, branch_time+duration, [], [])
         icandf = dict({
-            'init_cond': parent_x[0],
+            'init_cond': init_cond,
             'init_rngstate': init_rngstate,
             'frc': forcing.SuperposedForcing([frc_vector,frc_reseed]),
             })

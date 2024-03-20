@@ -25,7 +25,7 @@ class Lorenz96ODEPeriodicBranching(algorithms.ODEPeriodicBranching):
         return ['x0','E0','E','Emax']
     def obs_fun(self, t, x):
         obs_dict = dict({
-            name: getattr(self.ens.dynsys, f'observable_{name}')(t,x)
+            name: getattr(self.ens.dynsys, name)(t,x)
             for name in self.obs_dict_names()
             })
         return obs_dict
@@ -35,7 +35,7 @@ class Lorenz96SDEPeriodicBranching(algorithms.SDEPeriodicBranching):
         return ['x0','E0','E','Emax']
     def obs_fun(self, t, x):
         obs_dict = dict({
-            name: getattr(self.ens.dynsys.ode, f'observable_{name}')(t,x)
+            name: getattr(self.ens.dynsys.ode, name)(t,x)
             for name in self.obs_dict_names()
             })
         return obs_dict

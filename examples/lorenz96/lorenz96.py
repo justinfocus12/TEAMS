@@ -26,7 +26,7 @@ class Lorenz96ODE(ODESystem): # TODO make a superclass Lorenz96, and a sibling s
     @staticmethod
     def default_config():
         config = dict({'K': 40, 'F': 6.0, 'dt_step': 0.001, 'dt_save': 0.05,})
-        config['t_burnin'] = 0 #int(10/config['dt_save'])
+        config['t_burnin_phys'] = int(10/config['dt_save'])
         config['frc'] = dict({
             'type': 'impulsive',
             'impulsive': dict({
@@ -73,7 +73,7 @@ class Lorenz96ODE(ODESystem): # TODO make a superclass Lorenz96, and a sibling s
         self.F = config['F']
         self.dt_step = config['dt_step']
         self.dt_save = config['dt_save'] 
-        self.t_burnin = config['t_burnin']
+        self.t_burnin = int(config['t_burnin_phys']/self.dt_save) # depends on whether to use a pre-seeded initial condition 
         # Forcing
         fpar = config['frc']['impulsive']
         self.impulse_dim = 2*len(fpar['wavenumbers']) + len(fpar['sites'])
@@ -94,16 +94,15 @@ class Lorenz96ODE(ODESystem): # TODO make a superclass Lorenz96, and a sibling s
     def generate_default_init_cond(self, init_time):
         return self.F + 0.001*np.sin(2*np.pi*np.arange(self.K)/self.K)
     # --------------- Pairwise functions (e.g., distance) -----------------
-    def compute_pairwise_observables(self, pair_funs, md0, md1list, root_dir):
+    def compute_pairwise_observables(self, pairwise_funs, md0, md1list, root_dir):
         # Compute distances between one trajectory and many others
-        pair_names = list(pair_funs.keys())
-        pair_dict = dict({pn: [] for pn in pair_names})
+        pairwise_fun_vals = [[] for pwf in pairwise_funs] # List of lists
         t0,x0 = self.load_trajectory(md0, root_dir)
         for i_md1,md1 in enumerate(md1list):
             t1,x1 = self.load_trajectory(md1, root_dir)
-            for i_pn,pn in enumerate(pair_names):
-                pair_dict[pn].append(pair_funs[pn](t0,x0,t1,x1))
-        return pair_dict
+            for i_pwf,pwf in enumerate(pairwise_funs):
+                pairwise_fun_vals[i_pwf].append(pwf(t0,x0,t1,x1))
+        return pairwise_fun_vals
             
     # --------------- Common observable functions --------
     def compute_observables(self, obs_funs, metadata, root_dir):
@@ -157,13 +156,18 @@ class Lorenz96ODE(ODESystem): # TODO make a superclass Lorenz96, and a sibling s
     def Emax(self, t, x):
         return np.max(x**2, axis=1)/2
     # -------------- Distance functions --------------
-    def distance(self, t0, x0, t1, x1, dist_name):
-        name2func = dict({
-            'euclidean': self.distance_euclidean,
-            })
-        return name2func[dist_name](t0,x0,t1,x1)
     def distance_euclidean(self, t0, x0, t1, x1):
-        return np.sqrt(np.sum((x0 - x1)**2, axis=1))
+        return np.sqrt(np.mean((x0 - x1)**2, axis=1))
+    def distance_timedelay_xk(self, t0, x0, t1, x1, k=0, timedelay_phys=1):
+        timedelay = max(1, min(len(t0), int(timedelay_phys/self.dt_save)))
+        conv = np.convolve(np.ones(timedelay), (x0[:,k]-x1[:,k])**2, mode='full')
+        return conv[:len(conv)-(timedelay-1)]
+    def distance_timedelay_Ek(self, t0, x0, t1, x1, k=0, timedelay_phys=0.0):
+        timedelay = max(1, min(len(t0), int(timedelay_phys/self.dt_save)))
+        conv = np.convolve(np.ones(timedelay), (x0[:,k]**2/2-x1[:,k]**2/2)**2, mode='full')
+        return conv[:len(conv)-(timedelay-1)]
+
+
     # --------------- plotting functions -----------------
     def check_fig_ax(self, fig=None, ax=None):
         if fig is None:
@@ -267,7 +271,7 @@ class Lorenz96SDE(SDESystem):
     def compute_observables(self, obs_funs, metadata, root_dir):
         return self.ode.compute_observables(obs_funs, metadata, root_dir)
     def compute_pairwise_observables(self, pair_funs, md0, md1list, root_dir):
-        return self.ode.compute_pairwise_observables(self, pair_funs, md0, md1list, root_dir)
+        return self.ode.compute_pairwise_observables(pair_funs, md0, md1list, root_dir)
     @staticmethod
     def observable_props():
         return Lorenz96ODE.observable_props()
