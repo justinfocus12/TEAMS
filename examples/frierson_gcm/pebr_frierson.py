@@ -93,70 +93,210 @@ def pebr_paramset(i_param):
         })
     return config_gcm,config_algo,expt_label,expt_abbrv
 
-# -------------- Define the observable functions of interest ---------
-def local_rain(ds, roi):
-    pass
+# -------------- Define the observable functions of interest (to be further parameterized) ---------
+def regional_rain(ds, roi):
+    rtot = FriersonGCM.total_rain(ds)
+    print(f'{rtot.dims = }')
+    print(f'{rtot.coords = }')
+    rtot = FriersonGCM.sel_from_roi(rtot, roi)
+    dims2avg = set(rtot.dims) - {'time'}
+    rtot = rtot.mean(dim=dims2avg)
+    if len(dims2avg) > 0:
+        print(f'{rtot = }')
+    return rtot
+def regional_cwv(ds, roi):
+    cwv = FriersonGCM.column_water_vapor(ds)
+    cwv = FriersonGCM.sel_from_roi(cwv, roi)
+    dims2avg = set(cwv.dims) - {'time'}
+    cwv = cwv.mean(dim=dims2avg)
+    if len(dims2avg) > 0:
+        print(f'{cwv = }')
+    return cwv
 # ----------- Define the distance metrics of interest -------
 def euc_dist_rain(ds0,ds1,roi):
-    pass
+    r0 = regional_rain(ds0, roi)
+    r1 = regional_rain(ds1, roi)
+    return np.sqrt((r0 - r1)**2).sum(dim=['lat','lon'])
+def euc_dist_cwv(ds0,ds1,roi):
+    r0 = regional_rain(ds0, roi)
+    r1 = regional_rain(ds1, roi)
+    return np.sqrt((r0 - r1)**2).sum(dim=['lat','lon'])
+def euc_dist_ps(ds0,ds1,roi):
+    p0 = FriersonGCM.sel_from_roi(
+            FriersonGCM.surface_pressure(ds0), roi)
+    p1 = FriersonGCM.sel_from_roi(
+            FriersonGCM.surface_pressure(ds1), roi)
+    return np.sqrt((p0 - p1)**2).sum(dim=['lat','lon'])
+def euc_dist_cwv(ds0,ds1,roi):
+    r0 = regional_rain(ds0, roi)
+    r1 = regional_rain(ds1, roi)
+    return np.sqrt((r0 - r1)**2).sum(dim=['lat','lon'])
+
 
 
 def pebr_workflow(i_param):
     print(f'About to generate default config; {i_param = }')
     config_gcm,config_algo,expt_label,expt_abbrv = pebr_paramset(i_param)
+    ngroups = config_algo['num_branch_groups']
     param_abbrv_gcm,param_label_gcm = FriersonGCM.label_from_config(config_gcm)
     param_abbrv_algo,param_label_algo = FriersonGCMPeriodicBranching.label_from_config(config_algo)
     # Configure post-analysis
     # List the quantities of interest
+    config_analysis = dict()
+    config_analysis['target_location'] = dict(lat=45, lon=180)
     # observables
-    obsprop = Lorenz96ODE.observable_props()
+    obsprop = FriersonGCM.observable_props()
     observables = dict({
-        'total_rain': dict({
-            'fun_name': 'total_rain',
-            'kwargs': {},
-            'abbrv': 'x0',
-            'label': r'$x_0$',
+        'local_rain': dict({
+            'fun': regional_rain,
+            'kwargs': dict({
+                'roi': config_analysis['target_location'],
+                }),
+            'abbrv': 'Rloc',
+            'label': r'Rain rate $(\phi,\lambda)=(45,180)$',
             }),
-        'E0': dict({
-            'fun_name': 'E0',
-            'kwargs': {},
-            'abbrv': 'E0',
-            'label': r'$\frac{1}{2}x_0^2$',
+        'area_rain_60x20': dict({
+            'fun': regional_rain,
+            'kwargs': dict(
+                roi = dict({
+                    'lat': slice(config_analysis['target_location']['lat']-10,config_analysis['target_location']['lat']+10),
+                    'lon': slice(config_analysis['target_location']['lon']-30,config_analysis['target_location']['lon']+30),
+                    }),
+                ),
+            'abbrv': 'R60x20',
+            'label': r'Rain rate $(\phi,\lambda)=(45\pm10,180\pm30)$',
             }),
-        'E': dict({
-            'fun_name': 'E',
-            'kwargs': {},
-            'abbrv': 'E',
-            'label': r'$\frac{1}{2}\overline{x^2}$',
+        'area_rain_90x30': dict({
+            'fun': regional_rain,
+            'kwargs': dict(
+                roi = dict({
+                    'lat': slice(config_analysis['target_location']['lat']-15,config_analysis['target_location']['lat']+15),
+                    'lon': slice(config_analysis['target_location']['lon']-45,config_analysis['target_location']['lon']+45),
+                    }),
+                ),
+            'abbrv': 'R90x30',
+            'label': r'Rain rate $(\phi,\lambda)=(45\pm15,180\pm45)$',
+            }),
+        'local_cwv': dict({
+            'fun': regional_cwv,
+            'kwargs': dict(
+                roi = config_analysis['target_location'],
+                ),
+            'abbrv': 'CWVloc',
+            'label': r'Column water vapor $(\phi,\lambda)=(45,180)$',
+            }),
+        'area_cwv_60x20': dict({
+            'fun': regional_cwv,
+            'kwargs': dict(
+                roi = dict(
+                    lat=slice(config_analysis['target_location']['lat']-10,config_analysis['target_location']['lat']+10),
+                    lon=slice(config_analysis['target_location']['lon']-30,config_analysis['target_location']['lon']+30),
+                    ),
+                ),
+            'abbrv': 'CWV60x20',
+            'label': r'Column water vapor $(\phi,\lambda)=(45\pm10,180\pm30)$',
+            }),
+        'area_cwv_90x30': dict({
+            'fun': regional_cwv,
+            'kwargs': dict({
+                'roi': dict(
+                    lat=slice(config_analysis['target_location']['lat']-15,config_analysis['target_location']['lat']+15),
+                    lon=slice(config_analysis['target_location']['lon']-45,config_analysis['target_location']['lon']+45),
+                    ),
+                }),
+            'abbrv': 'CWV90x30',
+            'label': r'Column water vapor $(\phi,\lambda)=(45\pm15,180\pm45)$',
             }),
         })
+    config_analysis['observables'] = observables
     obs_names = list(observables.keys())
     # distance metrics
     dist_metrics = dict({
-        'euclidean': dict({
-            'fun_name': 'distance_euclidean',
-            'abbrv': 'EUC',
-            'label': 'Euclidean distance',
-            'kwargs': {},
+        'euc_local_ps': dict({
+            'fun': euc_dist_ps,
+            'abbrv': 'PsurfEuc',
+            'label': 'Surf. Pres. Eucl. dist.',
+            'kwargs': dict({
+                'roi': config_analysis['target_location'],
+                }),
             }),
-        'timedelay_xk': dict({
-            'fun_name': 'distance_timedelay_xk',
-            'abbrv': 'x0d2',
-            'label': r'$x_0$ distance, $\Delta=2$',
-            'kwargs': {'k': 0, 'timedelay_phys': 2.0},
+        'euc_area_ps_60x20': dict({
+            'fun': euc_dist_ps,
+            'abbrv': 'PsurfEuc60x20',
+            'label': 'Surf. Pres. Eucl. dist. (60x20)',
+            'kwargs': dict({
+                'roi': dict({
+                    'lat': slice(config_analysis['target_location']['lat']-10,config_analysis['target_location']['lat']+10),
+                    'lon': slice(config_analysis['target_location']['lon']-30,config_analysis['target_location']['lon']+30),
+                    }),
+                }),
             }),
-        'timedelay_Ek': dict({
-            'fun_name': 'distance_timedelay_Ek',
-            'abbrv': 'E0d2',
-            'label': r'$\frac{1}{2}x_0^2$ distance, $\Delta=2$',
-            'kwargs': {'k': 0, 'timedelay_phys': 2.0},
+        'euc_area_ps_90x30': dict({
+            'fun': euc_dist_ps,
+            'abbrv': 'PsurfEuc90x30',
+            'label': 'Surf. Pres. Eucl. dist. (90x30)',
+            'kwargs': dict({
+                'roi': dict({
+                    'lat': slice(config_analysis['target_location']['lat']-15,config_analysis['target_location']['lat']+15),
+                    'lon': slice(config_analysis['target_location']['lon']-45,config_analysis['target_location']['lon']+45),
+                    }),
+                }),
+            }),
+        'euc_area_rain_60x20': dict({
+            'fun': euc_dist_rain,
+            'abbrv': 'RainEuc60x20',
+            'label': 'Rain-Euclidean distance',
+            'kwargs': dict({
+                'roi': dict({
+                    'lat': slice(config_analysis['target_location']['lat']-10,config_analysis['target_location']['lat']+10),
+                    'lon': slice(config_analysis['target_location']['lon']-30,config_analysis['target_location']['lon']+30),
+                    }),
+                }),
+            }),
+        'euc_area_rain_90x30': dict({
+            'fun': euc_dist_rain,
+            'abbrv': 'RainEuc60x20',
+            'label': 'Rain-Euclidean distance',
+            'kwargs': dict({
+                'roi': dict({
+                    'lat': slice(config_analysis['target_location']['lat']-15,config_analysis['target_location']['lat']+15),
+                    'lon': slice(config_analysis['target_location']['lon']-45,config_analysis['target_location']['lon']+45),
+                    }),
+                }),
+            }),
+        'euc_local_rain': dict({
+            'fun': euc_dist_rain,
+            'abbrv': 'RainEuc',
+            'label': 'Rain-Euclidean distance',
+            'kwargs': dict({
+                'roi': config_analysis['target_location'],
+                }),
+            }),
+        'euc_area_rain_60x20': dict({
+            'fun': euc_dist_rain,
+            'abbrv': 'RainEuc60x20',
+            'label': 'Rain-Euclidean distance',
+            'kwargs': dict({
+                'roi': dict({
+                    'lat': slice(config_analysis['target_location']['lat']-10,config_analysis['target_location']['lat']+10),
+                    'lon': slice(config_analysis['target_location']['lon']-30,config_analysis['target_location']['lon']+30),
+                    }),
+                }),
+            }),
+        'euc_area_rain_90x30': dict({
+            'fun': euc_dist_rain,
+            'abbrv': 'RainEuc60x20',
+            'label': 'Rain-Euclidean distance',
+            'kwargs': dict({
+                'roi': dict({
+                    'lat': slice(config_analysis['target_location']['lat']-15,config_analysis['target_location']['lat']+15),
+                    'lon': slice(config_analysis['target_location']['lon']-45,config_analysis['target_location']['lon']+45),
+                    }),
+                }),
             }),
         })
     dist_names = list(dist_metrics.keys())
-    config_analysis = dict({
-        'observables': observables,
-        'dist_metrics': dist_metrics,
-        })
+    config_analysis['dist_metrics'] = dist_metrics
 
     # Set up directories
     dirdict = dict()
@@ -173,7 +313,7 @@ def pebr_workflow(i_param):
             param_abbrv_gcm)
 
     for dirname in ['data','analysis','plots']:
-        makedirs(dirname, exist_ok=True)
+        makedirs(dirdict[dirname], exist_ok=True)
 
     filedict = dict()
     # Initial conditions
@@ -187,6 +327,17 @@ def pebr_workflow(i_param):
     filedict['dispersion'] = dict()
     filedict['dispersion']['distance'] = dict()
     filedict['dispersion']['satfractime'] = dict()
+    # Plots
+    filedict['plots'] = dict()
+    filedict['plots']['groupwise'] = dict({'observables': dict(), 'distance': dict()})
+    for obs_name in obs_names:
+        filedict['plots']['groupwise']['observables'][obs_name] = []
+        for group in range(min(4,ngroups)): 
+            filedict['plots']['groupwise']['observables'][obs_name].append(join(dirdict['plots'], r'groupwise_obs%s_bg%d.png'%(observables[obs_name]['abbrv'],group)))
+    for dist_name in dist_names:
+        filedict['plots']['groupwise']['distance'][dist_name] = []
+        for group in range(min(4,ngroups)): 
+            filedict['plots']['groupwise']['distance'][dist_name].append(join(dirdict['plots'], r'groupwise_dist%s_bg%d.png'%(dist_metrics[dist_name]['abbrv'],group)))
 
     return config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict
 
@@ -220,19 +371,16 @@ def run_pebr(dirdict,filedict,config_gcm,config_algo):
         pickle.dump(alg, open(filedict['alg'], 'wb'))
     return
 
-def analyze_pebr():
-    # -------------------- Post-analysis -----------------------------
-    dist_roi = dict({
-        'temperature': dict(lat=slice(35,55),lon=slice(150,210),pfull=500),
-        'total_rain': dict(lat=slice(35,55),lon=slice(150,210))
-        })
-    obs_roi = dict({
-        'temperature': dict(lat=45,lon=180,pfull=500),
-        'total_rain': dict(lat=45,lon=180),
-        })
-    alg = pickle.load(open(alg_filename, 'rb'))
-    obsprop = alg.ens.dynsys.observable_props()
-    if utils.find_true_in_dict(tododict['analyze_pebr']):
+def analyze_pebr(config_analysis,tododict,dirdict,filedict):
+    alg = pickle.load(open(filedict['alg'], 'rb'))
+    if tododict['dispersion']:
+        for dist_name,dist_props in config_analysis['dist_metrics'].items():
+            print(f'{dist_name = }')
+            print(f'{dist_props = }')
+            def dist_fun(ds0,ds1):
+                # TODO anticipate future when time samples are subdaily
+                t0 = ds0['time'].to_numpy()
+                t1 = ds1['time'].to_numpy()
         if tododict['analyze_pebr']['measure_pert_growth']:
             for field_name in ['temperature','total_rain']:
                 dist_fun = lambda ds0,ds1: alg.ens.dynsys.dist_euclidean_tdep(
@@ -253,10 +401,10 @@ def analyze_pebr():
                 np.savez(
                         join(dirdict['analysis'], r'pert_growth_summary_%s_%s.npz'%(obsprop[field_name]['abbrv'],location_abbrv)),
                         thalfsat=thalfsat, diff_expons=diff_expons, lyap_expons=lyap_expons,rmses=rmses,rmsd=np.array([rmsd]))
-    if utils.find_true_in_dict(tododict['plot_pebr']):
+    if 0 and utils.find_true_in_dict(tododict['plot_pebr']):
         alg = pickle.load(open(join(dirdict['alg'],'alg.pickle'),'rb'))
         # ----------------- Perturbation growth ---------------------------
-        if tododict['plot_pebr']['pert_growth']:
+        if 0 and tododict['plot_pebr']['pert_growth']:
             split_times = np.load(join(dirdict['analysis'],'split_times.npy'))
             for field_name in ['temperature','total_rain']:
                 location_abbrv,location_label = alg.ens.dynsys.label_from_roi(dist_roi[field_name]) 
@@ -266,7 +414,7 @@ def analyze_pebr():
                 plot_suffix = r'%s_%s'%(obsprop[field_name]['abbrv'],location_abbrv)
                 alg.plot_pert_growth(split_times, dists, pgs['thalfsat'], pgs['diff_expons'], pgs['lyap_expons'], pgs['rmses'], pgs['rmsd'].item(), dirdict['plots'], plot_suffix, logscale=True)
         # ---------------- Observables -------------------
-        if tododict['plot_pebr']['observables']:
+        if 0 and tododict['plot_pebr']['observables']:
             for obs_name in ['temperature','total_rain']:
                 obs_fun = lambda dsmem: alg.ens.dynsys.sel_from_roi(getattr(alg.ens.dynsys, obs_name)(dsmem), obs_roi[obs_name])
                 roi_abbrv,roi_label = alg.ens.dynsys.label_from_roi(obs_roi[obs_name])
@@ -275,7 +423,7 @@ def analyze_pebr():
                 obs_unit = r'[%s]'%(obsprop[obs_name]['unit_symbol'])
                 for branch_group in range(min(3,alg.num_branch_groups)): #range(alg.branching_state['next_branch_group']):
                     alg.plot_obs_spaghetti(obs_fun, branch_group, dirdict['plots'], ylabel=obs_unit, title=obs_label, abbrv=obs_abbrv)
-        if tododict['plot_pebr']['fields']:
+        if 0 and tododict['plot_pebr']['fields']:
             # Plot a panel of ensemble members each day 
             obs_funs = dict()
             for obs_name in ['temperature']:
@@ -322,6 +470,32 @@ def analyze_pebr():
                         fig.savefig(filename, **pltkwargs)
                         plt.close(fig)
     return
+
+def plot_observables(config_analysis,dirdict,filedict):
+    alg = pickle.load(open(filedict['alg'], 'rb'))
+    for obs_name,obs_props in config_analysis['observables'].items():
+        print(f'{obs_name = }')
+        print(f'{obs_props = }')
+        obs_fun = lambda ds: obs_props['fun'](ds,**obs_props['kwargs'])
+        ylabel = obs_props['label']
+        for group in range(min(4,alg.branching_state['next_branch_group']+1)):
+            title = r'Group %d'%(group)
+            outfile = filedict['plots']['groupwise']['observables'][obs_name][group]
+            alg.plot_obs_spaghetti(obs_fun,group,outfile,ylabel=ylabel,title=title,abbrv=obs_props['abbrv'])
+    return
+def plot_dispersion(config_analysis,dirdict,filedict):
+    alg = pickle.load(open(filedict['alg'], 'rb'))
+    for dist_name,dist_props in config_analysis['dist_metrics'].items():
+        dispfile = filedict['dispersion']['distance'][dist_name]
+        for group in range(4):
+            outfile = filedict['plots']['groupwise']['distance'][dist_name][group]
+            alg.plot_dispersion(
+                    group, dispfile, outfile, 
+                    ylabel=dist_props['label'],
+                    logscale=True
+                    )
+    return
+
 
 def meta_analyze_periodic_branching():
     expt_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/2024-03-05/0/PeBr"
@@ -403,27 +577,37 @@ def meta_analyze_periodic_branching():
 
 def pebr_procedure(i_param):
     tododict = dict({
-        'run':                1,
-        'analyze': dict({
-            'measure_pert_growth':           1,
-            'analyze_pert_growth':           1,
+        'run':                0,
+        'analysis': dict({
+            'dispersion':           0,
             }),
-        'plot': dict({
-            'observables':    1,
+        'plots': dict({
+            'observables':    0,
+            'dispersion':     1,
             'fields':         0,
-            'pert_growth':    1,
             'response':       0,
             }),
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = pebr_workflow(i_param)
     if tododict['run']:
         run_pebr(dirdict,filedict,config_gcm,config_algo)
+    if utils.find_true_in_dict(tododict['analysis']):
+        analyze_pebr(config_analysis,tododict['analysis'],dirdict,filedict)
+    if utils.find_true_in_dict(tododict['plots']):
+        if tododict['plots']['observables']:
+            plot_observables(config_analysis,dirdict,filedict)
+        if tododict['plots']['dispersion']:
+            plot_dispersion(config_analysis,dirdict,filedict)
     return
 
 
 if __name__ == "__main__":
-    procedure = sys.argv[1]
-    idx_param = [int(arg) for arg in sys.argv[2:]]
+    if len(sys.argv) > 1:
+        procedure = sys.argv[1]
+        idx_param = [int(arg) for arg in sys.argv[2:]]
+    else:
+        procedure = 'single'
+        idx_param = [5]
     print(f'Got into Main')
     if procedure == 'single':
         for i_param in idx_param:
