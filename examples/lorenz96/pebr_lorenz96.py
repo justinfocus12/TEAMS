@@ -203,7 +203,7 @@ def plot_observables(config_analysis,dirdict,filedict):
 
 def pebr_procedure(i_param):
     tododict = dict({
-        'run':                0,
+        'run':                1,
         'analysis': dict({
             'dispersion':    1,
             }),

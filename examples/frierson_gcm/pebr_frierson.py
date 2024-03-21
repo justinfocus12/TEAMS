@@ -34,24 +34,28 @@ import pickle
 print(f'{i = }'); i += 1
 import copy as copylib
 print(f'{i = }'); i += 1
-from importlib import reload
+import pprint
+print(f'{i = }'); i += 1
+#from importlib import reload
 
 sys.path.append("../..")
 print(f'Now starting to import my own modules')
-import utils; reload(utils)
+import utils; #reload(utils)
 print(f'{i = }'); i += 1
-import ensemble; reload(ensemble)
 from ensemble import Ensemble
 print(f'{i = }'); i += 1
-import forcing; reload(forcing)
+import forcing; #reload(forcing)
 print(f'{i = }'); i += 1
-import algorithms; reload(forcing)
+import algorithms; #reload(forcing)
 print(f'{i = }'); i += 1
-import frierson_gcm; reload(frierson_gcm)
+#import frierson_gcm; #reload(frierson_gcm)
 from frierson_gcm import FriersonGCM
+print(f'{i = }'); i += 1
+from algorithms_frierson import FriersonGCMPeriodicBranching
 print(f'{i = }'); i += 1
 
 def pebr_paramset(i_param):
+    base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
     config_gcm = FriersonGCM.default_config(base_dir_absolute,base_dir_absolute)
 
     # Parameters to loop over
@@ -61,17 +65,12 @@ def pebr_paramset(i_param):
     L_sppts = [500.0*1000]      + [500.0*1000]*5 + [2000.0*1000]*5 + [500.0*1000]*5    + [500.0*1000]*5
     seed_incs = [0]*21
 
-    expt_labels = []
-    expt_abbrvs = []
-    for i_param in range(len(pert_types)):
-        if pert_types[i_param] == 'IMP':
-            label = 'Impulsive'
-            abbrv = 'IMP'
-        else:
-            label = r'SPPT, $\sigma=%g$, $\tau=%g$ h, $L=%g$ km'%(std_sppts[i_param],tau_sppts[i_param]/3600,L_sppts[i_param]/1000)
-            abbrv = r'SPPT_std%g_tau%gh_L%gkm'%(std_sppts[i_param],tau_sppts[i_param]/3600,L_sppts[i_param]/1000)
-        expt_labels.append(label)
-        expt_abbrvs.append(abbrv)
+    if pert_types[i_param] == 'IMP':
+        expt_label = 'Impulsive'
+        expt_abbrv = 'IMP'
+    else:
+        expt_label = r'SPPT, $\sigma=%g$, $\tau=%g$ h, $L=%g$ km'%(std_sppts[i_param],tau_sppts[i_param]/3600,L_sppts[i_param]/1000)
+        expt_abbrv = r'SPPT_std%g_tau%gh_L%gkm'%(std_sppts[i_param],tau_sppts[i_param]/3600,L_sppts[i_param]/1000)
 
     config_gcm['pert_type'] = pert_types[i_param]
     if config_gcm['pert_type'] == 'SPPT':
@@ -79,32 +78,92 @@ def pebr_paramset(i_param):
         config_gcm['SPPT']['std_sppt'] = std_sppts[i_param]
         config_gcm['SPPT']['L_sppt'] = L_sppts[i_param]
     config_gcm['remove_temp'] = 1
+    print(f'{i_param = }')
+    pprint.pprint(config_gcm)
 
     config_algo = dict({
         'seed_min': 1000,
         'seed_max': 100000,
         'seed_inc_init': seed_incs[i_param], 
-        'branches_per_group': 12, 
-        'interbranch_interval_phys': 10.0,
-        'branch_duration_phys': 30.0,
-        'num_branch_groups': 20,
+        'branches_per_group': 8, 
+        'interbranch_interval_phys': 5.0,
+        'branch_duration_phys': 20.0,
+        'num_branch_groups': 12,
         'max_member_duration_phys': 30.0,
         })
-    return config_gcm,config_algo,expt_labels[i_param],expt_abbrvs[i_param]
+    return config_gcm,config_algo,expt_label,expt_abbrv
+
+# -------------- Define the observable functions of interest ---------
+def local_rain(ds, roi):
+    pass
+# ----------- Define the distance metrics of interest -------
+def euc_dist_rain(ds0,ds1,roi):
+    pass
+
 
 def pebr_workflow(i_param):
-    base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
-    scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
-    date_str = "2024-03-05"
-    sub_date_str = "0/PeBr"
-    print(f'About to generate default config')
+    print(f'About to generate default config; {i_param = }')
+    config_gcm,config_algo,expt_label,expt_abbrv = pebr_paramset(i_param)
     param_abbrv_gcm,param_label_gcm = FriersonGCM.label_from_config(config_gcm)
     param_abbrv_algo,param_label_algo = FriersonGCMPeriodicBranching.label_from_config(config_algo)
     # Configure post-analysis
-    config_analysis = dict() 
+    # List the quantities of interest
+    # observables
+    obsprop = Lorenz96ODE.observable_props()
+    observables = dict({
+        'total_rain': dict({
+            'fun_name': 'total_rain',
+            'kwargs': {},
+            'abbrv': 'x0',
+            'label': r'$x_0$',
+            }),
+        'E0': dict({
+            'fun_name': 'E0',
+            'kwargs': {},
+            'abbrv': 'E0',
+            'label': r'$\frac{1}{2}x_0^2$',
+            }),
+        'E': dict({
+            'fun_name': 'E',
+            'kwargs': {},
+            'abbrv': 'E',
+            'label': r'$\frac{1}{2}\overline{x^2}$',
+            }),
+        })
+    obs_names = list(observables.keys())
+    # distance metrics
+    dist_metrics = dict({
+        'euclidean': dict({
+            'fun_name': 'distance_euclidean',
+            'abbrv': 'EUC',
+            'label': 'Euclidean distance',
+            'kwargs': {},
+            }),
+        'timedelay_xk': dict({
+            'fun_name': 'distance_timedelay_xk',
+            'abbrv': 'x0d2',
+            'label': r'$x_0$ distance, $\Delta=2$',
+            'kwargs': {'k': 0, 'timedelay_phys': 2.0},
+            }),
+        'timedelay_Ek': dict({
+            'fun_name': 'distance_timedelay_Ek',
+            'abbrv': 'E0d2',
+            'label': r'$\frac{1}{2}x_0^2$ distance, $\Delta=2$',
+            'kwargs': {'k': 0, 'timedelay_phys': 2.0},
+            }),
+        })
+    dist_names = list(dist_metrics.keys())
+    config_analysis = dict({
+        'observables': observables,
+        'dist_metrics': dist_metrics,
+        })
 
     # Set up directories
     dirdict = dict()
+    base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
+    scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
+    date_str = "2024-03-21"
+    sub_date_str = "0"
     dirdict['expt'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_gcm, param_abbrv_algo)
     dirdict['data'] = join(dirdict['expt'], 'data')
     dirdict['analysis'] = join(dirdict['expt'], 'analysis')
@@ -120,7 +179,8 @@ def pebr_workflow(i_param):
     # Initial conditions
     filedict['init_cond'] = dict()
     filedict['init_cond']['restart'] = join(dirdict['init_cond'],'restart_mem20.cpio')
-    filedict['init_cond']['trajectory'] = join(dirdict['init_cond'],'mem20.cpio')
+    filedict['init_cond']['trajectory'] = join(dirdict['init_cond'],'mem20.nc')
+    print(f'{filedict["init_cond"] = }')
     # Algorithm manager
     filedict['alg'] = join(dirdict['data'], 'alg.pickle')
     # Quantitative analysis
@@ -134,14 +194,14 @@ def run_pebr(dirdict,filedict,config_gcm,config_algo):
     nproc = 4
     recompile = False
     root_dir = dirdict['data']
-    init_time = int(xr.open_mfdataset(filedict['init_cond']['trajectory'])['time'].load()[-1].item())
+    init_time = int(xr.open_mfdataset(filedict['init_cond']['trajectory'], decode_times=False)['time'].load()[-1].item())
     init_cond = relpath(filedict['init_cond']['restart'], root_dir)
-    if exists(alg_filename):
-        alg = pickle.load(open(alg_filename, 'rb'))
+    if exists(filedict['alg']):
+        alg = pickle.load(open(filedict['alg'], 'rb'))
     else:
         gcm = FriersonGCM(config_gcm, recompile=recompile)
         ens = Ensemble(gcm, root_dir=root_dir)
-        alg = FriersonGCMPeriodicBranching(config_algo, ens, seed)
+        alg = FriersonGCMPeriodicBranching(config_algo, ens)
         alg.set_init_cond(init_time,init_cond)
 
     alg.ens.dynsys.set_nproc(nproc)
@@ -157,7 +217,7 @@ def run_pebr(dirdict,filedict,config_gcm,config_algo):
             'filename_restart': f'restart_mem{mem}.cpio',
             })
         alg.take_next_step(saveinfo)
-        pickle.dump(alg, open(alg_filename, 'wb'))
+        pickle.dump(alg, open(filedict['alg'], 'wb'))
     return
 
 def analyze_pebr():
@@ -343,12 +403,12 @@ def meta_analyze_periodic_branching():
 
 def pebr_procedure(i_param):
     tododict = dict({
-        'run_pebr':                1,
-        'analyze_pebr': dict({
+        'run':                1,
+        'analyze': dict({
             'measure_pert_growth':           1,
             'analyze_pert_growth':           1,
             }),
-        'plot_pebr': dict({
+        'plot': dict({
             'observables':    1,
             'fields':         0,
             'pert_growth':    1,
@@ -358,16 +418,16 @@ def pebr_procedure(i_param):
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = pebr_workflow(i_param)
     if tododict['run']:
         run_pebr(dirdict,filedict,config_gcm,config_algo)
+    return
 
 
 if __name__ == "__main__":
-    procedure = 'run'
+    procedure = sys.argv[1]
+    idx_param = [int(arg) for arg in sys.argv[2:]]
     print(f'Got into Main')
-    if procedure == 'run':
-        nproc = 4 
-        recompile = 0 
-        i_param = int(sys.argv[1])
-        run_periodic_branching(nproc,recompile,i_param)
+    if procedure == 'single':
+        for i_param in idx_param:
+            pebr_procedure(i_param)
     elif procedure == 'meta':
-        meta_analyze_periodic_branching()
+        meta_pebr_procedure(idx_param)
 

@@ -21,12 +21,12 @@ from importlib import reload
 
 sys.path.append("../..")
 print(f'Now starting to import my own modules')
-import utils; reload(utils)
-import ensemble; reload(ensemble)
+import utils; #reload(utils)
+import ensemble; #reload(ensemble)
 from ensemble import Ensemble
-import forcing; reload(forcing)
-import algorithms; reload(forcing)
-import frierson_gcm; reload(frierson_gcm)
+import forcing; #reload(forcing)
+import algorithms; #reload(forcing)
+import frierson_gcm; #reload(frierson_gcm)
 from frierson_gcm import FriersonGCM
 
 
