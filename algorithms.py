@@ -339,7 +339,7 @@ class PeriodicBranching(EnsembleAlgorithm):
                 pass
 
     # ************** Perturbation growth ****************
-    def measure_pert_growth(self, dist_fun, outfile):
+    def measure_dispersion(self, dist_fun, outfile):
         # Save a statistical analysis of RMSE growth to a specified directory
         ngroups = self.branching_state['next_branch_group']+1
         split_times = np.zeros(ngroups, dtype=int)
@@ -350,10 +350,15 @@ class PeriodicBranching(EnsembleAlgorithm):
             time,dists_local = self.compute_pairwise_fun_local(dist_fun, branch_group)
             split_times[branch_group] = time[0]
             dists[branch_group,:,:] = dists_local.copy()
+        rmses = np.sqrt(np.mean(dists**2, axis=1))
+        rmsd = np.sqrt(np.mean(rmses[:,-1]**2))
         np.savez(
                 outfile,
-                split_times=split_times,
-                dists=dists)
+                split_times = split_times,
+                dists = dists,
+                rmses = rmses,
+                rmsd = rmsd,
+                )
         return 
     def summarize_pert_growth(self, dists):
         ngroups,nbranches,ntimes = dists.shape
@@ -396,14 +401,28 @@ class PeriodicBranching(EnsembleAlgorithm):
                 for i_frac,frac in enumerate(fracs):
                     t2fracsat[dist_name][i_pg,i_frac] = np.mean(np.argmax(rmse/rmsd > frac, axis=1))
         return fracs,t2fracsat
-    def plot_dispersion(self, split_time, dists, fig, ax):
+    def plot_dispersion(self, group, dispfile, outfile, ylabel='', title='', logscale=False):
+        # TODO add in the fractional saturation times 
         tu = self.ens.dynsys.dt_save
-        nbranches,ntimes = dists.shape
-        time = split_time + np.arange(ntimes)
+        disp_data = np.load(dispfile)
+        split_times = disp_data['split_times']
+        dists = disp_data['dists']
+        rmses = disp_data['rmses']
+        rmsd = disp_data['rmsd']
+        ngroups,nbranches,ntimes = dists.shape
+        time = split_times[group] + np.arange(ntimes)
+        fig,ax = plt.subplots()
         for i_mem1 in range(nbranches):
-            ax.plot(time*tu, dists[i_mem1,:], color='tomato',)
-        rmse = np.sqrt(np.mean(dists**2, axis=0))
-        hrmse, = ax.plot(time*tu, rmse, color='black', label='RMSE')
+            ax.plot((time-time[0])*tu, dists[group,i_mem1,:], color='tomato',)
+        hrmse, = ax.plot((time-time[0])*tu, rmses[group], color='black', label='RMSE')
+        ax.axhline(rmsd, color='black', linestyle='--', label='RMSD')
+        ax.set_xlabel(r'time since %g'%(time[0]*tu))
+        ax.set_ylabel(ylabel)
+        ax.set_title(title)
+        if logscale: ax.set_yscale('log')
+        fig.savefig(outfile, **pltkwargs)
+        plt.close(fig)
+        print(f'{outfile = }')
         return 
     def plot_pert_growth(self, split_times, dists, thalfsat, diff_expons, lyap_expons, rmses, rmsd, plot_dir, plot_suffix, logscale=False):
         ngroups,nbranches,ntimes = dists.shape

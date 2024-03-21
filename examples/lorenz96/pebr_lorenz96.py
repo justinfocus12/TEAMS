@@ -109,17 +109,6 @@ def pebr_workflow(i_param):
     filedict = dict()
     # Algorithm manager
     filedict['alg'] = join(dirdict['data'], 'alg.pickle')
-    # Basic visualization
-    filedict['basic_vis'] = dict()
-    filedict['basic_vis']['groupwise'] = dict({'observables': dict(), 'distances': dict()})
-    for obs_name in obs_names:
-        filedict['basic_vis']['groupwise']['observables'][obs_name] = []
-        for group in range(4): 
-            filedict['basic_vis']['groupwise']['observables'][obs_name].append(join(dirdict['plots'], r'groupwise_obs%s_bg%d.png'%(observables[obs_name]['abbrv'],group)))
-    for dist_name in dist_names:
-        filedict['basic_vis']['groupwise']['distances'][dist_name] = []
-        for group in range(4): 
-            filedict['basic_vis']['groupwise']['distances'][dist_name].append(join(dirdict['plots'], r'groupwise_dist%s_bg%d.png'%(dist_metrics[dist_name]['abbrv'],group)))
     # Quantitative analysis
     filedict['dispersion'] = dict() 
     filedict['dispersion']['distance'] = dict() # distance from control to perturbed, for every single ensemble member of every group
@@ -127,6 +116,18 @@ def pebr_workflow(i_param):
     for dist_name in dist_names:
         filedict['dispersion']['distance'][dist_name] = join(dirdict['analysis'], r'dispersion_distance_%s.npz'%(dist_metrics[dist_name]['abbrv']))
         filedict['dispersion']['satfractime'][dist_name] = join(dirdict['analysis'], r'dispersion_satfractime_%s.npz'%(dist_metrics[dist_name]['abbrv']))
+    # Plotting
+    filedict['plots'] = dict()
+    filedict['plots']['groupwise'] = dict({'observables': dict(), 'distance': dict()})
+    for obs_name in obs_names:
+        filedict['plots']['groupwise']['observables'][obs_name] = []
+        for group in range(4): 
+            filedict['plots']['groupwise']['observables'][obs_name].append(join(dirdict['plots'], r'groupwise_obs%s_bg%d.png'%(observables[obs_name]['abbrv'],group)))
+    for dist_name in dist_names:
+        filedict['plots']['groupwise']['distance'][dist_name] = []
+        for group in range(4): 
+            filedict['plots']['groupwise']['distance'][dist_name].append(join(dirdict['plots'], r'groupwise_dist%s_bg%d.png'%(dist_metrics[dist_name]['abbrv'],group)))
+
     return config_dynsys,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict
 
 def run_pebr(dirdict,filedict,config_dynsys,config_algo):
@@ -173,35 +174,30 @@ def analyze_pebr(config_analysis,tododict,dirdict,filedict):
                 dist[trange_valid[0]-trange_full[0]:trange_valid[-1]+1-trange_full[0]] = fun(t0[tidx0],x0[tidx0],t1[tidx1],x1[tidx1],**dist_props['kwargs'])
                 return dist
             outfile = filedict['dispersion']['distance'][dist_name]
-            alg.measure_pert_growth(dist_fun, outfile)
+            alg.measure_dispersion(dist_fun, outfile)
     return
 
 def plot_dispersion(config_analysis,dirdict,filedict):
     alg = pickle.load(open(filedict['alg'], 'rb'))
     for dist_name,dist_props in config_analysis['dist_metrics'].items():
-        disp_data = np.load(filedict['dispersion']['distance'][dist_name])
-        split_times = disp_data['split_times']
-        dists = disp_data['dists']
-        ngroups,nbranches,ntimes = dists.shape
-        for group in range(ngroups):
-            fig,ax = plt.subplots()
-            alg.plot_dispersion(split_times[group], dists[group], fig, ax)
-            ax.set_xlabel(r'time since %g'%(split_times[group]*alg.ens.dynsys.dt_save))
-            ax.set_title(r'Group %g'%(group))
-            ax.set_ylabel(dist_props['label'])
-            ax.set_yscale('log')
-            fig.savefig(filedict['basic_vis']['groupwise']['distances'][dist_name][group], **pltkwargs)
-            plt.close(fig)
+        dispfile = filedict['dispersion']['distance'][dist_name]
+        for group in range(4):
+            outfile = filedict['plots']['groupwise']['distance'][dist_name][group]
+            alg.plot_dispersion(
+                    group, dispfile, outfile, 
+                    ylabel=dist_props['label'],
+                    logscale=True
+                    )
     return
 
-def visualize_pebr_basically(config_analysis,dirdict,filedict):
+def plot_observables(config_analysis,dirdict,filedict):
     alg = pickle.load(open(filedict['alg'], 'rb'))
     for obs_name,obs_props in config_analysis['observables'].items():
         obs_fun = lambda t,x: getattr(alg.ens.dynsys.ode, obs_props['fun_name'])(t,x,**obs_props['kwargs'])
         ylabel = obs_props['label']
         for group in range(min(4,alg.branching_state['next_branch_group']+1)):
             title = r'Group %d'%(group)
-            outfile = filedict['basic_vis']['groupwise']['observables'][obs_name][group]
+            outfile = filedict['plots']['groupwise']['observables'][obs_name][group]
             alg.plot_obs_spaghetti(obs_fun,group,outfile,ylabel=ylabel,title=title,abbrv=obs_props['abbrv'])
     return
 
@@ -209,7 +205,7 @@ def pebr_procedure(i_param):
     tododict = dict({
         'run':                0,
         'analysis': dict({
-            'dispersion':    0,
+            'dispersion':    1,
             }),
         'plots': dict({
             'observables':    1,
@@ -225,7 +221,7 @@ def pebr_procedure(i_param):
         analyze_pebr(config_analysis,tododict['analysis'],dirdict,filedict)
     if utils.find_true_in_dict(tododict['plots']):
         if tododict['plots']['observables']:
-            visualize_pebr_basically(config_analysis,dirdict,filedict)
+            plot_observables(config_analysis,dirdict,filedict)
         if tododict['plots']['dispersion']:
             plot_dispersion(config_analysis,dirdict,filedict)
 
