@@ -324,28 +324,8 @@ class PeriodicBranching(EnsembleAlgorithm):
         if np.any(np.isnan(pairwise_fun_vals_array)):
             raise Exception(f'{np.mean(np.isnan(pairwise_fun_vals_array), axis=0) = }')
         return time,pairwise_fun_vals_array
-    # ************** Extreme observable *****************
-    def measure_obs_running_correlation(self, obs_funs):
-        # Measure the running correlation between the observable functions 
-        obs_names = list(obs_funs.keys())
-        ngroups = self.branching_state['next_branch_group']+1
-        nbranch = self.branches_per_group
-        split_times = np.zeros(ngroups, dtype=int)
-        runcorrs = dict({obs_name: np.zeros((ngroups, self.branches_per_group, self.branches_per_group, self.branch_duration)) for obs_name in obs_names})
-        for branch_group in range(ngroups):
-            print(f'About to compute running correlations for {branch_group = }')
-            time,mems_trunk,tidx_trunk,mems_branch,tidxs_branch = self.get_tree_subset(branch_group)
-            obs_dict_branch = self.ens.compute_observables(obs_funs, mems_branch)
-            obs_dict_trunk = self.ens.compute_observables(obs_funs, mems_trunk)
-            split_times[branch_group] = time[0]
-            for obs_name in obs_names:
-                running_mean = np.cumsum(obs_dict_branch[obs_name], axis=1) / np.arange(1,len(time)+1) # shape (nbranch,ntime)
-                dists[dist_name][branch_group,:,:] = dists_local[dist_name].copy()
-                rmses[dist_name][branch_group,:] = np.sqrt(np.mean(dists_local[dist_name]**2, axis=0))
-                pass
-
     # ************** Perturbation growth ****************
-    def measure_dispersion(self, dist_fun, outfile):
+    def measure_dispersion(self, dist_fun, dispfile):
         # Save a statistical analysis of RMSE growth to a specified directory
         ngroups = self.branching_state['next_branch_group']+1
         split_times = np.zeros(ngroups, dtype=int)
@@ -359,36 +339,51 @@ class PeriodicBranching(EnsembleAlgorithm):
         rmses = np.sqrt(np.mean(dists**2, axis=1))
         rmsd = np.sqrt(np.mean(rmses[:,-1]**2))
         np.savez(
-                outfile,
+                dispfile,
                 split_times = split_times,
                 dists = dists,
                 rmses = rmses,
                 rmsd = rmsd,
                 )
         return 
-    def summarize_pert_growth(self, dists):
+    @staticmethod
+    def compute_elfs_and_fsle(satfracs, dispfile, outfile):
+        # elfs = elapsed lagtime until fractional saturation
+        disp_data = np.load(dispfile)
+        split_times = disp_data['split_times']
+        dists = disp_data['dists']
+        rmses = disp_data['rmses']
+        rmsd = disp_data['rmsd']
         ngroups,nbranches,ntimes = dists.shape
-        rmsd = np.sqrt(np.mean(dists[:,:,-1]**2))
-        rmses = np.sqrt(np.mean(dists**2, axis=1))
+        nfracs = len(satfracs)
         # Three measures of error growt 
-        lyap_expons = np.zeros(ngroups) # RMSE ~ exp(lyap_expon*t)
-        diff_expons = np.zeros(ngroups) # RMSE ~ t**(diff_expon)
-        thalfsat = np.zeros(ngroups, dtype=int) # RMSE(thalfsat)/RMSD = 1/2
+        lyap_expons = np.nan*np.ones((ngroups,nfracs)) # RMSE ~ exp(lyap_expon*t)
+        diff_pows = np.nan*np.ones((ngroups,nfracs)) # RMSE ~ t**(diff_pows)
+        elfs = np.zeros((ngroups,nfracs), dtype=int)
         for group in range(ngroups):
             log_rmse = np.log(rmses[group,:])
-            thalfsat[group] = max(2,np.where(rmses[group,:] >= 0.5*np.max(rmses[group,:]))[0][0])
-            diff_expons[group] = linregress(
-                    np.log(np.arange(1,thalfsat[group])), 
-                    np.log(rmses[group,1:thalfsat[group]])
-                    ).slope
-            lyap_expons[group] = linregress(
-                    np.arange(1,thalfsat[group]),
-                    np.log(rmses[group,1:thalfsat[group]])
-                    ).slope
-        return thalfsat,diff_expons,lyap_expons,rmses,rmsd
-    def compute_fractional_saturation_time(self, dists):
-        pass
-
+            time_prev = 1 # beginning of interval over which to measure growth
+            for i_frac,frac in enumerate(satfracs):
+                elfs[group,i_frac] = np.where(rmses[group,:] >= frac*rmsd)[0][0]
+                # Measure diffusive growth
+                tidx = np.arange(time_prev,elfs[group,i_frac], dtype=int)
+                if len(tidx) > 0:
+                    diff_pows[group,i_frac] = linregress(
+                            np.log(tidx), 
+                            np.log(rmses[group,tidx])
+                            ).slope
+                    lyap_expons[group,i_frac] = linregress(
+                            tidx, np.log(rmses[group,tidx])
+                            ).slope
+                time_prev = tidx[-1]
+        np.savez(
+                outfile,
+                satfracs = satfracs, 
+                elfs = elfs,
+                lyapunov_exponents = lyap_expons,
+                diffusive_powers = diff_pows,
+                )
+        return 
     @classmethod
     def analyze_pert_growth_meta(cls, pert_growth_list):
         # Compare characteristics of perturbation growth as a function of various independent variables
@@ -407,7 +402,41 @@ class PeriodicBranching(EnsembleAlgorithm):
                 for i_frac,frac in enumerate(fracs):
                     t2fracsat[dist_name][i_pg,i_frac] = np.mean(np.argmax(rmse/rmsd > frac, axis=1))
         return fracs,t2fracsat
-    def plot_dispersion(self, group, dispfile, outfile, ylabel='', title='', logscale=False):
+    def plot_dispersion_allgroups(self, dispfile, satfractime_file, outfile, title=''):
+        fig,axes = plt.subplots(ncols=2,figsize=(6,4), width_ratios=[2,1])
+        tu = self.ens.dynsys.dt_save
+        disp_data = np.load(dispfile)
+        split_times = disp_data['split_times']
+        dists = disp_data['dists']
+        rmses = disp_data['rmses']
+        rmsd = disp_data['rmsd']
+        print(f'{rmses.max() = }, {rmsd = }')
+        satfractime_data = np.load(satfractime_file)
+        satfracs = satfractime_data['satfracs']
+        elfs = satfractime_data['elfs']
+        lyap_expons = satfractime_data['lyapunov_exponents']
+        diff_pows = satfractime_data['diffusive_powers']
+        fig,axes = plt.subplots(nrows=2,figsize=(6,10), sharex=True)
+        handles = []
+        for i_sf,sf in enumerate(satfracs):
+            color = plt.cm.viridis(i_sf/len(satfracs))
+            ax = axes[0]
+            h, = ax.plot(split_times, lyap_expons[:,i_sf], color=color, marker='.', label=r'$f=%g$'%(sf))
+            handles.append(h)
+            ax.set_ylabel(r'$\lambda(f)$')
+            ax = axes[1]
+            ax.plot(split_times, elfs[:,i_sf], color=color, marker='.')
+            ax.set_ylabel(r'$\tau(f)$')
+        axes[0].legend(handles=handles)
+        axes[0].set_title(title)
+        fig.savefig(outfile, **pltkwargs)
+        plt.close(fig)
+
+
+
+        
+
+    def plot_dispersion_onegroup(self, group, dispfile, satfractime_file, outfile, ylabel='', title='', logscale=False):
         # TODO add in the fractional saturation times 
         tu = self.ens.dynsys.dt_save
         disp_data = np.load(dispfile)
@@ -416,14 +445,33 @@ class PeriodicBranching(EnsembleAlgorithm):
         rmses = disp_data['rmses']
         rmsd = disp_data['rmsd']
         print(f'{rmses.max() = }, {rmsd = }')
+        satfractime_data = np.load(satfractime_file)
+        satfracs = satfractime_data['satfracs']
+        elfs = satfractime_data['elfs']
+        lyap_expons = satfractime_data['lyapunov_exponents']
+        diff_pows = satfractime_data['diffusive_powers']
         ngroups,nbranches,ntimes = dists.shape
-        time = split_times[group] + np.arange(ntimes)
+        time = np.arange(ntimes) # local time 
         fig,ax = plt.subplots()
         for i_mem1 in range(nbranches):
-            ax.plot((time-time[0])*tu, dists[group,i_mem1,:], color='tomato',)
-        hrmse, = ax.plot((time-time[0])*tu, rmses[group], color='black', label='RMSE')
+            ax.plot(time[1:]*tu, dists[group,i_mem1,1:], color='tomato',)
+        hrmse, = ax.plot(time[1:]*tu, rmses[group,1:], color='black', label='RMSE')
         ax.axhline(rmsd, color='black', linestyle='--', label='RMSD')
-        ax.set_xlabel(r'time since %g'%(time[0]*tu))
+        # Exponential growth model
+        time_prev = 1
+        for i_sf,sf in enumerate(satfracs):
+            tidx = np.arange(time_prev,elfs[group,i_sf])
+            #hpow, = ax.plot(time[tidx]*tu, rmses[group][tidx[0]] * (time/time[tidx[0]])**diff_pows[group,i_sf], color='dodgerblue', label='diffusive')
+            hexp, = ax.plot(
+                    time[tidx]*tu, 
+                    rmses[group,time[tidx[0]]] * np.exp(
+                        (time[tidx]-time[tidx[0]]) * 
+                        lyap_expons[group,i_sf]), 
+                    color='limegreen', label='exponential')
+            ax.axvline((time[tidx[-1]]-time[0])*tu, color='black', linewidth=0.5)
+            time_prev = tidx[-1]
+        ax.legend(handles=[hrmse,hexp])
+        ax.set_xlabel(r'time since %g'%(split_times[group]*tu))
         ax.set_ylabel(ylabel)
         ax.set_title(title)
         if logscale: ax.set_yscale('log')

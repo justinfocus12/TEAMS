@@ -282,6 +282,9 @@ def pebr_workflow(i_param):
     dist_names = list(dist_metrics.keys())
     config_analysis['dist_metrics'] = dist_metrics
 
+    # How to quantitatively measure perturbation growth, and also perhaps the Lyapunov exponents/power laws between them 
+    config_analysis['satfracs'] = np.array([1/8,1/4,3/8,1/2])
+
     # Set up directories
     dirdict = dict()
     base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
@@ -317,6 +320,7 @@ def pebr_workflow(i_param):
     # Plots
     filedict['plots'] = dict()
     filedict['plots']['groupwise'] = dict({'observables': dict(), 'distance': dict()})
+    filedict['plots']['allgroups'] = dict({'fsle': dict()})
     for obs_name in obs_names:
         filedict['plots']['groupwise']['observables'][obs_name] = []
         for group in range(min(4,ngroups)): 
@@ -325,6 +329,8 @@ def pebr_workflow(i_param):
         filedict['plots']['groupwise']['distance'][dist_name] = []
         for group in range(min(4,ngroups)): 
             filedict['plots']['groupwise']['distance'][dist_name].append(join(dirdict['plots'], r'groupwise_dist%s_bg%d.png'%(dist_metrics[dist_name]['abbrv'],group)))
+        filedict['plots']['allgroups']['fsle'][dist_name] = join(dirdict['plots'], r'allgroups_fsle_dist%s.png'%(dist_metrics[dist_name]['abbrv']))
+
 
     return config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict
 
@@ -382,14 +388,14 @@ def analyze_pebr(config_analysis,tododict,dirdict,filedict):
                     dist[trange_valid[0]-trange_full[0]:trange_valid[-1]+1-trange_full[0]] = dist_props['fun'](ds0.isel(time=tidx0), ds1.isel(time=tidx1), **dist_props['kwargs'])
                     dist = dist_props['fun'](ds0.isel(time=tidx0), ds1.isel(time=tidx1), **dist_props['kwargs'])
                     return dist
-                distfile = filedict['dispersion']['distance'][dist_name]
-                alg.measure_dispersion(dist_fun, distfile)
+                dispfile = filedict['dispersion']['distance'][dist_name]
+                alg.measure_dispersion(dist_fun, config_analysis['satfracs'], dispfile)
                 # Measure fractional time to saturation
         if tododict['dispersion']['satfractime']:
             for dist_name,dist_props in config_analysis['dist_metrics'].items():
-                distfile = filedict['dispersion']['distance'][dist_name]
+                dispfile = filedict['dispersion']['distance'][dist_name]
                 satfractime_file = filedict['dispersion']['satfractime'][dist_name]
-                alg.measure_satfractime(distfile, satfractime_file) # TODO
+                alg.compute_elfs_and_fsle(config_analysis['satfracs'], dispfile, satfractime_file) # TODO
                 
 
 
@@ -479,13 +485,19 @@ def plot_dispersion(config_analysis,dirdict,filedict):
     alg = pickle.load(open(filedict['alg'], 'rb'))
     for dist_name,dist_props in config_analysis['dist_metrics'].items():
         dispfile = filedict['dispersion']['distance'][dist_name]
+        satfractime_file = filedict['dispersion']['satfractime'][dist_name]
         for group in range(4):
             outfile = filedict['plots']['groupwise']['distance'][dist_name][group]
-            alg.plot_dispersion(
-                    group, dispfile, outfile, 
+            alg.plot_dispersion_onegroup(
+                    group, dispfile, satfractime_file, outfile, 
                     ylabel=dist_props['label'],
-                    logscale=False
+                    logscale=True
                     )
+        # Also plot the variation in dispersion across different initial conditions 
+        outfile = filedict['plots']['allgroups']['fsle'][dist_name]
+        alg.plot_dispersion_allgroups(dispfile, satfractime_file, outfile, title=dist_props['label'])
+        
+
     return
 
 
@@ -572,8 +584,8 @@ def pebr_procedure(i_param):
         'run':                0,
         'analysis': dict({
             'dispersion': dict({
-                'distance':    1,
-                'satfractime': 1,
+                'distance':    0,
+                'satfractime': 0,
                 }),
             }),
         'plots': dict({
