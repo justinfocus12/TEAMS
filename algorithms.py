@@ -288,7 +288,7 @@ class PeriodicBranching(EnsembleAlgorithm):
         self.branch_times.append(branch_times_update)
         return
     # --------------- Post-analysis functions --------------------
-    # Utility functions for collecting all trajectories from a particular branch
+    # Utility functions for collecting all trajectories (branches) from a particular branch group
     def get_tree_subset(self, branch_group):
         all_init_times,all_fin_times = self.ens.get_all_timespans()
         split_time = self.init_time + self.ens.dynsys.t_burnin + branch_group*self.interbranch_interval
@@ -301,7 +301,7 @@ class PeriodicBranching(EnsembleAlgorithm):
             tidxs_branch.append(split_time - all_init_times[mem] + np.arange(self.branch_duration))
 
         i_mem_trunk_init = np.searchsorted(self.branching_state['trunk_lineage_init_times'], split_time, side='right') - 1
-        i_mem_trunk_fin = np.searchsorted(self.branching_state['trunk_lineage_fin_times'], split_time+self.branch_duration, side='right')
+        i_mem_trunk_fin = np.searchsorted(self.branching_state['trunk_lineage_fin_times'], split_time+self.branch_duration, side='left')
         mems_trunk = self.branching_state['trunk_lineage'][i_mem_trunk_init:i_mem_trunk_fin+1]
         time = 1 + split_time + np.arange(self.branch_duration, dtype=int)
         tidx_trunk = split_time - all_init_times[mems_trunk[0]] + np.arange(self.branch_duration)
@@ -309,14 +309,20 @@ class PeriodicBranching(EnsembleAlgorithm):
     def compute_pairwise_fun_local(self, pairwise_fun, branch_group):
         # These should be time-dependent functions
         time,mems_trunk,tidx_trunk,mems_branch,tidxs_branch = self.get_tree_subset(branch_group)
+        print(f'{branch_group = }')
+        print(f'{mems_trunk = }')
+        print(f'{mems_branch = }')
         print(f'{time = }')
         pairwise_fun_vals_list = []
         for mem0 in mems_trunk:
-            pairwise_fun_vals_list.append(self.ens.compute_pairwise_observables([pairwise_fun], mem0, mems_branch)[0])
+            pairwise_fun_vals_list.append(
+                    self.ens.compute_pairwise_observables([pairwise_fun], mem0, mems_branch)[0])
         # Repackage into the right shape
         pairwise_fun_vals_array = np.zeros((len(mems_branch), len(time)))
         for i_mem1,mem1 in enumerate(mems_branch):
-            pairwise_fun_vals_array[i_mem1,:] = np.concatenate([d[i_mem1] for d in pairwise_fun_vals_list])[tidx_trunk]
+            pairwise_fun_vals_array[i_mem1,:] = np.concatenate(tuple(d[i_mem1] for d in pairwise_fun_vals_list))[tidx_trunk]
+        if np.any(np.isnan(pairwise_fun_vals_array)):
+            raise Exception(f'{np.mean(np.isnan(pairwise_fun_vals_array), axis=0) = }')
         return time,pairwise_fun_vals_array
     # ************** Extreme observable *****************
     def measure_obs_running_correlation(self, obs_funs):
@@ -409,6 +415,7 @@ class PeriodicBranching(EnsembleAlgorithm):
         dists = disp_data['dists']
         rmses = disp_data['rmses']
         rmsd = disp_data['rmsd']
+        print(f'{rmses.max() = }, {rmsd = }')
         ngroups,nbranches,ntimes = dists.shape
         time = split_times[group] + np.arange(ntimes)
         fig,ax = plt.subplots()

@@ -528,6 +528,7 @@ class FriersonGCM(DynamicalSystem):
 
     def compute_pairwise_observables(self, pairwise_funs, md0, md1list, root_dir): # Distance is the main application here 
         pairwise_fun_vals = [[] for pwf in pairwise_funs] # List of lists
+        print(f'{pairwise_funs = }')
         ds0 = xr.open_mfdataset(join(root_dir,md0['filename_traj']), decode_times=False)
         for i_md1,md1 in enumerate(md1list):
             ds1 = xr.open_mfdataset(join(root_dir,md1['filename_traj']), decode_times=False)

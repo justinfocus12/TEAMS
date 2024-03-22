@@ -114,23 +114,23 @@ def regional_cwv(ds, roi):
     return cwv
 # ----------- Define the distance metrics of interest -------
 def euc_dist_rain(ds0,ds1,roi):
-    r0 = regional_rain(ds0, roi)
-    r1 = regional_rain(ds1, roi)
-    return np.sqrt((r0 - r1)**2).sum(dim=['lat','lon'])
+    r0 = FriersonGCM.sel_from_roi(FriersonGCM.total_rain(ds0), roi)
+    r1 = FriersonGCM.sel_from_roi(FriersonGCM.total_rain(ds1), roi)
+    return np.sqrt(((r0 - r1)**2).mean(dim=['lat','lon']))
 def euc_dist_cwv(ds0,ds1,roi):
-    r0 = regional_rain(ds0, roi)
-    r1 = regional_rain(ds1, roi)
-    return np.sqrt((r0 - r1)**2).sum(dim=['lat','lon'])
+    r0 = FriersonGCM.sel_from_roi(FriersonGCM.column_water_vapor(ds0), roi)
+    r1 = FriersonGCM.sel_from_roi(FriersonGCM.column_water_vapor(ds1), roi)
+    return np.sqrt(((r0 - r1)**2).mean(dim=['lat','lon']))
 def euc_dist_ps(ds0,ds1,roi):
     p0 = FriersonGCM.sel_from_roi(
             FriersonGCM.surface_pressure(ds0), roi)
     p1 = FriersonGCM.sel_from_roi(
             FriersonGCM.surface_pressure(ds1), roi)
-    return np.sqrt((p0 - p1)**2).sum(dim=['lat','lon'])
-def euc_dist_cwv(ds0,ds1,roi):
+    return np.sqrt(((p0 - p1)**2).mean(dim=['lat','lon']))
+def euc_dist_temp(ds0,ds1,roi):
     r0 = regional_rain(ds0, roi)
     r1 = regional_rain(ds1, roi)
-    return np.sqrt((r0 - r1)**2).sum(dim=['lat','lon'])
+    return np.sqrt(((r0 - r1)**2).mean(dim=['lat','lon']))
 
 
 
@@ -212,12 +212,15 @@ def pebr_workflow(i_param):
     obs_names = list(observables.keys())
     # distance metrics
     dist_metrics = dict({
-        'euc_local_ps': dict({
+        'euc_area_ps_30x10': dict({
             'fun': euc_dist_ps,
-            'abbrv': 'PsurfEuc',
-            'label': 'Surf. Pres. Eucl. dist.',
+            'abbrv': 'PsurfEuc30x10',
+            'label': 'Surf. Pres. Eucl. dist. (30x10)',
             'kwargs': dict({
-                'roi': config_analysis['target_location'],
+                'roi': dict({
+                    'lat': slice(config_analysis['target_location']['lat']-5,config_analysis['target_location']['lat']+5),
+                    'lon': slice(config_analysis['target_location']['lon']-15,config_analysis['target_location']['lon']+15),
+                    }),
                 }),
             }),
         'euc_area_ps_60x20': dict({
@@ -242,10 +245,21 @@ def pebr_workflow(i_param):
                     }),
                 }),
             }),
+        'euc_area_rain_30x10': dict({
+            'fun': euc_dist_rain,
+            'abbrv': 'RainEuc30x10',
+            'label': 'Rain-Euclidean distance (30x10)',
+            'kwargs': dict({
+                'roi': dict({
+                    'lat': slice(config_analysis['target_location']['lat']-5,config_analysis['target_location']['lat']+5),
+                    'lon': slice(config_analysis['target_location']['lon']-15,config_analysis['target_location']['lon']+15),
+                    }),
+                }),
+            }),
         'euc_area_rain_60x20': dict({
             'fun': euc_dist_rain,
             'abbrv': 'RainEuc60x20',
-            'label': 'Rain-Euclidean distance',
+            'label': 'Rain-Euclidean distance (60x20)',
             'kwargs': dict({
                 'roi': dict({
                     'lat': slice(config_analysis['target_location']['lat']-10,config_analysis['target_location']['lat']+10),
@@ -255,38 +269,8 @@ def pebr_workflow(i_param):
             }),
         'euc_area_rain_90x30': dict({
             'fun': euc_dist_rain,
-            'abbrv': 'RainEuc60x20',
-            'label': 'Rain-Euclidean distance',
-            'kwargs': dict({
-                'roi': dict({
-                    'lat': slice(config_analysis['target_location']['lat']-15,config_analysis['target_location']['lat']+15),
-                    'lon': slice(config_analysis['target_location']['lon']-45,config_analysis['target_location']['lon']+45),
-                    }),
-                }),
-            }),
-        'euc_local_rain': dict({
-            'fun': euc_dist_rain,
-            'abbrv': 'RainEuc',
-            'label': 'Rain-Euclidean distance',
-            'kwargs': dict({
-                'roi': config_analysis['target_location'],
-                }),
-            }),
-        'euc_area_rain_60x20': dict({
-            'fun': euc_dist_rain,
-            'abbrv': 'RainEuc60x20',
-            'label': 'Rain-Euclidean distance',
-            'kwargs': dict({
-                'roi': dict({
-                    'lat': slice(config_analysis['target_location']['lat']-10,config_analysis['target_location']['lat']+10),
-                    'lon': slice(config_analysis['target_location']['lon']-30,config_analysis['target_location']['lon']+30),
-                    }),
-                }),
-            }),
-        'euc_area_rain_90x30': dict({
-            'fun': euc_dist_rain,
-            'abbrv': 'RainEuc60x20',
-            'label': 'Rain-Euclidean distance',
+            'abbrv': 'RainEuc90x30',
+            'label': 'Rain-Euclidean distance (90x30)',
             'kwargs': dict({
                 'roi': dict({
                     'lat': slice(config_analysis['target_location']['lat']-15,config_analysis['target_location']['lat']+15),
@@ -327,6 +311,9 @@ def pebr_workflow(i_param):
     filedict['dispersion'] = dict()
     filedict['dispersion']['distance'] = dict()
     filedict['dispersion']['satfractime'] = dict()
+    for dist_name in dist_names:
+        filedict['dispersion']['distance'][dist_name] = join(dirdict['analysis'], r'dispersion_distance_%s.npz'%(dist_metrics[dist_name]['abbrv']))
+        filedict['dispersion']['satfractime'][dist_name] = join(dirdict['analysis'], r'dispersion_satfractime_%s.npz'%(dist_metrics[dist_name]['abbrv']))
     # Plots
     filedict['plots'] = dict()
     filedict['plots']['groupwise'] = dict({'observables': dict(), 'distance': dict()})
@@ -373,34 +360,39 @@ def run_pebr(dirdict,filedict,config_gcm,config_algo):
 
 def analyze_pebr(config_analysis,tododict,dirdict,filedict):
     alg = pickle.load(open(filedict['alg'], 'rb'))
-    if tododict['dispersion']:
-        for dist_name,dist_props in config_analysis['dist_metrics'].items():
-            print(f'{dist_name = }')
-            print(f'{dist_props = }')
-            def dist_fun(ds0,ds1):
-                # TODO anticipate future when time samples are subdaily
-                t0 = ds0['time'].to_numpy()
-                t1 = ds1['time'].to_numpy()
-        if tododict['analyze_pebr']['measure_pert_growth']:
-            for field_name in ['temperature','total_rain']:
-                dist_fun = lambda ds0,ds1: alg.ens.dynsys.dist_euclidean_tdep(
-                        *(getattr(alg.ens.dynsys,field_name)(ds) for ds in [ds0,ds1]),
-                        dist_roi[field_name])
-                split_times,dists = alg.measure_pert_growth(dist_fun)
-                location_abbrv,location_label = alg.ens.dynsys.label_from_roi(dist_roi[field_name]) 
-                filename = (r'dist_%s_%s'%(obsprop[field_name]['abbrv'],location_abbrv)).replace('.','p')
-                np.save(join(dirdict['analysis'],f'{filename}.npy'), dists)
-            np.save(join(dirdict['analysis'],'split_times.npy'), split_times)
-        if tododict['analyze_pebr']['analyze_pert_growth']:
-            split_times = np.load(join(dirdict['analysis'],'split_times.npy'))
-            for field_name in ['temperature','total_rain']:
-                location_abbrv,location_label = alg.ens.dynsys.label_from_roi(dist_roi[field_name]) 
-                dist_filename = (r'dist_%s_%s'%(obsprop[field_name]['abbrv'],location_abbrv)).replace('.','p')
-                dists = np.load(join(dirdict['analysis'],f'{dist_filename}.npy'))
-                thalfsat,diff_expons,lyap_expons,rmses,rmsd = alg.summarize_pert_growth(dists)
-                np.savez(
-                        join(dirdict['analysis'], r'pert_growth_summary_%s_%s.npz'%(obsprop[field_name]['abbrv'],location_abbrv)),
-                        thalfsat=thalfsat, diff_expons=diff_expons, lyap_expons=lyap_expons,rmses=rmses,rmsd=np.array([rmsd]))
+    if utils.find_true_in_dict(tododict['dispersion']):
+        if tododict['dispersion']['distance']:
+            for dist_name,dist_props in config_analysis['dist_metrics'].items():
+                print(f'{dist_name = }')
+                print(f'{dist_props = }')
+                def dist_fun(ds0,ds1):
+                    # TODO anticipate future when time samples are subdaily
+                    t0 = (ds0['time'].to_numpy() / alg.ens.dynsys.dt_save).astype(int)
+                    t1 = (ds1['time'].to_numpy() / alg.ens.dynsys.dt_save).astype(int)
+                    print(f'{t0 = }\n{t1 = }')
+                    trange_full = np.arange(min(t0[0],t1[0]),max(t0[-1],t1[-1])+1)
+                    trange_valid = np.arange(max(t0[0],t1[0]),min(t0[-1],t1[-1])+1)
+                    tidx0 = trange_valid - t0[0]
+                    tidx1 = trange_valid - t1[0]
+                    dist = np.nan*np.ones_like(trange_full)
+                    print(f'{trange_full = }')
+                    print(f'{trange_valid = }')
+                    print(f'{ds0.time.isel(time=tidx0).to_numpy() = }')
+                    print(f'{ds1.time.isel(time=tidx1).to_numpy() = }')
+                    dist[trange_valid[0]-trange_full[0]:trange_valid[-1]+1-trange_full[0]] = dist_props['fun'](ds0.isel(time=tidx0), ds1.isel(time=tidx1), **dist_props['kwargs'])
+                    dist = dist_props['fun'](ds0.isel(time=tidx0), ds1.isel(time=tidx1), **dist_props['kwargs'])
+                    return dist
+                distfile = filedict['dispersion']['distance'][dist_name]
+                alg.measure_dispersion(dist_fun, distfile)
+                # Measure fractional time to saturation
+        if tododict['dispersion']['satfractime']:
+            for dist_name,dist_props in config_analysis['dist_metrics'].items():
+                distfile = filedict['dispersion']['distance'][dist_name]
+                satfractime_file = filedict['dispersion']['satfractime'][dist_name]
+                alg.measure_satfractime(distfile, satfractime_file) # TODO
+                
+
+
     if 0 and utils.find_true_in_dict(tododict['plot_pebr']):
         alg = pickle.load(open(join(dirdict['alg'],'alg.pickle'),'rb'))
         # ----------------- Perturbation growth ---------------------------
@@ -492,7 +484,7 @@ def plot_dispersion(config_analysis,dirdict,filedict):
             alg.plot_dispersion(
                     group, dispfile, outfile, 
                     ylabel=dist_props['label'],
-                    logscale=True
+                    logscale=False
                     )
     return
 
@@ -579,7 +571,10 @@ def pebr_procedure(i_param):
     tododict = dict({
         'run':                0,
         'analysis': dict({
-            'dispersion':           0,
+            'dispersion': dict({
+                'distance':    1,
+                'satfractime': 1,
+                }),
             }),
         'plots': dict({
             'observables':    0,
