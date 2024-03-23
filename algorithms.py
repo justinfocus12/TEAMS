@@ -324,7 +324,13 @@ class PeriodicBranching(EnsembleAlgorithm):
         if np.any(np.isnan(pairwise_fun_vals_array)):
             raise Exception(f'{np.mean(np.isnan(pairwise_fun_vals_array), axis=0) = }')
         return time,pairwise_fun_vals_array
-    # ************** Perturbation growth ****************
+    # ************** Dispersion characteristics ****************
+    def measure_running_max(self, obs_fun, runmaxfile):
+        ngroups = self.branching_state['next_branch_group']+1
+        split_times = np.zeros(ngroups, dtype=int)
+        print(f'{split_times = }')
+        running_maxes = np.zeros((ngroups, self.branches_per_group, self.branch_duration)) 
+
     def measure_dispersion(self, dist_fun, dispfile):
         # Save a statistical analysis of RMSE growth to a specified directory
         ngroups = self.branching_state['next_branch_group']+1

@@ -220,7 +220,7 @@ def pebr_workflow(i_param):
     # distance metrics
     dist_metrics = dict({
         'euc_area_horzvel_30x10': dict({
-            'fun': euc_dist_uv,
+            'fun': euc_dist_horzvel,
             'abbrv': 'UVEuc30x10',
             'label': 'Horz. Vel. Eucl. dist. (30x10)',
             'kwargs': dict({
@@ -232,8 +232,8 @@ def pebr_workflow(i_param):
                 }),
             }),
         'euc_area_horzvel_60x20': dict({
-            'fun': euc_dist_uv,
-            'abbrv': 'UVEuc30x10',
+            'fun': euc_dist_horzvel,
+            'abbrv': 'UVEuc60x20',
             'label': 'Horz. Vel. Eucl. dist. (60x20)',
             'kwargs': dict({
                 'roi': dict({
@@ -244,8 +244,8 @@ def pebr_workflow(i_param):
                 }),
             }),
         'euc_area_horzvel_90x30': dict({
-            'fun': euc_dist_uv,
-            'abbrv': 'UVEuc30x10',
+            'fun': euc_dist_horzvel,
+            'abbrv': 'UVEuc90x30',
             'label': 'Horz. Vel. Eucl. dist. (90x30)',
             'kwargs': dict({
                 'roi': dict({
@@ -328,6 +328,7 @@ def pebr_workflow(i_param):
     # How to quantitatively measure perturbation growth, and also perhaps the Lyapunov exponents/power laws between them 
     config_analysis['satfracs'] = np.array([1/8,1/4,3/8,1/2])
 
+
     # Set up directories
     dirdict = dict()
     base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
@@ -353,17 +354,22 @@ def pebr_workflow(i_param):
     print(f'{filedict["init_cond"] = }')
     # Algorithm manager
     filedict['alg'] = join(dirdict['data'], 'alg.pickle')
-    # Quantitative analysis
+    #----------------- Quantitative analysis files ------------------------
+    # Relating to dispersion of the ensemble 
     filedict['dispersion'] = dict()
     filedict['dispersion']['distance'] = dict()
     filedict['dispersion']['satfractime'] = dict()
     for dist_name in dist_names:
         filedict['dispersion']['distance'][dist_name] = join(dirdict['analysis'], r'dispersion_distance_%s.npz'%(dist_metrics[dist_name]['abbrv']))
         filedict['dispersion']['satfractime'][dist_name] = join(dirdict['analysis'], r'dispersion_satfractime_%s.npz'%(dist_metrics[dist_name]['abbrv']))
+    filedict['dispersion']['running_max'] = dict() # This is based on observables, not a distance metric
+    for obs_name in obs_names:
+        filedict['dispersion']['running_max'][obs_name] = join(dirdict['analysis'], r'dispersion_running_max_%s.npz'%(observables[obs_name]['abbrv']))
+
     # Plots
     filedict['plots'] = dict()
     filedict['plots']['groupwise'] = dict({'observables': dict(), 'distance': dict()})
-    filedict['plots']['allgroups'] = dict({'fsle': dict()})
+    filedict['plots']['allgroups'] = dict({'fsle': dict(), })
     for obs_name in obs_names:
         filedict['plots']['groupwise']['observables'][obs_name] = []
         for group in range(min(4,ngroups)): 
@@ -439,6 +445,11 @@ def analyze_pebr(config_analysis,tododict,dirdict,filedict):
                 dispfile = filedict['dispersion']['distance'][dist_name]
                 satfractime_file = filedict['dispersion']['satfractime'][dist_name]
                 alg.compute_elfs_and_fsle(config_analysis['satfracs'], dispfile, satfractime_file) # TODO
+        if tododict['dispersion']['running_max']:
+            for obs_name,obs_prop in config_analysis['observables'].items():
+                runmaxfile = filedict['dispersion']['running_max'][obs_name]
+                obs_fun = lambda ds: obs_props['fun'](ds,**obs_props['kwargs'])
+                alg.measure_running_max(obs_fun, runmaxfile)
                 
 
 
@@ -524,6 +535,7 @@ def plot_observables(config_analysis,dirdict,filedict):
             outfile = filedict['plots']['groupwise']['observables'][obs_name][group]
             alg.plot_obs_spaghetti(obs_fun,group,outfile,ylabel=ylabel,title=title,abbrv=obs_props['abbrv'])
     return
+
 def plot_dispersion(config_analysis,dirdict,filedict):
     alg = pickle.load(open(filedict['alg'], 'rb'))
     for dist_name,dist_props in config_analysis['dist_metrics'].items():
