@@ -389,7 +389,7 @@ def analyze_pebr(config_analysis,tododict,dirdict,filedict):
                     dist = dist_props['fun'](ds0.isel(time=tidx0), ds1.isel(time=tidx1), **dist_props['kwargs'])
                     return dist
                 dispfile = filedict['dispersion']['distance'][dist_name]
-                alg.measure_dispersion(dist_fun, config_analysis['satfracs'], dispfile)
+                alg.measure_dispersion(dist_fun, dispfile)
                 # Measure fractional time to saturation
         if tododict['dispersion']['satfractime']:
             for dist_name,dist_props in config_analysis['dist_metrics'].items():
@@ -501,7 +501,7 @@ def plot_dispersion(config_analysis,dirdict,filedict):
     return
 
 
-def meta_analyze_periodic_branching():
+def meta_pebr_procedure(idx_param):
     expt_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/2024-03-05/0/PeBr"
     meta_dir = join(expt_dir,'meta_analysis')
     makedirs(meta_dir,exist_ok=True)
@@ -584,12 +584,12 @@ def pebr_procedure(i_param):
         'run':                0,
         'analysis': dict({
             'dispersion': dict({
-                'distance':    0,
-                'satfractime': 0,
+                'distance':    1,
+                'satfractime': 1,
                 }),
             }),
         'plots': dict({
-            'observables':    0,
+            'observables':    1,
             'dispersion':     1,
             'fields':         0,
             'response':       0,

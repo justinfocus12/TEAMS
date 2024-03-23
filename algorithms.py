@@ -375,7 +375,7 @@ class PeriodicBranching(EnsembleAlgorithm):
                     lyap_expons[group,i_frac] = linregress(
                             tidx, np.log(rmses[group,tidx])
                             ).slope
-                time_prev = tidx[-1]
+                    time_prev = tidx[-1]
         np.savez(
                 outfile,
                 satfracs = satfracs, 
