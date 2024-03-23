@@ -475,7 +475,7 @@ class FriersonGCM(DynamicalSystem):
     def sel_from_roi(da,roi):
         slice_sels = {key: val for (key,val) in roi.items() if isinstance(val,slice)}
         nonslice_sels = {key: val for (key,val) in roi.items() if not isinstance(val,slice)}
-        return da.sel(slice_sels).sel(nonslice_sels, method='nearest')
+        return da.sel(slice_sels).sel(nonslice_sels, method='nearest', drop=True)
     @staticmethod
     def label_from_roi(roi):
         abbrvs = []

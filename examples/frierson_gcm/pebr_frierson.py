@@ -117,6 +117,13 @@ def euc_dist_rain(ds0,ds1,roi):
     r0 = FriersonGCM.sel_from_roi(FriersonGCM.total_rain(ds0), roi)
     r1 = FriersonGCM.sel_from_roi(FriersonGCM.total_rain(ds1), roi)
     return np.sqrt(((r0 - r1)**2).mean(dim=['lat','lon']))
+def euc_dist_horzvel(ds0,ds1,roi):
+    u0 = FriersonGCM.sel_from_roi(FriersonGCM.zonal_velocity(ds0), roi)
+    u1 = FriersonGCM.sel_from_roi(FriersonGCM.zonal_velocity(ds1), roi)
+    v0 = FriersonGCM.sel_from_roi(FriersonGCM.meridional_velocity(ds0), roi)
+    v1 = FriersonGCM.sel_from_roi(FriersonGCM.meridional_velocity(ds1), roi)
+    return np.sqrt(
+            ((u0 - u1)**2 + (v0 - v1)**2).mean(dim=['lat','lon']))
 def euc_dist_cwv(ds0,ds1,roi):
     r0 = FriersonGCM.sel_from_roi(FriersonGCM.column_water_vapor(ds0), roi)
     r1 = FriersonGCM.sel_from_roi(FriersonGCM.column_water_vapor(ds1), roi)
@@ -212,6 +219,42 @@ def pebr_workflow(i_param):
     obs_names = list(observables.keys())
     # distance metrics
     dist_metrics = dict({
+        'euc_area_horzvel_30x10': dict({
+            'fun': euc_dist_uv,
+            'abbrv': 'UVEuc30x10',
+            'label': 'Horz. Vel. Eucl. dist. (30x10)',
+            'kwargs': dict({
+                'roi': dict({
+                    'lat': slice(config_analysis['target_location']['lat']-5,config_analysis['target_location']['lat']+5),
+                    'lon': slice(config_analysis['target_location']['lon']-15,config_analysis['target_location']['lon']+15),
+                    'pfull': 500,
+                    }),
+                }),
+            }),
+        'euc_area_horzvel_60x20': dict({
+            'fun': euc_dist_uv,
+            'abbrv': 'UVEuc30x10',
+            'label': 'Horz. Vel. Eucl. dist. (60x20)',
+            'kwargs': dict({
+                'roi': dict({
+                    'lat': slice(config_analysis['target_location']['lat']-10,config_analysis['target_location']['lat']+10),
+                    'lon': slice(config_analysis['target_location']['lon']-30,config_analysis['target_location']['lon']+30),
+                    'pfull': 500,
+                    }),
+                }),
+            }),
+        'euc_area_horzvel_90x30': dict({
+            'fun': euc_dist_uv,
+            'abbrv': 'UVEuc30x10',
+            'label': 'Horz. Vel. Eucl. dist. (90x30)',
+            'kwargs': dict({
+                'roi': dict({
+                    'lat': slice(config_analysis['target_location']['lat']-15,config_analysis['target_location']['lat']+15),
+                    'lon': slice(config_analysis['target_location']['lon']-45,config_analysis['target_location']['lon']+45),
+                    'pfull': 500,
+                    }),
+                }),
+            }),
         'euc_area_ps_30x10': dict({
             'fun': euc_dist_ps,
             'abbrv': 'PsurfEuc30x10',
@@ -500,8 +543,105 @@ def plot_dispersion(config_analysis,dirdict,filedict):
 
     return
 
+def pebr_meta_analysis_workflow(idx_param):
+    num_expts = len(idx_param)
+    workflows = []
+    for i_param in idx_param:
+        workflows.append(pebr_workflow(i_param))
+    configs_gcm,configs_algo,configs_analysis,expt_labels,expt_abbrvs,dirdicts,filedicts = tuple(
+            [workflows[i][j] for i in range(len(idx_param))]
+            for j in range(7))
 
-def meta_pebr_procedure(idx_param):
+    config_meta_analysis = dict()
+    # Divergence timescales
+
+    scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
+    date_str = "2024-03-21"
+    sub_date_str = "0"
+    meta_dirdict = dict()
+    meta_dirdict['expts'] = join(scratch_dir, date_str, sub_date_str)
+    meta_dirdict['analysis'] = join(meta_dirdict['expts'], 'meta_analysis')
+    meta_dirdict['plots'] = join(meta_dirdict['expts'], 'meta_plots')
+    for meta_dir in ['analysis','plots']:
+        makedirs(meta_dirdict[meta_dir], exist_ok=True)
+
+    # Configure the meta-analysis (e.g. which observables and metrics to plot) based on the config in one of the list
+    config_meta_analysis = dict()
+    config_meta_analysis['dist_metrics'] = configs_analysis[0]['dist_metrics']
+    config_meta_analysis['satfracs'] = configs_analysis[0]['satfracs']
+    config_meta_analysis['observables'] = configs_analysis[0]['observables'] # TODO decide on some extreme value analysis for selected observables, especially over finite-time horizons etc. For example, how do block maxima statistics converge as the block size gets longer? 
+
+
+
+    meta_filedict = dict()
+    meta_filedict['analysis'] = dict()
+    meta_filedict['plots'] = dict()
+    meta_filedict['plots']['elfs_vs_sigma'] = dict()
+    dist_names = list(config_meta_analysis['dist_metrics'].keys())
+    for dist_name in dist_names:
+        meta_filedict['plots']['elfs_vs_sigma'][dist_name] = join(meta_dirdict['plots'], r'elfs_vs_sigma_dist%s.png'%(config_meta_analysis['dist_metrics'][dist_name]['abbrv']))
+
+    return config_meta_analysis,meta_dirdict,meta_filedict,workflows
+
+def pebr_meta_analysis_procedure(idx_param):
+    tododict = dict({
+        'analysis': 0,
+        'plots': dict({
+            'elfs_vs_sigma':        1,
+            'fsle_vs_sigma':        0,
+            }),
+        })
+    config_meta_analysis,meta_dirdict,meta_filedict,workflows = pebr_meta_analysis_workflow(idx_param)
+    num_expts = len(idx_param)
+    configs_gcm,configs_algo,configs_analysis,expt_labels,expt_abbrvs,dirdicts,filedicts = tuple(
+            [workflows[i][j] for i in range(len(idx_param))]
+            for j in range(7))
+
+
+    # Plot fractional saturation time 
+    if tododict['plots']['elfs_vs_sigma']:
+        for dist_name,dist_metric in config_meta_analysis['dist_metrics'].items():
+            print(f'{filedicts[0].keys() = }')
+            elfs_files = [filedicts[i]['dispersion']['satfractime'][dist_name] for i in range(len(idx_param))]
+            # Split these files into groups based on non-sigma parameters
+            plot_meta_elfs_vs_sigma(config_meta_analysis, configs_gcm, expt_labels, elfs_files, meta_filedict['plots']['elfs_vs_sigma'][dist_name], title=dist_metric['label'])
+    return
+
+            
+
+def plot_meta_elfs_vs_sigma(config_meta_analysis, configs_gcm, expt_labels, elfs_files, outfile, title=''):
+    # Group experiments by non-sigma parameter
+    num_expts = len(configs_gcm)
+    Ls = np.array([configs_gcm[i]['SPPT']['L_sppt'] for i in range(num_expts)])
+    taus = np.array([configs_gcm[i]['SPPT']['tau_sppt'] for i in range(num_expts)])
+    sigmas = np.array([configs_gcm[i]['SPPT']['std_sppt'] for i in range(num_expts)])
+    unique_Ls_taus,unique_inverse = np.unique(np.array([Ls,taus]).T, axis=0, return_inverse=True)
+    satfracs = config_meta_analysis['satfracs']
+    fig,axes = plt.subplots(ncols=len(satfracs),figsize=(6*len(satfracs),6),sharey=True)
+    handles = []
+    for i_Ltau in range(len(unique_Ls_taus)):
+        color = plt.cm.Set1(i_Ltau/len(unique_Ls_taus))
+        L,tau = unique_Ls_taus[i_Ltau]
+        idx = np.where(unique_inverse == i_Ltau)[0]
+        elfs_mean = np.nan*np.ones((len(idx),len(satfracs)))
+        for ii,i in enumerate(idx):
+            elfs = np.load(elfs_files[i])
+            elfs_mean[ii,:] = np.mean(elfs['elfs'], axis=0) # mean across branch groups 
+        for i_sf,sf in enumerate(satfracs):
+            ax = axes[i_sf]
+            h, = ax.plot(sigmas[idx], elfs_mean[:,i_sf], label=r'$L=%g$km, $\tau=%g$h'%(L/1000,tau/3600),color=color,marker='.')
+            if i_sf == 0: handles.append(h)
+            ax.set_title(f'$f=%g$'%(sf))
+            ax.set_xlabel(r'$\sigma_{\mathrm{SPPT}}$')
+            ax.set_ylabel(r'$\tau(f)$')
+    axes[0].legend(handles=handles)
+    fig.suptitle(title)
+    fig.savefig(outfile, **pltkwargs)
+    plt.close(fig)
+    return
+
+
+def old_thing():
     expt_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/2024-03-05/0/PeBr"
     meta_dir = join(expt_dir,'meta_analysis')
     makedirs(meta_dir,exist_ok=True)
@@ -613,12 +753,12 @@ if __name__ == "__main__":
         procedure = sys.argv[1]
         idx_param = [int(arg) for arg in sys.argv[2:]]
     else:
-        procedure = 'single'
-        idx_param = [5]
+        procedure = 'meta'
+        idx_param = list(range(1,21))
     print(f'Got into Main')
     if procedure == 'single':
         for i_param in idx_param:
             pebr_procedure(i_param)
     elif procedure == 'meta':
-        meta_pebr_procedure(idx_param)
+        pebr_meta_analysis_procedure(idx_param)
 
