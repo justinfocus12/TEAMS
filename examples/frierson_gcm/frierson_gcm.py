@@ -517,9 +517,14 @@ class FriersonGCM(DynamicalSystem):
     # --------------- Utility functions for data processing----------------------
     @staticmethod
     def area_mean(da):
-        assert {'lat','lon'} <= set(da.dims)
-        cos_weight = xr.ones_like(da) * np.cos(np.deg2rad(da['lat']))
-        da_aavg = (cos_weight*da).sum(dim=['lat','lon']) / cos_weight.sum(dim=['lat','lon'])
+        if {'lat'} <= set(da.dims):
+            dims2avg = {'lat','lon'}.intersection(set(da.dims))
+            cos_weight = xr.ones_like(da) * np.cos(np.deg2rad(da['lat']))
+            da_aavg = (cos_weight*da).sum(dim=dims2avg) / cos_weight.sum(dim=dims2avg)
+        elif {'lon'} <= set(da.dims):
+            da_aavg = da.mean(dim='lon')
+        else:
+            da_aavg = da
         return da_aavg
     @staticmethod
     def dist_euc(da0,da1,roi): # Generic distance function

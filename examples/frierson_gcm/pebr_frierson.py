@@ -112,7 +112,7 @@ def pebr_workflow(i_param):
     obsprop = FriersonGCM.observable_props()
     observables = dict({
         'local_rain': dict({
-            'fun': regional_rain,
+            'fun': FriersonGCM.regional_rain,
             'kwargs': dict({
                 'roi': config_analysis['target_location'],
                 }),
@@ -120,7 +120,7 @@ def pebr_workflow(i_param):
             'label': r'Rain rate $(\phi,\lambda)=(45,180)$',
             }),
         'area_rain_60x20': dict({
-            'fun': regional_rain,
+            'fun': FriersonGCM.regional_rain,
             'kwargs': dict(
                 roi = dict({
                     'lat': slice(config_analysis['target_location']['lat']-10,config_analysis['target_location']['lat']+10),
@@ -131,7 +131,7 @@ def pebr_workflow(i_param):
             'label': r'Rain rate $(\phi,\lambda)=(45\pm10,180\pm30)$',
             }),
         'area_rain_90x30': dict({
-            'fun': regional_rain,
+            'fun': FriersonGCM.regional_rain,
             'kwargs': dict(
                 roi = dict({
                     'lat': slice(config_analysis['target_location']['lat']-15,config_analysis['target_location']['lat']+15),
@@ -142,7 +142,7 @@ def pebr_workflow(i_param):
             'label': r'Rain rate $(\phi,\lambda)=(45\pm15,180\pm45)$',
             }),
         'local_cwv': dict({
-            'fun': regional_cwv,
+            'fun': FriersonGCM.regional_cwv,
             'kwargs': dict(
                 roi = config_analysis['target_location'],
                 ),
@@ -150,7 +150,7 @@ def pebr_workflow(i_param):
             'label': r'Column water vapor $(\phi,\lambda)=(45,180)$',
             }),
         'area_cwv_60x20': dict({
-            'fun': regional_cwv,
+            'fun': FriersonGCM.regional_cwv,
             'kwargs': dict(
                 roi = dict(
                     lat=slice(config_analysis['target_location']['lat']-10,config_analysis['target_location']['lat']+10),
@@ -161,7 +161,7 @@ def pebr_workflow(i_param):
             'label': r'Column water vapor $(\phi,\lambda)=(45\pm10,180\pm30)$',
             }),
         'area_cwv_90x30': dict({
-            'fun': regional_cwv,
+            'fun': FriersonGCM.regional_cwv,
             'kwargs': dict({
                 'roi': dict(
                     lat=slice(config_analysis['target_location']['lat']-15,config_analysis['target_location']['lat']+15),
@@ -177,7 +177,7 @@ def pebr_workflow(i_param):
     # distance metrics
     dist_metrics = dict({
         'euc_area_horzvel_30x10': dict({
-            'fun': euc_dist_horzvel,
+            'fun': FriersonGCM.dist_euc_horzvel,
             'abbrv': 'UVEuc30x10',
             'label': 'Horz. Vel. Eucl. dist. (30x10)',
             'kwargs': dict({
@@ -189,7 +189,7 @@ def pebr_workflow(i_param):
                 }),
             }),
         'euc_area_horzvel_60x20': dict({
-            'fun': euc_dist_horzvel,
+            'fun': FriersonGCM.dist_euc_horzvel,
             'abbrv': 'UVEuc60x20',
             'label': 'Horz. Vel. Eucl. dist. (60x20)',
             'kwargs': dict({
@@ -201,7 +201,7 @@ def pebr_workflow(i_param):
                 }),
             }),
         'euc_area_horzvel_90x30': dict({
-            'fun': euc_dist_horzvel,
+            'fun': FriersonGCM.dist_euc_horzvel,
             'abbrv': 'UVEuc90x30',
             'label': 'Horz. Vel. Eucl. dist. (90x30)',
             'kwargs': dict({
@@ -213,7 +213,7 @@ def pebr_workflow(i_param):
                 }),
             }),
         'euc_area_ps_30x10': dict({
-            'fun': euc_dist_ps,
+            'fun': FriersonGCM.dist_euc_ps,
             'abbrv': 'PsurfEuc30x10',
             'label': 'Surf. Pres. Eucl. dist. (30x10)',
             'kwargs': dict({
@@ -224,7 +224,7 @@ def pebr_workflow(i_param):
                 }),
             }),
         'euc_area_ps_60x20': dict({
-            'fun': euc_dist_ps,
+            'fun': FriersonGCM.dist_euc_ps,
             'abbrv': 'PsurfEuc60x20',
             'label': 'Surf. Pres. Eucl. dist. (60x20)',
             'kwargs': dict({
@@ -235,7 +235,7 @@ def pebr_workflow(i_param):
                 }),
             }),
         'euc_area_ps_90x30': dict({
-            'fun': euc_dist_ps,
+            'fun': FriersonGCM.dist_euc_ps,
             'abbrv': 'PsurfEuc90x30',
             'label': 'Surf. Pres. Eucl. dist. (90x30)',
             'kwargs': dict({
@@ -246,7 +246,7 @@ def pebr_workflow(i_param):
                 }),
             }),
         'euc_area_rain_30x10': dict({
-            'fun': euc_dist_rain,
+            'fun': FriersonGCM.dist_euc_rain,
             'abbrv': 'RainEuc30x10',
             'label': 'Rain-Euclidean distance (30x10)',
             'kwargs': dict({
@@ -257,7 +257,7 @@ def pebr_workflow(i_param):
                 }),
             }),
         'euc_area_rain_60x20': dict({
-            'fun': euc_dist_rain,
+            'fun': FriersonGCM.dist_euc_rain,
             'abbrv': 'RainEuc60x20',
             'label': 'Rain-Euclidean distance (60x20)',
             'kwargs': dict({
@@ -268,7 +268,7 @@ def pebr_workflow(i_param):
                 }),
             }),
         'euc_area_rain_90x30': dict({
-            'fun': euc_dist_rain,
+            'fun': FriersonGCM.dist_euc_rain,
             'abbrv': 'RainEuc90x30',
             'label': 'Rain-Euclidean distance (90x30)',
             'kwargs': dict({
@@ -311,32 +311,6 @@ def pebr_workflow(i_param):
     print(f'{filedict["init_cond"] = }')
     # Algorithm manager
     filedict['alg'] = join(dirdict['data'], 'alg.pickle')
-    #----------------- Quantitative analysis files ------------------------
-    # Relating to dispersion of the ensemble 
-    filedict['dispersion'] = dict()
-    filedict['dispersion']['distance'] = dict()
-    filedict['dispersion']['satfractime'] = dict()
-    for dist_name in dist_names:
-        filedict['dispersion']['distance'][dist_name] = join(dirdict['analysis'], r'dispersion_distance_%s.npz'%(dist_metrics[dist_name]['abbrv']))
-        filedict['dispersion']['satfractime'][dist_name] = join(dirdict['analysis'], r'dispersion_satfractime_%s.npz'%(dist_metrics[dist_name]['abbrv']))
-    filedict['dispersion']['running_max'] = dict() # This is based on observables, not a distance metric
-    for obs_name in obs_names:
-        filedict['dispersion']['running_max'][obs_name] = join(dirdict['analysis'], r'dispersion_running_max_%s.npz'%(observables[obs_name]['abbrv']))
-
-    # Plots
-    filedict['plots'] = dict()
-    filedict['plots']['groupwise'] = dict({'observables': dict(), 'distance': dict()})
-    filedict['plots']['allgroups'] = dict({'fsle': dict(), })
-    for obs_name in obs_names:
-        filedict['plots']['groupwise']['observables'][obs_name] = []
-        for group in range(min(4,ngroups)): 
-            filedict['plots']['groupwise']['observables'][obs_name].append(join(dirdict['plots'], r'groupwise_obs%s_bg%d.png'%(observables[obs_name]['abbrv'],group)))
-    for dist_name in dist_names:
-        filedict['plots']['groupwise']['distance'][dist_name] = []
-        for group in range(min(4,ngroups)): 
-            filedict['plots']['groupwise']['distance'][dist_name].append(join(dirdict['plots'], r'groupwise_dist%s_bg%d.png'%(dist_metrics[dist_name]['abbrv'],group)))
-        filedict['plots']['allgroups']['fsle'][dist_name] = join(dirdict['plots'], r'allgroups_fsle_dist%s.png'%(dist_metrics[dist_name]['abbrv']))
-
 
     return config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict
 
@@ -370,7 +344,7 @@ def run_pebr(dirdict,filedict,config_gcm,config_algo):
         pickle.dump(alg, open(filedict['alg'], 'wb'))
     return
 
-def quantify_dispersion_rates(config_analysis,alg,dirdict):
+def quantify_dispersion_rates(config_analysis, alg, dirdict):
     for dist_name,dist_props in config_analysis['dist_metrics'].items():
         print(f'{dist_name = }')
         print(f'{dist_props = }')
@@ -390,19 +364,18 @@ def quantify_dispersion_rates(config_analysis,alg,dirdict):
             print(f'{ds1.time.isel(time=tidx1).to_numpy() = }')
             dist = dist_props['fun'](ds0.isel(time=tidx0), ds1.isel(time=tidx1), **dist_props['kwargs'])
             return dist
-        dist_file = join(dirdict['analysis'],r'distance_%s.npz'%(dist_props['abbrv']))
-        split_times,dists,rmses,rmsd = alg.measure_dispersion(dist_fun, dist_file)
-        # Measure rates of growth in various ways 
-        lyapunov_file = join(dirdict['analysis'],r'lyapunov_analysis_%s.npz'%(dist_props['abbrv']))
-        alg.lyapunov_analysis(config_analysis['satfracs'], dispfile, satfractime_file) # TODO
-    ododict['dispersion']['running_max']:
-    for obs_name,obs_prop in config_analysis['observables'].items():
-        runmaxfile = filedict['dispersion']['running_max'][obs_name]
-        obs_fun = lambda ds: obs_props['fun'](ds,**obs_props['kwargs'])
-        alg.measure_running_max(obs_fun, runmaxfile)
-                
+        dispersion_file = join(dirdict['analysis'],r'dispersion_%s.npz'%(dist_props['abbrv']))
+        dispersion_metrics = alg.measure_dispersion(dist_fun, config_analysis['satfracs'], dispersion_file)
+        # Should we also plot right here? Yes, why not 
+        figfile_prefix = join(dirdict,r'dispersion_%s'%(dist_props['abbrv']))
+        groups2plot = np.arange(min(dispersion_metrics['dists'].shape[0],10), dtype=int)
+        alg.plot_dispersion(
+                dispersion_metrics, figfile_prefix, groups2plot=groups2plot,  
+                title=dist_props['label'], logscale=True
+                )
+    return 
 
-
+def old_thing():
     if 0 and utils.find_true_in_dict(tododict['plot_pebr']):
         alg = pickle.load(open(join(dirdict['alg'],'alg.pickle'),'rb'))
         # ----------------- Perturbation growth ---------------------------
@@ -473,7 +446,7 @@ def quantify_dispersion_rates(config_analysis,alg,dirdict):
                         plt.close(fig)
     return
 
-def plot_observable_spaghetti(alg, config_analysis, dirdict):
+def plot_observable_spaghetti(config_analysis, alg, dirdict):
     for obs_name,obs_props in config_analysis['observables'].items():
         print(f'{obs_name = }')
         print(f'{obs_props = }')
@@ -481,7 +454,7 @@ def plot_observable_spaghetti(alg, config_analysis, dirdict):
         ylabel = obs_props['label']
         for group in range(min(4,alg.branching_state['next_branch_group']+1)):
             title = r'Group %d'%(group)
-            outfile = join(dirdict['plots'], r'spaghetti_obs%s_bg%d.png'%(obs_prop['abbrv'],group))
+            outfile = join(dirdict['plots'], r'spaghetti_obs%s_bg%d.png'%(obs_props['abbrv'],group))
             alg.plot_observable_spaghetti(obs_fun,group,outfile,ylabel=ylabel,title=title)
             # TODO maybe precompute all the observables in advance, in case they're used for multiple purposes, but only down the line. 
     return
@@ -683,7 +656,7 @@ def old_thing():
 
 def pebr_procedure(i_param):
     tododict = dict({
-        'run':                           1,
+        'run':                           0,
         'analysis': dict({
             'observable_spaghetti':      1,
             'dispersion_rate':           1, # including both Lyapunov analysis (FSLE) and expected leadtime until fractional saturation (ELFS)
@@ -698,11 +671,6 @@ def pebr_procedure(i_param):
         plot_observable_spaghetti(config_analysis, alg, dirdict)
     if tododict['analysis']['dispersion_rate']:
         quantify_dispersion_rates(config_analysis, alg, dirdict)
-    if utils.find_true_in_dict(tododict['plots']):
-        if tododict['plots']['observables']:
-            plot_observables(config_analysis,dirdict,filedict)
-        if tododict['plots']['dispersion']:
-            plot_dispersion(config_analysis,dirdict,filedict)
     return
 
 

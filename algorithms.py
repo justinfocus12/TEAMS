@@ -331,40 +331,40 @@ class PeriodicBranching(EnsembleAlgorithm):
         print(f'{split_times = }')
         running_maxes = np.zeros((ngroups, self.branches_per_group, self.branch_duration)) 
 
-    def measure_dispersion(self, dist_fun, satfracs, dist_file):
-        # Save a statistical analysis of RMSE growth to a specified directory
+    def measure_dispersion(self, dist_fun, satfracs, outfile):
+        # Measure the distance of every member from the control (according to a given function), as well as the fractional saturation times
         ngroups = self.branching_state['next_branch_group']+1
         split_times = np.zeros(ngroups, dtype=int)
         print(f'{split_times = }')
         dists = np.zeros((ngroups, self.branches_per_group, self.branch_duration)) 
         for branch_group in range(ngroups):
             print(f'About to compute distances for {branch_group = }')
-            time,dists_local = self.compute_pairwise_fun_local(dist_fun, branch_group)
+            time,dists[branch_group,:,:] = self.compute_pairwise_fun_local(dist_fun, branch_group)
             split_times[branch_group] = time[0]
-            dists[branch_group,:,:] = dists_local.copy()
         rmses = np.sqrt(np.mean(dists**2, axis=1))
         rmsd = np.sqrt(np.mean(rmses[:,-1]**2))
-        # Now Lyapunov analysis, in light of RMSD
+        # Finite-size Lyapunov analysis (at fixed fractions of saturation)
         nfracs = len(satfracs)
         fsle = np.nan*np.ones(ngroups,nfracs)
         for group in range(ngroups):
             log_rmse = np.log(rmses[group,:])
-            time_prev = 1 # beginning of interval over which to measure growth
+            i_time_prev = 0 
             for i_frac,frac in enumerate(satfracs):
-                elfs[group,i_frac] = np.where(rmses[group,:] >= frac*rmsd)[0][0]
-                # Measure diffusive growth
-                tidx = np.arange(time_prev,elfs[group,i_frac], dtype=int)
-                if len(tidx) > 0:
-                    diff_pows[group,i_frac] = linregress(
-                            np.log(tidx), 
-                            np.log(rmses[group,tidx])
-                            ).slope
-                    fsle[group,i_frac] = linregress(
-                            tidx, np.log(rmses[group,tidx])
-                            ).slope
-                    time_prev = tidx[-1]
-        np.savez(
-                dist_file,
+                exceedances = np.where(rmses[group,:] >= frac*rmsd)[0]
+                if len(exceedances) > 0:
+                    elfs[group,i_frac] = exceedances[0]
+                    # Measure diffusive growth
+                    tidx = np.arange(i_time_prev, exceedances[0], dtype=int)
+                    if len(tidx) > 0:
+                        diff_pows[group,i_frac] = linregress(
+                                np.log(time[tidx]-split_times[group]), 
+                                np.log(rmses[group,tidx])
+                                ).slope
+                        fsle[group,i_frac] = linregress(
+                                time[tidx]-split_times[group], np.log(rmses[group,tidx])
+                                ).slope
+                        i_time_prev = tidx[-1]
+        dispersion_metrics = dict(
                 split_times = split_times,
                 dists = dists,
                 rmses = rmses,
@@ -374,7 +374,8 @@ class PeriodicBranching(EnsembleAlgorithm):
                 fsle = fsle,
                 diffusive_powers = diff_pows,
                 )
-        return 
+        np.savez(outfile, **dispersion_metrics)
+        return dispersion_metrics 
     @classmethod
     def analyze_pert_growth_meta(cls, pert_growth_list):
         # Compare characteristics of perturbation growth as a function of various independent variables
@@ -427,47 +428,51 @@ class PeriodicBranching(EnsembleAlgorithm):
 
         
 
-    def plot_dispersion_onegroup(self, group, dispfile, satfractime_file, outfile, ylabel='', title='', logscale=False):
+    def plot_dispersion(self, dispersion_metrics, figfile_prefix, groups2plot=None, ylabel='', title='', logscale=False):
         # TODO add in the fractional saturation times 
         tu = self.ens.dynsys.dt_save
-        disp_data = np.load(dispfile)
-        split_times = disp_data['split_times']
-        dists = disp_data['dists']
-        rmses = disp_data['rmses']
-        rmsd = disp_data['rmsd']
+        split_times = dispersion_metrics['split_times']
+        dists = dispersion_metrics['dists']
+        rmses = dispersion_metrics['rmses']
+        rmsd = dispersion_metrics['rmsd']
+        satfracs = dispersion_metrics['satfracs']
+        elfs = dispersion_metrics['elfs']
+        fsle = dispersion_metrics['fsle']
+        diff_pows = dispersion_metrics['diffusive_powers']
         print(f'{rmses.max() = }, {rmsd = }')
-        satfractime_data = np.load(satfractime_file)
-        satfracs = satfractime_data['satfracs']
-        elfs = satfractime_data['elfs']
-        lyap_expons = satfractime_data['lyapunov_exponents']
-        diff_pows = satfractime_data['diffusive_powers']
         ngroups,nbranches,ntimes = dists.shape
         time = np.arange(ntimes) # local time 
-        fig,ax = plt.subplots()
-        for i_mem1 in range(nbranches):
-            ax.plot(time[1:]*tu, dists[group,i_mem1,1:], color='tomato',)
-        hrmse, = ax.plot(time[1:]*tu, rmses[group,1:], color='black', label='RMSE')
-        ax.axhline(rmsd, color='black', linestyle='--', label='RMSD')
-        # Exponential growth model
-        time_prev = 1
-        for i_sf,sf in enumerate(satfracs):
-            tidx = np.arange(time_prev,elfs[group,i_sf])
-            #hpow, = ax.plot(time[tidx]*tu, rmses[group][tidx[0]] * (time/time[tidx[0]])**diff_pows[group,i_sf], color='dodgerblue', label='diffusive')
-            hexp, = ax.plot(
-                    time[tidx]*tu, 
-                    rmses[group,time[tidx[0]]] * np.exp(
-                        (time[tidx]-time[tidx[0]]) * 
-                        lyap_expons[group,i_sf]), 
-                    color='limegreen', label='exponential')
-            ax.axvline((time[tidx[-1]]-time[0])*tu, color='black', linewidth=0.5)
-            time_prev = tidx[-1]
-        ax.legend(handles=[hrmse,hexp])
-        ax.set_xlabel(r'time since %g'%(split_times[group]*tu))
-        ax.set_ylabel(ylabel)
-        ax.set_title(title)
-        if logscale: ax.set_yscale('log')
-        fig.savefig(outfile, **pltkwargs)
-        plt.close(fig)
+        if groups2plot is None:
+            groups2plot = np.arange(ngroups, dtype=int)
+        for group in groups2plot:
+            fig,ax = plt.subplots()
+            for i_mem1 in range(nbranches):
+                ax.plot(time*tu, dists[group,i_mem1,:], color='tomato',)
+            hrmse, = ax.plot(time*tu, rmses[group,:], color='black', label='RMSE')
+            ax.axhline(rmsd, color='black', linestyle='--', label='RMSD')
+            # Exponential growth model
+            i_time_prev = 0
+            for i_sf,sf in enumerate(satfracs):
+                tidx = np.arange(time_prev,elfs[group,i_sf])
+                #hpow, = ax.plot(time[tidx]*tu, rmses[group][tidx[0]] * (time/time[tidx[0]])**diff_pows[group,i_sf], color='dodgerblue', label='diffusive')
+                if len(tidx) > 0:
+                    hexp, = ax.plot(
+                            time[tidx]*tu, 
+                            rmses[group,time[tidx[0]]] * np.exp(
+                                (time[tidx]-time[tidx[0]]) * 
+                                fsle[group,i_sf]), 
+                            color='limegreen', label='exp. growth')
+                    #ax.axvline((time[tidx[-1]]-time[0])*tu, color='black', linewidth=0.5)
+                    ax.axhline(rmsd*satfrac, color='black', linewidth=0.5)
+                i_time_prev = tidx[-1]
+            ax.legend(handles=[hrmse,hexp])
+            ax.set_xlabel(r'time since split (%g)'%(split_times[group]*tu))
+            ax.set_ylabel(ylabel)
+            ax.set_title(title)
+            if logscale: ax.set_yscale('log')
+            figfile = r'%s_group%d.png'%(figfile_prefix,group)
+            fig.savefig(figfile, **pltkwargs)
+            plt.close(fig)
         print(f'{outfile = }')
         return 
     def plot_pert_growth(self, split_times, dists, thalfsat, diff_expons, lyap_expons, rmses, rmsd, plot_dir, plot_suffix, logscale=False):
