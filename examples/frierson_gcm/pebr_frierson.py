@@ -85,59 +85,16 @@ def pebr_paramset(i_param):
         'seed_min': 1000,
         'seed_max': 100000,
         'seed_inc_init': seed_incs[i_param], 
-        'branches_per_group': 8, 
-        'interbranch_interval_phys': 5.0,
+        'branches_per_group': 16, 
+        'interbranch_interval_phys': 1.0, # small interval helps to see continuity in stability
         'branch_duration_phys': 20.0,
-        'num_branch_groups': 12,
+        'num_branch_groups': 6,
         'max_member_duration_phys': 30.0,
         })
     return config_gcm,config_algo,expt_label,expt_abbrv
 
 # -------------- Define the observable functions of interest (to be further parameterized) ---------
-def regional_rain(ds, roi):
-    rtot = FriersonGCM.total_rain(ds)
-    print(f'{rtot.dims = }')
-    print(f'{rtot.coords = }')
-    rtot = FriersonGCM.sel_from_roi(rtot, roi)
-    dims2avg = set(rtot.dims) - {'time'}
-    rtot = rtot.mean(dim=dims2avg)
-    if len(dims2avg) > 0:
-        print(f'{rtot = }')
-    return rtot
-def regional_cwv(ds, roi):
-    cwv = FriersonGCM.column_water_vapor(ds)
-    cwv = FriersonGCM.sel_from_roi(cwv, roi)
-    dims2avg = set(cwv.dims) - {'time'}
-    cwv = cwv.mean(dim=dims2avg)
-    if len(dims2avg) > 0:
-        print(f'{cwv = }')
-    return cwv
 # ----------- Define the distance metrics of interest -------
-def euc_dist_rain(ds0,ds1,roi):
-    r0 = FriersonGCM.sel_from_roi(FriersonGCM.total_rain(ds0), roi)
-    r1 = FriersonGCM.sel_from_roi(FriersonGCM.total_rain(ds1), roi)
-    return np.sqrt(((r0 - r1)**2).mean(dim=['lat','lon']))
-def euc_dist_horzvel(ds0,ds1,roi):
-    u0 = FriersonGCM.sel_from_roi(FriersonGCM.zonal_velocity(ds0), roi)
-    u1 = FriersonGCM.sel_from_roi(FriersonGCM.zonal_velocity(ds1), roi)
-    v0 = FriersonGCM.sel_from_roi(FriersonGCM.meridional_velocity(ds0), roi)
-    v1 = FriersonGCM.sel_from_roi(FriersonGCM.meridional_velocity(ds1), roi)
-    return np.sqrt(
-            ((u0 - u1)**2 + (v0 - v1)**2).mean(dim=['lat','lon']))
-def euc_dist_cwv(ds0,ds1,roi):
-    r0 = FriersonGCM.sel_from_roi(FriersonGCM.column_water_vapor(ds0), roi)
-    r1 = FriersonGCM.sel_from_roi(FriersonGCM.column_water_vapor(ds1), roi)
-    return np.sqrt(((r0 - r1)**2).mean(dim=['lat','lon']))
-def euc_dist_ps(ds0,ds1,roi):
-    p0 = FriersonGCM.sel_from_roi(
-            FriersonGCM.surface_pressure(ds0), roi)
-    p1 = FriersonGCM.sel_from_roi(
-            FriersonGCM.surface_pressure(ds1), roi)
-    return np.sqrt(((p0 - p1)**2).mean(dim=['lat','lon']))
-def euc_dist_temp(ds0,ds1,roi):
-    r0 = regional_rain(ds0, roi)
-    r1 = regional_rain(ds1, roi)
-    return np.sqrt(((r0 - r1)**2).mean(dim=['lat','lon']))
 
 
 
@@ -333,7 +290,7 @@ def pebr_workflow(i_param):
     dirdict = dict()
     base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
-    date_str = "2024-03-21"
+    date_str = "2024-03-23"
     sub_date_str = "0"
     dirdict['expt'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_gcm, param_abbrv_algo)
     dirdict['data'] = join(dirdict['expt'], 'data')
@@ -413,43 +370,36 @@ def run_pebr(dirdict,filedict,config_gcm,config_algo):
         pickle.dump(alg, open(filedict['alg'], 'wb'))
     return
 
-def analyze_pebr(config_analysis,tododict,dirdict,filedict):
-    alg = pickle.load(open(filedict['alg'], 'rb'))
-    if utils.find_true_in_dict(tododict['dispersion']):
-        if tododict['dispersion']['distance']:
-            for dist_name,dist_props in config_analysis['dist_metrics'].items():
-                print(f'{dist_name = }')
-                print(f'{dist_props = }')
-                def dist_fun(ds0,ds1):
-                    # TODO anticipate future when time samples are subdaily
-                    t0 = (ds0['time'].to_numpy() / alg.ens.dynsys.dt_save).astype(int)
-                    t1 = (ds1['time'].to_numpy() / alg.ens.dynsys.dt_save).astype(int)
-                    print(f'{t0 = }\n{t1 = }')
-                    trange_full = np.arange(min(t0[0],t1[0]),max(t0[-1],t1[-1])+1)
-                    trange_valid = np.arange(max(t0[0],t1[0]),min(t0[-1],t1[-1])+1)
-                    tidx0 = trange_valid - t0[0]
-                    tidx1 = trange_valid - t1[0]
-                    dist = np.nan*np.ones_like(trange_full)
-                    print(f'{trange_full = }')
-                    print(f'{trange_valid = }')
-                    print(f'{ds0.time.isel(time=tidx0).to_numpy() = }')
-                    print(f'{ds1.time.isel(time=tidx1).to_numpy() = }')
-                    dist[trange_valid[0]-trange_full[0]:trange_valid[-1]+1-trange_full[0]] = dist_props['fun'](ds0.isel(time=tidx0), ds1.isel(time=tidx1), **dist_props['kwargs'])
-                    dist = dist_props['fun'](ds0.isel(time=tidx0), ds1.isel(time=tidx1), **dist_props['kwargs'])
-                    return dist
-                dispfile = filedict['dispersion']['distance'][dist_name]
-                alg.measure_dispersion(dist_fun, dispfile)
-                # Measure fractional time to saturation
-        if tododict['dispersion']['satfractime']:
-            for dist_name,dist_props in config_analysis['dist_metrics'].items():
-                dispfile = filedict['dispersion']['distance'][dist_name]
-                satfractime_file = filedict['dispersion']['satfractime'][dist_name]
-                alg.compute_elfs_and_fsle(config_analysis['satfracs'], dispfile, satfractime_file) # TODO
-        if tododict['dispersion']['running_max']:
-            for obs_name,obs_prop in config_analysis['observables'].items():
-                runmaxfile = filedict['dispersion']['running_max'][obs_name]
-                obs_fun = lambda ds: obs_props['fun'](ds,**obs_props['kwargs'])
-                alg.measure_running_max(obs_fun, runmaxfile)
+def quantify_dispersion_rates(config_analysis,alg,dirdict):
+    for dist_name,dist_props in config_analysis['dist_metrics'].items():
+        print(f'{dist_name = }')
+        print(f'{dist_props = }')
+        def dist_fun(ds0,ds1):
+            # TODO anticipate future when time samples are subdaily
+            t0 = (ds0['time'].to_numpy() / alg.ens.dynsys.dt_save).astype(int)
+            t1 = (ds1['time'].to_numpy() / alg.ens.dynsys.dt_save).astype(int)
+            print(f'{t0 = }\n{t1 = }')
+            trange_full = np.arange(min(t0[0],t1[0]),max(t0[-1],t1[-1])+1)
+            trange_valid = np.arange(max(t0[0],t1[0]),min(t0[-1],t1[-1])+1)
+            tidx0 = trange_valid - t0[0]
+            tidx1 = trange_valid - t1[0]
+            dist = np.nan*np.ones_like(trange_full)
+            print(f'{trange_full = }')
+            print(f'{trange_valid = }')
+            print(f'{ds0.time.isel(time=tidx0).to_numpy() = }')
+            print(f'{ds1.time.isel(time=tidx1).to_numpy() = }')
+            dist = dist_props['fun'](ds0.isel(time=tidx0), ds1.isel(time=tidx1), **dist_props['kwargs'])
+            return dist
+        dist_file = join(dirdict['analysis'],r'distance_%s.npz'%(dist_props['abbrv']))
+        split_times,dists,rmses,rmsd = alg.measure_dispersion(dist_fun, dist_file)
+        # Measure rates of growth in various ways 
+        lyapunov_file = join(dirdict['analysis'],r'lyapunov_analysis_%s.npz'%(dist_props['abbrv']))
+        alg.lyapunov_analysis(config_analysis['satfracs'], dispfile, satfractime_file) # TODO
+    ododict['dispersion']['running_max']:
+    for obs_name,obs_prop in config_analysis['observables'].items():
+        runmaxfile = filedict['dispersion']['running_max'][obs_name]
+        obs_fun = lambda ds: obs_props['fun'](ds,**obs_props['kwargs'])
+        alg.measure_running_max(obs_fun, runmaxfile)
                 
 
 
@@ -523,8 +473,7 @@ def analyze_pebr(config_analysis,tododict,dirdict,filedict):
                         plt.close(fig)
     return
 
-def plot_observables(config_analysis,dirdict,filedict):
-    alg = pickle.load(open(filedict['alg'], 'rb'))
+def plot_observable_spaghetti(alg, config_analysis, dirdict):
     for obs_name,obs_props in config_analysis['observables'].items():
         print(f'{obs_name = }')
         print(f'{obs_props = }')
@@ -532,8 +481,9 @@ def plot_observables(config_analysis,dirdict,filedict):
         ylabel = obs_props['label']
         for group in range(min(4,alg.branching_state['next_branch_group']+1)):
             title = r'Group %d'%(group)
-            outfile = filedict['plots']['groupwise']['observables'][obs_name][group]
-            alg.plot_obs_spaghetti(obs_fun,group,outfile,ylabel=ylabel,title=title,abbrv=obs_props['abbrv'])
+            outfile = join(dirdict['plots'], r'spaghetti_obs%s_bg%d.png'%(obs_prop['abbrv'],group))
+            alg.plot_observable_spaghetti(obs_fun,group,outfile,ylabel=ylabel,title=title)
+            # TODO maybe precompute all the observables in advance, in case they're used for multiple purposes, but only down the line. 
     return
 
 def plot_dispersion(config_analysis,dirdict,filedict):
@@ -733,25 +683,21 @@ def old_thing():
 
 def pebr_procedure(i_param):
     tododict = dict({
-        'run':                0,
+        'run':                           1,
         'analysis': dict({
-            'dispersion': dict({
-                'distance':    1,
-                'satfractime': 1,
-                }),
-            }),
-        'plots': dict({
-            'observables':    1,
-            'dispersion':     1,
-            'fields':         0,
-            'response':       0,
+            'observable_spaghetti':      1,
+            'dispersion_rate':           1, # including both Lyapunov analysis (FSLE) and expected leadtime until fractional saturation (ELFS)
+            'extreme_value_convergence': 1, # watch extreme value statistics (curves and parameters) converge to the true values with longer time blocks
             }),
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = pebr_workflow(i_param)
     if tododict['run']:
         run_pebr(dirdict,filedict,config_gcm,config_algo)
-    if utils.find_true_in_dict(tododict['analysis']):
-        analyze_pebr(config_analysis,tododict['analysis'],dirdict,filedict)
+    alg = pickle.load(open(filedict['alg'], 'rb'))
+    if tododict['analysis']['observable_spaghetti']:
+        plot_observable_spaghetti(config_analysis, alg, dirdict)
+    if tododict['analysis']['dispersion_rate']:
+        quantify_dispersion_rates(config_analysis, alg, dirdict)
     if utils.find_true_in_dict(tododict['plots']):
         if tododict['plots']['observables']:
             plot_observables(config_analysis,dirdict,filedict)

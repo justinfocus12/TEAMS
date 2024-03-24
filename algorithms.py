@@ -331,7 +331,7 @@ class PeriodicBranching(EnsembleAlgorithm):
         print(f'{split_times = }')
         running_maxes = np.zeros((ngroups, self.branches_per_group, self.branch_duration)) 
 
-    def measure_dispersion(self, dist_fun, dispfile):
+    def measure_dispersion(self, dist_fun, satfracs, dist_file):
         # Save a statistical analysis of RMSE growth to a specified directory
         ngroups = self.branching_state['next_branch_group']+1
         split_times = np.zeros(ngroups, dtype=int)
@@ -344,28 +344,9 @@ class PeriodicBranching(EnsembleAlgorithm):
             dists[branch_group,:,:] = dists_local.copy()
         rmses = np.sqrt(np.mean(dists**2, axis=1))
         rmsd = np.sqrt(np.mean(rmses[:,-1]**2))
-        np.savez(
-                dispfile,
-                split_times = split_times,
-                dists = dists,
-                rmses = rmses,
-                rmsd = rmsd,
-                )
-        return 
-    @staticmethod
-    def compute_elfs_and_fsle(satfracs, dispfile, outfile):
-        # elfs = elapsed lagtime until fractional saturation
-        disp_data = np.load(dispfile)
-        split_times = disp_data['split_times']
-        dists = disp_data['dists']
-        rmses = disp_data['rmses']
-        rmsd = disp_data['rmsd']
-        ngroups,nbranches,ntimes = dists.shape
+        # Now Lyapunov analysis, in light of RMSD
         nfracs = len(satfracs)
-        # Three measures of error growt 
-        lyap_expons = np.nan*np.ones((ngroups,nfracs)) # RMSE ~ exp(lyap_expon*t)
-        diff_pows = np.nan*np.ones((ngroups,nfracs)) # RMSE ~ t**(diff_pows)
-        elfs = np.zeros((ngroups,nfracs), dtype=int)
+        fsle = np.nan*np.ones(ngroups,nfracs)
         for group in range(ngroups):
             log_rmse = np.log(rmses[group,:])
             time_prev = 1 # beginning of interval over which to measure growth
@@ -378,15 +359,19 @@ class PeriodicBranching(EnsembleAlgorithm):
                             np.log(tidx), 
                             np.log(rmses[group,tidx])
                             ).slope
-                    lyap_expons[group,i_frac] = linregress(
+                    fsle[group,i_frac] = linregress(
                             tidx, np.log(rmses[group,tidx])
                             ).slope
                     time_prev = tidx[-1]
         np.savez(
-                outfile,
+                dist_file,
+                split_times = split_times,
+                dists = dists,
+                rmses = rmses,
+                rmsd = rmsd,
                 satfracs = satfracs, 
                 elfs = elfs,
-                lyapunov_exponents = lyap_expons,
+                fsle = fsle,
                 diffusive_powers = diff_pows,
                 )
         return 
@@ -534,7 +519,7 @@ class PeriodicBranching(EnsembleAlgorithm):
         fig.savefig(savefile, **pltkwargs)
         plt.close(fig)
         return
-    def plot_obs_spaghetti(self, obs_fun, branch_group, outfile, ylabel='', title='', abbrv=''):
+    def plot_observable_spaghetti(self, obs_fun, branch_group, outfile, ylabel='', title=''):
         print(f'\n\nPlotting group {branch_group}')
         # Get all timespans
         time,mems_trunk,tidx_trunk,mems_branch,tidxs_branch = self.get_tree_subset(branch_group)

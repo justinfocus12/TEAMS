@@ -514,17 +514,58 @@ class FriersonGCM(DynamicalSystem):
         label = ', '.join(labels)
         return abbrv,label
 
-    # --------------- Distance functions ----------------------
+    # --------------- Utility functions for data processing----------------------
     @staticmethod
-    def dist_euclidean_tdep(da0,da1,roi):
+    def area_mean(da):
+        assert {'lat','lon'} <= set(da.dims)
+        cos_weight = xr.ones_like(da) * np.cos(np.deg2rad(da['lat']))
+        da_aavg = (cos_weight*da).sum(dim=['lat','lon']) / cos_weight.sum(dim=['lat','lon'])
+        return da_aavg
+    @staticmethod
+    def dist_euc(da0,da1,roi): # Generic distance function
         t0 = da0.time.to_numpy()
         t1 = da1.time.to_numpy()
-        tsel = dict(time=slice(max(t0[0],t1[0]),min(t0[-1],t1[-1])+1))
-        f0,f1 = [FriersonGCM.sel_from_roi(da.sel(tsel), roi) for da in [da0,da1]]
-        cos_weight = xr.ones_like(f0) * np.cos(np.deg2rad(f0['lat']))
-        dimsum = set(f0.dims)-{'time'}
-        D2 = (cos_weight*(f0-f1)**2).sum(dim=dimsum) / cos_weight.sum(dim=dimsum)
-        return np.sqrt(D2).compute().to_numpy()
+        assert np.all(t0 == t1)
+        f0,f1 = tuple(FriersonGCM.sel_from_roi(da, roi) for da in [da0,da1])
+        D2_aavg = FriersonGCM.area_mean((f0-f1)**2)
+        dimsum = set(D2_aavg.dims)-{'time'}
+        D = np.sqrt(D2_aavg.mean(dim=dimsum))
+        return D
+    # Hyper-specific distance functions below 
+    @staticmethod
+    def dist_euc_rain(ds0,ds1,roi):
+        assert set(roi.keys()) == {'lat','lon'}
+        r0 = FriersonGCM.sel_from_roi(FriersonGCM.total_rain(ds0), roi)
+        r1 = FriersonGCM.sel_from_roi(FriersonGCM.total_rain(ds1), roi)
+        return FriersonGCM.dist_euc(r0,r1,roi) #np.sqrt(((r0 - r1)**2).mean(dim=['lat','lon']))
+    @staticmethod
+    def dist_euc_horzvel(ds0,ds1,roi):
+        u0 = FriersonGCM.sel_from_roi(FriersonGCM.zonal_velocity(ds0), roi)
+        u1 = FriersonGCM.sel_from_roi(FriersonGCM.zonal_velocity(ds1), roi)
+        dist_u = FriersonGCM.dist_euc(u0,u1,roi)
+        v0 = FriersonGCM.sel_from_roi(FriersonGCM.meridional_velocity(ds0), roi)
+        v1 = FriersonGCM.sel_from_roi(FriersonGCM.meridional_velocity(ds1), roi)
+        dist_v = FriersonGCM.dist_euc(v0,v1,roi)
+        return np.sqrt(dist_u**2 + dist_v**2)
+    @staticmethod
+    def dist_euc_cwv(ds0,ds1,roi):
+        assert set(roi.keys()) == {'lat','lon'}
+        cwv0 = FriersonGCM.sel_from_roi(FriersonGCM.column_water_vapor(ds0), roi)
+        cwv1 = FriersonGCM.sel_from_roi(FriersonGCM.column_water_vapor(ds1), roi)
+        return FriersonGCM.dist_euc(cwv0,cwv1,roi)
+    @staticmethod
+    def dist_euc_ps(ds0,ds1,roi):
+        p0 = FriersonGCM.sel_from_roi(
+                FriersonGCM.surface_pressure(ds0), roi)
+        p1 = FriersonGCM.sel_from_roi(
+                FriersonGCM.surface_pressure(ds1), roi)
+        return FriersonGCM.dist_euc(p0,p1,roi)
+    @staticmethod
+    def dist_euc_temp(ds0,ds1,roi):
+        T0 = FriersonGCM.temperature(ds0, roi)
+        T1 = FriersonGCM.temperature(ds1, roi)
+        return FriersonGCM.dist_euc(T0,T1,roi)
+    # ----------------------------------------------------------------
 
     def compute_pairwise_observables(self, pairwise_funs, md0, md1list, root_dir): # Distance is the main application here 
         pairwise_fun_vals = [[] for pwf in pairwise_funs] # List of lists
@@ -913,6 +954,19 @@ class FriersonGCM(DynamicalSystem):
         scaling = precip_extremes_scaling.scaling(omega, temp, p, dp_dpfull, ps)
         scaling *= 3600 * 24
         return scaling
+    # ----------- More specialized scalar observables below ------------
+    @staticmethod
+    def regional_rain(ds, roi):
+        rtot = FriersonGCM.total_rain(ds)
+        print(f'{rtot.dims = }')
+        print(f'{rtot.coords = }')
+        rtot = FriersonGCM.area_mean(FriersonGCM.sel_from_roi(rtot, roi))
+        return rtot
+    @staticmethod
+    def regional_cwv(ds, roi):
+        cwv = FriersonGCM.column_water_vapor(ds)
+        cwv = FriersonGCM.area_mean(FriersonGCM.sel_from_roi(cwv, roi))
+        return cwv
 
 
 
