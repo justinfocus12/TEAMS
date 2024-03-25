@@ -343,7 +343,7 @@ class FriersonGCM(DynamicalSystem):
                 })
 
         # Augment the namelist with forcing information
-        nml['main_nml']['days'] = icandf['frc'].fin_time - icandf['frc'].init_time
+        nml['main_nml']['days'] = int(roung((icandf['frc'].fin_time - icandf['frc'].init_time) * self.dt_save))
         numperts = len(icandf['frc'].reseed_times)
         assert numperts == len(icandf['frc'].seeds)
         if self.pert_type == 'IMP':

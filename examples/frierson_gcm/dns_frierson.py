@@ -28,7 +28,8 @@ from ensemble import Ensemble
 from dynamicalsystem import DynamicalSystem
 import forcing
 import precip_extremes_scaling
-from algorithms_frierson import 
+import algorithms_frierson
+import frierson_gcm
 
 def boolstr(b):
     if b:
@@ -57,7 +58,7 @@ def print_comp_proc(compproc):
 
 def dns_paramset(i_param):
     base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
-    config_gcm = FriersonGCM.default_config(base_dir_absolute,base_dir_absolute)
+    config_gcm = frierson_gcm.FriersonGCM.default_config(base_dir_absolute,base_dir_absolute)
 
     # Parameters to loop over
     pert_types = ['IMP']        + ['SPPT']*20
@@ -90,50 +91,45 @@ def dns_paramset(i_param):
         'max_member_duration_phys': 100.0,
         'num_chunks_max': 21,
         })
-    return config_gcm,config_algo,config_analysis,expt_labels[i_param],expt_abbrvs[i_param]
+    config_analysis = dict()
+    return config_gcm,config_algo,config_analysis,expt_label,expt_abbrv
 
 
-def run_dns(i_param):
-    # Create a small ensemble
-
+def run_dns(dirdict,filedict,config_gcm,config_algo):
+    nproc = 4
+    recompile = False
     root_dir = dirdict['data']
     obs_fun = lambda t,x: None
 
-    if tododict['run']:
-        days_per_chunk = 100
-        num_chunks = 21
-        if exists(ens_filename):
-            ens = pickle.load(open(ens_filename,'rb'))
-            ens.set_root_dir(root_dir)
-            n_mem = ens.memgraph.number_of_nodes()
-            parent = n_mem-1
-            _,init_time = ens.get_member_timespan(n_mem-1)
-            init_cond = ens.traj_metadata[n_mem-1]['filename_restart']
-        else:
-            gcm = FriersonGCM(config,recompile=recompile)
-            ens = Ensemble(gcm,root_dir=root_dir)
-            n_mem = 0
-            init_time = 0
-            init_cond = None
-            parent = None
-        ens.dynsys.set_nproc(nproc)
-        for mem in range(n_mem,n_mem+num_chunks):
-            fin_time = init_time + days_per_chunk
-            icandf = ens.dynsys.generate_default_icandf(init_time,fin_time) # For SPPT, this will restart the random seed. 
-            icandf['init_cond'] = init_cond
-            # saveinfo will have RELATIVE paths 
-            saveinfo = dict({
-                # Temporary folder
-                'temp_dir': f'mem{mem}',
-                # Ultimate resulting filenames
-                'filename_traj': f'mem{mem}.nc',
-                'filename_restart': f'restart_mem{mem}.cpio',
-                })
-            _ = ens.branch_or_plant(icandf, obs_fun, saveinfo, parent=parent)
-            init_time = fin_time
-            parent = mem
-            init_cond = ens.traj_metadata[parent]['filename_restart']
-            pickle.dump(ens, open(join(expt_dir,'ens.pickle'),'wb'))
+    if exists(filedict['alg']):
+        alg = pickle.load(open(filedict['alg'], 'rb'))
+    else:
+        gcm = frierson_gcm.FriersonGCM(config_gcm, recompile=recompile)
+        ens = Ensemble(gcm, root_dir=root_dir)
+        alg = algorithms_frierson.FriersonGCMDirectNumericalSimulation(config_algo, ens)
+    alg.ens.dynsys.set_nproc(nproc)
+    alg.ens.set_root_dir(root_dir)
+    alg.set_simulation_capacity(config_algo['num_chunks_max'], config_algo['max_member_duration_phys'])
+    nmem = alg.ens.get_nmem()
+    num_new_chunks = alg.num_chunks_max - nmem
+    print(f'{num_new_chunks = }')
+    if num_new_chunks > 0:
+        alg.terminate = False
+    while not (alg.terminate):
+        mem = alg.ens.get_nmem()
+        print(f'----------- Starting member {mem} ----------------')
+        saveinfo = dict({
+            'temp_dir': f'mem{mem}',
+            'filename_traj': f'mem{mem}.nc',
+            'filename_restart': f'restart_mem{mem}.cpio',
+            })
+        alg.take_next_step(saveinfo)
+        if exists(filedict['alg']):
+            os.rename(filedict['alg'], filedict['alg'].replace('.pickle','_backup.pickle'))
+        pickle.dump(alg, open(filedict['alg'], 'wb'))
+    return
+
+def plot_mean_state(dirdict,filedict,config_gcm,config_algo):
     # Load the ensemble for further analysis
     ens = pickle.load(open(join(expt_dir,'ens.pickle'),'rb'))
     obsprop = ens.dynsys.observable_props()
@@ -285,25 +281,18 @@ def run_dns(i_param):
                     plt.close(fig)
     return
 
-def dns_procedure(i_param):
+def dns_single(i_param):
     tododict = dict({
         'run':                            1,
-        'summarize':                      1,
-        'plot': dict({
-            'snapshots':    1,
-            'return_stats': 1,
-            }),
+        'plot_mean_state':                0,
+        'plot_return_stats':              0,
         })
-    nproc = 4
-    recompile = False
-    config_gcm,config_algo,config_analysis,expt_label,expt_abbrv = dns_params(i_param)
-    param_abbrv_gcm,param_label_gcm = FriersonGCM.label_from_config(config_gcm)
-    param_abbrv_algo,param_label_algo = FriersonGCM.label_from_config(config_algo)
-
-    base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
+    config_gcm,config_algo,config_analysis,expt_label,expt_abbrv = dns_paramset(i_param)
+    param_abbrv_gcm,param_label_gcm = frierson_gcm.FriersonGCM.label_from_config(config_gcm)
+    param_abbrv_algo,param_label_algo = algorithms_frierson.FriersonGCMDirectNumericalSimulation.label_from_config(config_algo)
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
-    date_str = "2024-03-05"
-    sub_date_str = "0/DNS"
+    date_str = "2024-03-26"
+    sub_date_str = "0"
     dirdict = dict()
     dirdict['expt'] = join(scratch_dir,date_str,sub_date_str,param_abbrv_gcm,param_abbrv_algo)
     for subdir in ['data','analysis','plots']:
@@ -314,3 +303,25 @@ def dns_procedure(i_param):
 
     if tododict['run']:
         run_dns(dirdict,filedict,config_gcm,config_algo)
+    alg = pickle.load(open(filedict['alg'],'rb'))
+    if tododict['plot_mean_state']:
+        plot_mean_state(config_analysis, alg, dirdict)
+    if tododict['plot_return_stats']:
+        plot_return_stats(config_analysis, alg, dirdict)
+    return
+
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        procedure = sys.argv[1]
+        idx_param = [int(arg) for arg in sys.argv[2:]]
+    else:
+        procedure = 'single'
+        idx_param = [1]
+    print(f'Got into Main')
+    if procedure == 'single':
+        for i_param in idx_param:
+            dns_single(i_param)
+    elif procedure == 'meta':
+        dns_meta_analysis_procedure(idx_param)
+

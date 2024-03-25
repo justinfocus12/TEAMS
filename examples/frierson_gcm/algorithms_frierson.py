@@ -171,7 +171,7 @@ class FriersonGCMDirectNumericalSimulation(algorithms.DirectNumericalSimulation)
     def generate_icandf_from_parent(self, parent):
         init_time_parent,fin_time_parent = self.ens.get_member_timespan(parent)
         init_time = fin_time_parent
-        fin_time = init_time + self.chunk_size
+        fin_time = init_time + self.max_member_duration
         icandf = dict({
             'init_cond': self.ens.traj_metadata[parent]['filename_restart'],
             'frc': forcing.OccasionalReseedForcing(init_time, fin_time, [init_time], [self.rng.integers(low=self.seed_min,high=self.seed_max)]) # TODO gracefully continue seed from previous

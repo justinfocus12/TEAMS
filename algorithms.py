@@ -561,7 +561,7 @@ class ODEDirectNumericalSimulation(DirectNumericalSimulation):
         impulse = np.zeros(self.ens.dynsys.impulse_dim)
         icandf = dict({
             'init_cond': init_cond,
-            'frc': forcing.OccasionalVectorForcing(fin_time_parent, fin_time_parent+self.chunk_size, [fin_time_parent], [impulse])
+            'frc': forcing.OccasionalVectorForcing(fin_time_parent, fin_time_parent+self.max_member_duration, [fin_time_parent], [impulse])
             })
         return icandf
 
