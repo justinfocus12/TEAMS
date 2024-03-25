@@ -540,35 +540,27 @@ class FriersonGCM(DynamicalSystem):
     @staticmethod
     def dist_euc_rain(ds0,ds1,roi):
         assert set(roi.keys()) == {'lat','lon'}
-        r0 = FriersonGCM.sel_from_roi(FriersonGCM.total_rain(ds0), roi)
-        r1 = FriersonGCM.sel_from_roi(FriersonGCM.total_rain(ds1), roi)
+        r0,r1 = tuple(FriersonGCM.total_rain(ds) for ds in (ds0,ds1))
         return FriersonGCM.dist_euc(r0,r1,roi) #np.sqrt(((r0 - r1)**2).mean(dim=['lat','lon']))
     @staticmethod
     def dist_euc_horzvel(ds0,ds1,roi):
-        u0 = FriersonGCM.sel_from_roi(FriersonGCM.zonal_velocity(ds0), roi)
-        u1 = FriersonGCM.sel_from_roi(FriersonGCM.zonal_velocity(ds1), roi)
+        u0,u1 = tuple(FriersonGCM.zonal_velocity(ds) for ds in (ds0,ds1))
         dist_u = FriersonGCM.dist_euc(u0,u1,roi)
-        v0 = FriersonGCM.sel_from_roi(FriersonGCM.meridional_velocity(ds0), roi)
-        v1 = FriersonGCM.sel_from_roi(FriersonGCM.meridional_velocity(ds1), roi)
+        v0,v1 = tuple(FriersonGCM.meridional_velocity(ds) for ds in (ds0,ds1))
         dist_v = FriersonGCM.dist_euc(v0,v1,roi)
         return np.sqrt(dist_u**2 + dist_v**2)
     @staticmethod
     def dist_euc_cwv(ds0,ds1,roi):
         assert set(roi.keys()) == {'lat','lon'}
-        cwv0 = FriersonGCM.sel_from_roi(FriersonGCM.column_water_vapor(ds0), roi)
-        cwv1 = FriersonGCM.sel_from_roi(FriersonGCM.column_water_vapor(ds1), roi)
+        cwv0,cwv1 = tuple(FriersonGCM.column_water_vapor(ds) for ds in (ds0,ds1))
         return FriersonGCM.dist_euc(cwv0,cwv1,roi)
     @staticmethod
     def dist_euc_ps(ds0,ds1,roi):
-        p0 = FriersonGCM.sel_from_roi(
-                FriersonGCM.surface_pressure(ds0), roi)
-        p1 = FriersonGCM.sel_from_roi(
-                FriersonGCM.surface_pressure(ds1), roi)
+        p0,p1 = tuple(FriersonGCM.surface_pressure(ds) for ds in (ds0,ds1))
         return FriersonGCM.dist_euc(p0,p1,roi)
     @staticmethod
     def dist_euc_temp(ds0,ds1,roi):
-        T0 = FriersonGCM.temperature(ds0, roi)
-        T1 = FriersonGCM.temperature(ds1, roi)
+        T0,T1 = tuple(FriersonGCM.temperature(ds) for ds in (ds0,ds1))
         return FriersonGCM.dist_euc(T0,T1,roi)
     # ----------------------------------------------------------------
 
@@ -963,8 +955,6 @@ class FriersonGCM(DynamicalSystem):
     @staticmethod
     def regional_rain(ds, roi):
         rtot = FriersonGCM.total_rain(ds)
-        print(f'{rtot.dims = }')
-        print(f'{rtot.coords = }')
         rtot = FriersonGCM.area_mean(FriersonGCM.sel_from_roi(rtot, roi))
         return rtot
     @staticmethod

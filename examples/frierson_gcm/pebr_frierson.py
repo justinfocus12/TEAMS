@@ -86,10 +86,10 @@ def pebr_paramset(i_param):
         'seed_max': 100000,
         'seed_inc_init': seed_incs[i_param], 
         'branches_per_group': 16, 
-        'interbranch_interval_phys': 1.0, # small interval helps to see continuity in stability
-        'branch_duration_phys': 20.0,
-        'num_branch_groups': 6,
-        'max_member_duration_phys': 30.0,
+        'interbranch_interval_phys': 30.0, # small interval helps to see continuity in stability
+        'branch_duration_phys': 40.0,
+        'num_branch_groups': 20,
+        'max_member_duration_phys': 50.0,
         })
     return config_gcm,config_algo,expt_label,expt_abbrv
 
@@ -290,7 +290,7 @@ def pebr_workflow(i_param):
     dirdict = dict()
     base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
-    date_str = "2024-03-23"
+    date_str = "2024-03-25"
     sub_date_str = "0"
     dirdict['expt'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_gcm, param_abbrv_algo)
     dirdict['data'] = join(dirdict['expt'], 'data')
@@ -358,22 +358,42 @@ def quantify_dispersion_rates(config_analysis, alg, dirdict):
             tidx0 = trange_valid - t0[0]
             tidx1 = trange_valid - t1[0]
             dist = np.nan*np.ones_like(trange_full)
-            print(f'{trange_full = }')
-            print(f'{trange_valid = }')
-            print(f'{ds0.time.isel(time=tidx0).to_numpy() = }')
-            print(f'{ds1.time.isel(time=tidx1).to_numpy() = }')
             dist = dist_props['fun'](ds0.isel(time=tidx0), ds1.isel(time=tidx1), **dist_props['kwargs'])
             return dist
         dispersion_file = join(dirdict['analysis'],r'dispersion_%s.npz'%(dist_props['abbrv']))
-        dispersion_metrics = alg.measure_dispersion(dist_fun, config_analysis['satfracs'], dispersion_file)
+        dispersion_stats = alg.measure_dispersion(dist_fun, config_analysis['satfracs'], dispersion_file)
         # Should we also plot right here? Yes, why not 
-        figfile_prefix = join(dirdict,r'dispersion_%s'%(dist_props['abbrv']))
-        groups2plot = np.arange(min(dispersion_metrics['dists'].shape[0],10), dtype=int)
+        figfile_prefix = join(dirdict['plots'],r'dispersion_%s'%(dist_props['abbrv']))
+        groups2plot = np.arange(min(dispersion_stats['dists'].shape[0],10), dtype=int)
         alg.plot_dispersion(
-                dispersion_metrics, figfile_prefix, groups2plot=groups2plot,  
-                title=dist_props['label'], logscale=True
+                dispersion_stats, figfile_prefix, groups2plot=groups2plot,  
+                title=dist_props['label'], logscale=False
                 )
     return 
+
+def plot_observable_spaghetti(config_analysis, alg, dirdict):
+    for obs_name,obs_props in config_analysis['observables'].items():
+        print(f'{obs_name = }')
+        print(f'{obs_props = }')
+        obs_fun = lambda ds: obs_props['fun'](ds,**obs_props['kwargs'])
+        ylabel = obs_props['label']
+        for group in range(min(4,alg.branching_state['next_branch_group']+1)):
+            title = r'Group %d'%(group)
+            outfile = join(dirdict['plots'], r'spaghetti_obs%s_bg%d.png'%(obs_props['abbrv'],group))
+            alg.plot_observable_spaghetti(obs_fun,group,outfile,ylabel=ylabel,title=title)
+            # TODO maybe precompute all the observables in advance, in case they're used for multiple purposes
+    return
+
+def quantify_running_max_convergence(config_analysis, alg, dirdict):
+    for obs_name,obs_props in config_analysis['observables'].items():
+        print(f'{obs_name = }')
+        print(f'{obs_props = }')
+        obs_fun = lambda ds: obs_props['fun'](ds,**obs_props['kwargs'])
+        # Collect running maxima 
+        runmax_file = join(dirdict['analysis'], r'running_max_%s.npz'%(obs_props['abbrv']))
+        figfile_prefix = join(dirdict['plots'], r'running_max_%s'%(obs_props['abbrv']))
+        alg.measure_running_max(obs_fun, runmax_file, figfile_prefix, label=obs_props['label'])
+    return
 
 def old_thing():
     if 0 and utils.find_true_in_dict(tododict['plot_pebr']):
@@ -446,37 +466,6 @@ def old_thing():
                         plt.close(fig)
     return
 
-def plot_observable_spaghetti(config_analysis, alg, dirdict):
-    for obs_name,obs_props in config_analysis['observables'].items():
-        print(f'{obs_name = }')
-        print(f'{obs_props = }')
-        obs_fun = lambda ds: obs_props['fun'](ds,**obs_props['kwargs'])
-        ylabel = obs_props['label']
-        for group in range(min(4,alg.branching_state['next_branch_group']+1)):
-            title = r'Group %d'%(group)
-            outfile = join(dirdict['plots'], r'spaghetti_obs%s_bg%d.png'%(obs_props['abbrv'],group))
-            alg.plot_observable_spaghetti(obs_fun,group,outfile,ylabel=ylabel,title=title)
-            # TODO maybe precompute all the observables in advance, in case they're used for multiple purposes, but only down the line. 
-    return
-
-def plot_dispersion(config_analysis,dirdict,filedict):
-    alg = pickle.load(open(filedict['alg'], 'rb'))
-    for dist_name,dist_props in config_analysis['dist_metrics'].items():
-        dispfile = filedict['dispersion']['distance'][dist_name]
-        satfractime_file = filedict['dispersion']['satfractime'][dist_name]
-        for group in range(4):
-            outfile = filedict['plots']['groupwise']['distance'][dist_name][group]
-            alg.plot_dispersion_onegroup(
-                    group, dispfile, satfractime_file, outfile, 
-                    ylabel=dist_props['label'],
-                    logscale=True
-                    )
-        # Also plot the variation in dispersion across different initial conditions 
-        outfile = filedict['plots']['allgroups']['fsle'][dist_name]
-        alg.plot_dispersion_allgroups(dispfile, satfractime_file, outfile, title=dist_props['label'])
-        
-
-    return
 
 def pebr_meta_analysis_workflow(idx_param):
     num_expts = len(idx_param)
@@ -656,11 +645,11 @@ def old_thing():
 
 def pebr_procedure(i_param):
     tododict = dict({
-        'run':                           0,
+        'run':                           1,
         'analysis': dict({
             'observable_spaghetti':      1,
             'dispersion_rate':           1, # including both Lyapunov analysis (FSLE) and expected leadtime until fractional saturation (ELFS)
-            'extreme_value_convergence': 1, # watch extreme value statistics (curves and parameters) converge to the true values with longer time blocks
+            'running_max':               1, # watch extreme value statistics (curves and parameters) converge to the true values with longer time blocks
             }),
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = pebr_workflow(i_param)
@@ -671,6 +660,8 @@ def pebr_procedure(i_param):
         plot_observable_spaghetti(config_analysis, alg, dirdict)
     if tododict['analysis']['dispersion_rate']:
         quantify_dispersion_rates(config_analysis, alg, dirdict)
+    if tododict['analysis']['running_max']:
+        quantify_running_max_convergence(config_analysis, alg, dirdict)
     return
 
 

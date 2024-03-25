@@ -325,11 +325,50 @@ class PeriodicBranching(EnsembleAlgorithm):
             raise Exception(f'{np.mean(np.isnan(pairwise_fun_vals_array), axis=0) = }')
         return time,pairwise_fun_vals_array
     # ************** Dispersion characteristics ****************
-    def measure_running_max(self, obs_fun, runmaxfile):
+    def measure_running_max(self, obs_fun, runmax_file, figfile_prefix, label='', abbrv=''):
         ngroups = self.branching_state['next_branch_group']+1
         split_times = np.zeros(ngroups, dtype=int)
         print(f'{split_times = }')
-        running_maxes = np.zeros((ngroups, self.branches_per_group, self.branch_duration)) 
+        running_max_branch = np.zeros((ngroups, self.branches_per_group, self.branch_duration)) 
+        running_max_trunk = np.zeros((ngroups, self.branch_duration)) 
+        for group in range(ngroups):
+            print(f'About to compute running maxes for {group = }')
+            time,mems_trunk,tidx_trunk,mems_branch,tidxs_branch = self.get_tree_subset(group)
+
+            obs_branch = np.array([self.ens.compute_observables([obs_fun], mem)[0][tidxs_branch[i_mem]] for (i_mem,mem) in enumerate(mems_branch)])
+            obs_trunk = np.concatenate(tuple(self.ens.compute_observables([obs_fun], mem)[0] for mem in mems_trunk))[tidx_trunk]
+            split_times[group] = time[0]
+            running_max_branch[group,:,:] = np.maximum.accumulate(obs_branch, axis=1)
+            running_max_trunk[group,:] = np.maximum.accumulate(obs_trunk)
+
+        running_max_std = np.std(running_max_branch, axis=1)
+        running_max_mean = np.mean(running_max_branch, axis=1)
+        # TODO measure maxima in terms of return period. This might be a task for meta-analysis.
+        runmax_stats = dict(
+                split_times = split_times,
+                running_max_branch = running_max_branch, 
+                running_max_trunk = running_max_trunk, 
+                running_max_mean = running_max_mean,
+                running_max_std = running_max_std,
+                )
+        np.savez(runmax_file, **runmax_stats)
+        # Plot 
+        ngroups,nbranches,ntimes = running_max_branch.shape
+        for group in range(ngroups):
+            fig,axes = plt.subplots(nrows=2,figsize=(6,12))
+            time = np.arange(ntimes)
+            ax = axes[0]
+            for branch in range(nbranches):
+                ax.plot(time, running_max_branch[group,branch], color='tomato')
+            ax.plot(time, running_max_mean[group,:], color='dodgerblue')
+            ax.plot(time, running_max_trunk[group,:], color='black', linestyle='--', linewidth=2)
+            ax.set_ylabel('Running maxes')
+            ax = axes[1]
+            ax.plot(time, running_max_std[group,:], color='dodgerblue')
+            ax.set_ylabel('Std. of running max')
+            fig.savefig(r'%s_bg%d.png'%(figfile_prefix,group), **pltkwargs)
+            plt.close(fig)
+        return
 
     def measure_dispersion(self, dist_fun, satfracs, outfile):
         # Measure the distance of every member from the control (according to a given function), as well as the fractional saturation times
@@ -345,7 +384,9 @@ class PeriodicBranching(EnsembleAlgorithm):
         rmsd = np.sqrt(np.mean(rmses[:,-1]**2))
         # Finite-size Lyapunov analysis (at fixed fractions of saturation)
         nfracs = len(satfracs)
-        fsle = np.nan*np.ones(ngroups,nfracs)
+        fsle = np.nan*np.ones((ngroups,nfracs))
+        elfs = np.nan*np.ones((ngroups,nfracs))
+        diff_pows = np.nan*np.ones((ngroups,nfracs))
         for group in range(ngroups):
             log_rmse = np.log(rmses[group,:])
             i_time_prev = 0 
@@ -364,7 +405,7 @@ class PeriodicBranching(EnsembleAlgorithm):
                                 time[tidx]-split_times[group], np.log(rmses[group,tidx])
                                 ).slope
                         i_time_prev = tidx[-1]
-        dispersion_metrics = dict(
+        dispersion_stats = dict(
                 split_times = split_times,
                 dists = dists,
                 rmses = rmses,
@@ -374,8 +415,8 @@ class PeriodicBranching(EnsembleAlgorithm):
                 fsle = fsle,
                 diffusive_powers = diff_pows,
                 )
-        np.savez(outfile, **dispersion_metrics)
-        return dispersion_metrics 
+        np.savez(outfile, **dispersion_stats)
+        return dispersion_stats 
     @classmethod
     def analyze_pert_growth_meta(cls, pert_growth_list):
         # Compare characteristics of perturbation growth as a function of various independent variables
@@ -394,40 +435,6 @@ class PeriodicBranching(EnsembleAlgorithm):
                 for i_frac,frac in enumerate(fracs):
                     t2fracsat[dist_name][i_pg,i_frac] = np.mean(np.argmax(rmse/rmsd > frac, axis=1))
         return fracs,t2fracsat
-    def plot_dispersion_allgroups(self, dispfile, satfractime_file, outfile, title=''):
-        fig,axes = plt.subplots(ncols=2,figsize=(6,4), width_ratios=[2,1])
-        tu = self.ens.dynsys.dt_save
-        disp_data = np.load(dispfile)
-        split_times = disp_data['split_times']
-        dists = disp_data['dists']
-        rmses = disp_data['rmses']
-        rmsd = disp_data['rmsd']
-        print(f'{rmses.max() = }, {rmsd = }')
-        satfractime_data = np.load(satfractime_file)
-        satfracs = satfractime_data['satfracs']
-        elfs = satfractime_data['elfs']
-        lyap_expons = satfractime_data['lyapunov_exponents']
-        diff_pows = satfractime_data['diffusive_powers']
-        fig,axes = plt.subplots(nrows=2,figsize=(6,10), sharex=True)
-        handles = []
-        for i_sf,sf in enumerate(satfracs):
-            color = plt.cm.viridis(i_sf/len(satfracs))
-            ax = axes[0]
-            h, = ax.plot(split_times, lyap_expons[:,i_sf], color=color, marker='.', label=r'$f=%g$'%(sf))
-            handles.append(h)
-            ax.set_ylabel(r'$\lambda(f)$')
-            ax = axes[1]
-            ax.plot(split_times, elfs[:,i_sf], color=color, marker='.')
-            ax.set_ylabel(r'$\tau(f)$')
-        axes[0].legend(handles=handles)
-        axes[0].set_title(title)
-        fig.savefig(outfile, **pltkwargs)
-        plt.close(fig)
-
-
-
-        
-
     def plot_dispersion(self, dispersion_metrics, figfile_prefix, groups2plot=None, ylabel='', title='', logscale=False):
         # TODO add in the fractional saturation times 
         tu = self.ens.dynsys.dt_save
@@ -453,7 +460,7 @@ class PeriodicBranching(EnsembleAlgorithm):
             # Exponential growth model
             i_time_prev = 0
             for i_sf,sf in enumerate(satfracs):
-                tidx = np.arange(time_prev,elfs[group,i_sf])
+                tidx = np.arange(i_time_prev,elfs[group,i_sf], dtype=int)
                 #hpow, = ax.plot(time[tidx]*tu, rmses[group][tidx[0]] * (time/time[tidx[0]])**diff_pows[group,i_sf], color='dodgerblue', label='diffusive')
                 if len(tidx) > 0:
                     hexp, = ax.plot(
@@ -463,8 +470,8 @@ class PeriodicBranching(EnsembleAlgorithm):
                                 fsle[group,i_sf]), 
                             color='limegreen', label='exp. growth')
                     #ax.axvline((time[tidx[-1]]-time[0])*tu, color='black', linewidth=0.5)
-                    ax.axhline(rmsd*satfrac, color='black', linewidth=0.5)
-                i_time_prev = tidx[-1]
+                    ax.axhline(rmsd*satfracs[i_sf], color='black', linewidth=0.5)
+                    i_time_prev = tidx[-1]
             ax.legend(handles=[hrmse,hexp])
             ax.set_xlabel(r'time since split (%g)'%(split_times[group]*tu))
             ax.set_ylabel(ylabel)
@@ -473,7 +480,6 @@ class PeriodicBranching(EnsembleAlgorithm):
             figfile = r'%s_group%d.png'%(figfile_prefix,group)
             fig.savefig(figfile, **pltkwargs)
             plt.close(fig)
-        print(f'{outfile = }')
         return 
     def plot_pert_growth(self, split_times, dists, thalfsat, diff_expons, lyap_expons, rmses, rmsd, plot_dir, plot_suffix, logscale=False):
         ngroups,nbranches,ntimes = dists.shape
