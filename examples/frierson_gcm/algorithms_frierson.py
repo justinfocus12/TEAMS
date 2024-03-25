@@ -72,3 +72,108 @@ class FriersonGCMPeriodicBranching(algorithms.PeriodicBranching):
             })
         return icandf
 
+class FriersonGCMITEAMS(algorithms.ITEAMS):
+    def derive_parameters(self, config):
+        # Parameterize the score function in a simple way: the components will be area-averages of fields over specified regions. The combined score will be a linear combination.
+        self.score_params = dict({
+            'components': dict()
+            })
+        for compkey,compval in config['score_components'].items():
+            sccomp = dict({'observable': compval['observable']}) # name of the observable function
+            sccomp['roi'] = dict()
+            for dim in ['lat','lon','pfull']:
+                if dim in compval['roi'].keys():
+                    if isinstance(compval['roi'][dim],list):
+                        sccomp['roi'][dim] = slice(compval['roi'][dim][0],sccomp['roi'][dim][1])
+                    else:
+                        sccomp['roi'][dim] = compval['roi'][dim]
+            sccomp['tavg'] = compval['tavg']
+            sccomp['weight'] = compval['weight']
+            self.score_params['components'][compkey] = sccomp.copy()
+        super().derive_parameters(config)
+        return
+    def score_components(self, t, ds):
+        scores = []
+        for compkey,compval in self.score_params['components'].items():
+            field = self.ens.dynsys.sel_from_roi(
+                        getattr(self.ens.dynsys, compval['observable'])(ds),
+                        compval['roi'])
+            scores.append(field.mean(dim=set(field.dims) - {'time'}))
+        return xr.concat(scores, dim='component').assign_coords(component=list(self.score_params['components'].keys()))
+    def score_combined(self, sccomps):
+        score = np.zeros(sccomps.time.size)
+        total_weight = 0.0
+        for compkey,compval in self.score_params['components'].items():
+            conv = np.convolve(
+                    np.ones(compval['tavg'])/compval['tavg'],
+                    sccomps.sel(component=compkey).to_numpy(),
+                    mode='full')[:sccomps['time'].size-(compval['tavg']-1)]
+            conv[:compval['tavg']-1] = np.nan
+            score += compval['weight']*conv
+            total_weight += compval['weight']
+        score /= total_weight
+        return score
+    @staticmethod
+    def label_from_config(config):
+        abbrv_population,label_population = algorithms.ITEAMS.label_from_config(config)
+        obsprop = FriersonGCM.observable_props()
+        comp_labels = []
+        for compkey,compval in config['score_components'].items():
+            roi_abbrv,roi_label = FriersonGCM.label_from_roi(compval['roi'])
+            comp_label = r'%s%stavg%d'%(
+                    obsprop[compval['observable']]['abbrv'],
+                    roi_abbrv,
+                    compval['tavg']
+                    )
+            comp_labels.append(comp_label)
+        abbrv_score = '_'.join(comp_labels) 
+        abbrv = '_'.join([
+            'ITEAMS',
+            abbrv_population,
+            abbrv_score,
+            ])
+        label = ', '.join([
+            label_population,
+            ])
+        return abbrv,label
+    def generate_icandf_from_parent(self, parent, branch_time):
+        # Replicate all parent seeds occurring before branch time
+        init_time_parent,fin_time_parent = self.ens.get_member_timespan(parent)
+        assert init_time_parent <= branch_time < init_time_parent + self.time_horizon + self.buffer_time == fin_time_parent
+        print(f'{init_time_parent = }, {branch_time = }, {fin_time_parent = }')
+        init_cond = self.ens.traj_metadata[parent]['icandf']['init_cond']
+        init_time = init_time_parent
+        fin_time = init_time + self.time_horizon #+ self.buffer_time
+        new_seed = self.rng.integers(low=self.seed_min, high=self.seed_max)
+        # TODO consider carefully whether we need to distinguish procedure based on SPPT vs. other kinds of forcing
+        if init_time_parent < branch_time:
+            pfrc = self.ens.traj_metadata[parent]['icandf']['frc']
+            reseed_times = []
+            seeds = []
+            # Replicate parent's seeds up until the branch time
+            for i_rst,rst in enumerate(pfrc.reseed_times):
+                if rst < branch_time:
+                    reseed_times.append(rst)
+                    seeds.append(pfrc.seeds[i_rst])
+            # Put in a new seed for the branch time
+            reseed_times.append(branch_time)
+            seeds.append(new_seed)
+        else:
+            reseed_times = [branch_time]
+            seeds = [new_seed] # TODO if possible, when on trunk, continue the random number generator
+        icandf = dict({
+            'init_cond': init_cond,
+            'frc': forcing.OccasionalReseedForcing(init_time, fin_time, reseed_times, seeds),
+            })
+        return icandf
+
+class FriersonGCMDirectNumericalSimulation(algorithms.DirectNumericalSimulation):
+    def generate_icandf_from_parent(self, parent):
+        init_time_parent,fin_time_parent = self.ens.get_member_timespan(parent)
+        init_time = fin_time_parent
+        fin_time = init_time + self.chunk_size
+        icandf = dict({
+            'init_cond': self.ens.traj_metadata[parent]['filename_restart'],
+            'frc': forcing.OccasionalReseedForcing(init_time, fin_time, [init_time], [self.rng.integers(low=self.seed_min,high=self.seed_max)]) # TODO gracefully continue seed from previous
+            })
+        return icandf
