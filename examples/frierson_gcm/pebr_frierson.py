@@ -63,6 +63,7 @@ def pebr_paramset(i_param):
     std_sppts = [0.5]           + [0.5,0.3,0.1,0.05,0.01]*4
     tau_sppts = [6.0*3600]      + [6.0*3600]*5   + [6.0*3600]*5    + [24.0*3600]*5     + [96.0*3600]*5 
     L_sppts = [500.0*1000]      + [500.0*1000]*5 + [2000.0*1000]*5 + [500.0*1000]*5    + [500.0*1000]*5
+    outputs_per_days = [4]*21
     seed_incs = [0]*21
 
     if pert_types[i_param] == 'IMP':
@@ -72,6 +73,7 @@ def pebr_paramset(i_param):
         expt_label = r'SPPT, $\sigma=%g$, $\tau=%g$ h, $L=%g$ km'%(std_sppts[i_param],tau_sppts[i_param]/3600,L_sppts[i_param]/1000)
         expt_abbrv = r'SPPT_std%g_tau%gh_L%gkm'%(std_sppts[i_param],tau_sppts[i_param]/3600,L_sppts[i_param]/1000)
 
+    config_gcm['outputs_per_day'] = outputs_per_days[i_param]
     config_gcm['pert_type'] = pert_types[i_param]
     if config_gcm['pert_type'] == 'SPPT':
         config_gcm['SPPT']['tau_sppt'] = tau_sppts[i_param]
@@ -85,11 +87,11 @@ def pebr_paramset(i_param):
         'seed_min': 1000,
         'seed_max': 100000,
         'seed_inc_init': seed_incs[i_param], 
-        'branches_per_group': 16, 
-        'interbranch_interval_phys': 30.0, # small interval helps to see continuity in stability
+        'branches_per_group': 12, 
+        'interbranch_interval_phys': 40.0, # small interval helps to see continuity in stability
         'branch_duration_phys': 40.0,
         'num_branch_groups': 20,
-        'max_member_duration_phys': 50.0,
+        'max_member_duration_phys': 40.0,
         })
     return config_gcm,config_algo,expt_label,expt_abbrv
 
@@ -297,8 +299,8 @@ def pebr_workflow(i_param):
     dirdict['analysis'] = join(dirdict['expt'], 'analysis')
     dirdict['plots'] = join(dirdict['expt'], 'plots')
     dirdict['init_cond'] = join(
-            f'/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/2024-03-05/0/DNS/',
-            param_abbrv_gcm)
+            f'/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/2024-03-26/0/',
+            param_abbrv_gcm, 'DNS_si0', 'data')
 
     for dirname in ['data','analysis','plots']:
         makedirs(dirdict[dirname], exist_ok=True)
@@ -643,7 +645,7 @@ def old_thing():
         FriersonGCMPeriodicBranching.plot_pert_growth_meta(param2vary_vals, fracsat, t2fracsat, join(meta_dir,f't2fracsat_{fixed_param_abbrv}.png'), r'$\sigma_{\mathrm{SPPT}}$', tu=tu, fracsat_ref=fracsat_nosppt, t2fracsat_ref=t2fracsat_nosppt)
     return
 
-def pebr_procedure(i_param):
+def pebr_single(i_param):
     tododict = dict({
         'run':                           1,
         'analysis': dict({
@@ -675,7 +677,7 @@ if __name__ == "__main__":
     print(f'Got into Main')
     if procedure == 'single':
         for i_param in idx_param:
-            pebr_procedure(i_param)
+            pebr_single(i_param)
     elif procedure == 'meta':
         pebr_meta_analysis_procedure(idx_param)
 

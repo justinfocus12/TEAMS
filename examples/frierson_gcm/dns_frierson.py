@@ -92,6 +92,80 @@ def dns_paramset(i_param):
         'num_chunks_max': 21,
         })
     config_analysis = dict()
+    config_analysis['spinup_phys'] = 700 # at what time to start computing statistics
+    config_analysis['time_block_size_phys'] = 30 # size of block for method of block maxima
+    # Statistics to compute
+    config_analysis['stats_of_interest'] = dict({
+        'moments': [1,2,3],
+        'quantiles': [0.5,0.9,0.99],
+        })
+    # Fields to visualize mean state
+    # Full-field observables for mean state and quantiles
+    config_analysis['fields_lonlatdep'] = dict({
+        'rain': dict({
+            'fun': frierson_gcm.FriersonGCM.total_rain,
+            'roi': None,
+            'cmap': 'Blues',
+            'label': 'Rain',
+            'abbrv': 'R',
+            }),
+        'rain_extratropical': dict({
+            'fun': frierson_gcm.FriersonGCM.total_rain,
+            'roi': dict(lat=slice(30,None)),
+            'cmap': 'Blues',
+            'label': 'Rain',
+            'abbrv': 'Rlat30-90',
+            }),
+        'temp_700': dict({
+            'fun': frierson_gcm.FriersonGCM.temperature,
+            'roi': dict(pfull=700),
+            'cmap': 'Reds',
+            'label': 'Temp ($p/p_s=0.7$)',
+            'abbrv': 'T700',
+            }),
+        'u_500': dict({
+            'fun': frierson_gcm.FriersonGCM.zonal_velocity,
+            'roi': dict(pfull=500),
+            'cmap': 'coolwarm',
+            'label': 'Zon. Vel. ($p/p_s=0.5$)',
+            'abbrv': 'U500',
+            }),
+        'surface_pressure': dict({
+            'fun': frierson_gcm.FriersonGCM.surface_pressure,
+            'roi': None,
+            'cmap': 'coolwarm',
+            'label': 'Surf. Pres.',
+            'abbrv': 'PS',
+            }),
+        })
+    # Latitude-dependent fields, zonally symmetric
+    config_analysis['fields_latdep'] = dict({
+        'rain': dict({
+            'fun': frierson_gcm.FriersonGCM.total_rain,
+            'roi': None,
+            'abbrv': 'R',
+            'label': 'Rain (6h avg)',
+            }),
+        'rain_lat30-90': dict({
+            'fun': frierson_gcm.FriersonGCM.total_rain,
+            'roi': dict(lat=slice(30,None)),
+            'abbrv': 'Rlat30-90',
+            'label': 'Rain (6h avg)',
+            }),
+        'u_500': dict({
+            'fun': frierson_gcm.FriersonGCM.zonal_velocity,
+            'roi': dict(pfull=500),
+            'abbrv': 'U500',
+            'label': r'Zon. Vel. ($p/p_s=0.5$)',
+            }),
+        'temp_700': dict({
+            'fun': frierson_gcm.FriersonGCM.temperature,
+            'roi': dict(pfull=700),
+            'abbrv': 'T700',
+            'label': r'Temp. ($p/p_s=0.7$)',
+            }),
+        })
+
     return config_gcm,config_algo,config_analysis,expt_label,expt_abbrv
 
 
@@ -125,54 +199,91 @@ def run_dns(dirdict,filedict,config_gcm,config_algo):
             })
         alg.take_next_step(saveinfo)
         if exists(filedict['alg']):
-            os.rename(filedict['alg'], filedict['alg'].replace('.pickle','_backup.pickle'))
+            os.rename(filedict['alg'], filedict['alg_backup'])
         pickle.dump(alg, open(filedict['alg'], 'wb'))
     return
 
-def plot_mean_state(dirdict,filedict,config_gcm,config_algo):
-    # Load the ensemble for further analysis
-    ens = pickle.load(open(join(expt_dir,'ens.pickle'),'rb'))
-    obsprop = ens.dynsys.observable_props()
-    # Make the directory for analysis
-    analysis_dir = join(expt_dir,'analysis')
-    os.makedirs(analysis_dir, exist_ok=True)
-    # Select regions of interest
-    lat_target = 45.0
-    pfull_target = 1000
-    obs_roi = dict({
-        'temperature': dict(lat=lat_target,pfull=pfull_target),
-        'total_rain': dict(lat=lat_target),
-        })
-    if tododict['summarize']:
-        spinup = 700
-        nmem = ens.get_nmem()
-        all_starts,all_ends = ens.get_all_timespans()
-        mems2summarize = np.where(all_starts >= spinup)[0]
-        time_block_size = 25
-        for obs_name,roi in obs_roi.items():
-            obs_fun = {obs_name: lambda dsmem: getattr(ens.dynsys, obs_name)(dsmem)}
-            fxypt = xr.concat(ens.compute_observables(obs_fun,mems2summarize)[obs_name], dim='time')
-            # ----------------- Mean and quantiles at various latitudes ----------
-            roi = {dim: val for (dim,val) in obs_roi[obs_name].items() if dim not in ['lon','lat']}
-            sf = np.array([0.5,0.1,0.01,0.001]) # complementary quantiles of interest
-            coords_sf = dict({c: fxypt.coords[c].to_numpy() for c in set(fxypt.dims) - {'time','lon','pfull'}})
-            coords_sf['sf'] = sf
-            f_sf = xr.DataArray(coords=coords_sf, dims=tuple(coords_sf.keys()), data=np.nan)
-            for i,sfval in enumerate(sf):
-                f_sf.loc[dict(sf=sfval)] = fxypt.sel(
-                        roi,method='nearest',drop=True).quantile(1-sfval, dim=['time','lon'])
+def plot_snapshots(config_analysis, alg, dirdict):
+    tu = alg.ens.dynsys.dt_save
+    spinup = int(config_analysis['spinup_phys']/tu)
+    time_block_size = int(config_analysis['time_block_size_phys']/tu)
+    all_starts,all_ends = alg.ens.get_all_timespans()
+    mem = np.where(all_starts >= spinup)[0][0]
+    print(f'{spinup = }, {mem = }')
+    for (field_name,field_props) in config_analysis['fields_lonlatdep'].items():
+        fig,ax = plt.subplots()
+        field = frierson_gcm.FriersonGCM.sel_from_roi(alg.ens.compute_observables([field_props['fun']], mem)[0], field_props['roi'])
+        xr.plot.pcolormesh(field.isel(time=0), x='lon', y='lat', cmap=field_props['cmap'], ax=ax)
+        ax.set_title(field_props['label'])
+        ax.set_xlabel('Longitude')
+        ax.set_ylabel('Latitude')
+        fig.savefig(join(dirdict['plots'],r'%s_t%g.png'%(field_props['abbrv'],all_starts[mem]*tu)), **pltkwargs)
+        plt.close(fig)
+    return
 
-            f_mean = fxypt.sel(roi,method='nearest',drop=True).mean(dim=['time','lon'])
-            f_sf_mean = xr.Dataset(data_vars={'fmean': f_mean, 'fsf': f_sf})
-            f_sf_mean.to_netcdf(join(analysis_dir,f'mean_sf_{obs_name}.nc'))
-            f_sf_mean.close()
 
-            # ----------------- Return period curves at a fixed latitude --------
-            roi = {dim: val for (dim,val) in obs_roi[obs_name].items() if dim not in ['lon']}
-            lon_roll_step_requested = 30
-            bin_lows,hist,rtime,logsf = ens.dynsys.compute_stats_dns_rotsym(fxypt, lon_roll_step_requested, time_block_size, roi)
-            location_suffix = '_'.join([r'%s%g'%(roikey,roival) for (roikey,roival) in roi.items()])
-            np.save(join(analysis_dir,f'distn_{obs_name}_{location_suffix}.npy'),np.vstack((bin_lows,hist,logsf,rtime)))
+def compute_basic_stats(config_analysis, alg, dirdict):
+    obsprop = alg.ens.dynsys.observable_props()
+    nmem = alg.ens.get_nmem()
+    tu = alg.ens.dynsys.dt_save
+    spinup = int(config_analysis['spinup_phys']/tu)
+    time_block_size = int(config_analysis['time_block_size_phys']/tu)
+    all_starts,all_ends = alg.ens.get_all_timespans()
+    mems2summarize = np.where(all_starts >= spinup)[0]
+    print(f'{mems2summarize = }')
+    # Visualize zonal mean fields
+    for (field_name,field_props) in config_analysis['fields_latdep'].items():
+        print(f'Computing stats of {field_name}')
+        fun = lambda ds: frierson_gcm.FriersonGCM.sel_from_roi(field_props['fun'](ds), field_props['roi'])
+        f = xr.concat(tuple(alg.ens.compute_observables([fun], mem)[0] for mem in mems2summarize), dim='time')
+        print(f'{f.dims = }, {f.coords = }')
+        moments = config_analysis['stats_of_interest']['moments']
+        f_stats = dict()
+        for moment in moments:
+            f_stats[r'moment%d'%(moment)] = np.power(f,moment).mean(dim=['time','lon'])
+        quantiles = config_analysis['stats_of_interest']['quantiles']
+        f_stats['quantiles'] = f.quantile(quantiles, dim=['time','lon']) # TODO instead stack the longitudes and then take quantiles! 
+        f_stats = xr.Dataset(data_vars = f_stats)
+        f_stats.to_netcdf(join(dirdict['analysis'], r'%s.nc'%(field_props['abbrv'])))
+        # Plot 
+        fig,ax = plt.subplots()
+        hmean, = xr.plot.plot(f_stats['moment1'], x='lat', color='black', linestyle='--', linewidth=2, label=r'Mean')
+        for quantile in quantiles:
+            hquant, = xr.plot.plot(f_stats['quantiles'].sel(quantile=quantile), x='lat', color='dodgerblue', label=r'Quantiles')
+        ax.legend(handles=[hmean,hquant])
+        ax.set_xlabel("Latitude")
+        ax.set_ylabel(field_props['label'])
+        ax.set_title('')
+        fig.savefig(join(dirdict['plots'], r'%s.png'%(field_props['abbrv'])), **pltkwargs)
+        plt.close(fig)
+    return
+
+
+    for obs_name,roi in obs_roi.items():
+        obs_fun = {obs_name: lambda dsmem: getattr(ens.dynsys, obs_name)(dsmem)}
+        fxypt = xr.concat(ens.compute_observables(obs_fun,mems2summarize)[obs_name], dim='time')
+        # ----------------- Mean and quantiles at various latitudes ----------
+        roi = {dim: val for (dim,val) in obs_roi[obs_name].items() if dim not in ['lon','lat']}
+        sf = np.array([0.5,0.1,0.01,0.001]) # complementary quantiles of interest
+        coords_sf = dict({c: fxypt.coords[c].to_numpy() for c in set(fxypt.dims) - {'time','lon','pfull'}})
+        coords_sf['sf'] = sf
+        f_sf = xr.DataArray(coords=coords_sf, dims=tuple(coords_sf.keys()), data=np.nan)
+        for i,sfval in enumerate(sf):
+            f_sf.loc[dict(sf=sfval)] = fxypt.sel(
+                    roi,method='nearest',drop=True).quantile(1-sfval, dim=['time','lon'])
+
+        f_mean = fxypt.sel(roi,method='nearest',drop=True).mean(dim=['time','lon'])
+        f_sf_mean = xr.Dataset(data_vars={'fmean': f_mean, 'fsf': f_sf})
+        f_sf_mean.to_netcdf(join(analysis_dir,f'mean_sf_{obs_name}.nc'))
+        f_sf_mean.close()
+
+        # ----------------- Return period curves at a fixed latitude --------
+        roi = {dim: val for (dim,val) in obs_roi[obs_name].items() if dim not in ['lon']}
+        lon_roll_step_requested = 30
+        bin_lows,hist,rtime,logsf = ens.dynsys.compute_stats_dns_rotsym(fxypt, lon_roll_step_requested, time_block_size, roi)
+        location_suffix = '_'.join([r'%s%g'%(roikey,roival) for (roikey,roival) in roi.items()])
+        np.save(join(analysis_dir,f'distn_{obs_name}_{location_suffix}.npy'),np.vstack((bin_lows,hist,logsf,rtime)))
+    return
 
 
     plot_dir = join(expt_dir,'plots')
@@ -281,12 +392,7 @@ def plot_mean_state(dirdict,filedict,config_gcm,config_algo):
                     plt.close(fig)
     return
 
-def dns_single(i_param):
-    tododict = dict({
-        'run':                            1,
-        'plot_mean_state':                0,
-        'plot_return_stats':              0,
-        })
+def dns_workflow(i_param):
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv = dns_paramset(i_param)
     param_abbrv_gcm,param_label_gcm = frierson_gcm.FriersonGCM.label_from_config(config_gcm)
     param_abbrv_algo,param_label_algo = algorithms_frierson.FriersonGCMDirectNumericalSimulation.label_from_config(config_algo)
@@ -299,13 +405,28 @@ def dns_single(i_param):
         dirdict[subdir] = join(dirdict['expt'],subdir)
         makedirs(dirdict[subdir], exist_ok=True)
     print(f'About to generate default config')
-    filedict = dict({'alg': join(dirdict['data'],'alg.pickle')})
+    filedict = dict({
+        'alg': join(dirdict['data'],'alg.pickle'),
+        'alg_backup': join(dirdict['data'],'alg_backup.pickle')
+        })
+    return config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict
+
+def dns_single(i_param):
+    tododict = dict({
+        'run':                            0,
+        'plot_snapshots':                 1,
+        'compute_basic_stats':            0,
+        'plot_return_stats':              0,
+        })
+    config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = dns_workflow(i_param)
 
     if tododict['run']:
         run_dns(dirdict,filedict,config_gcm,config_algo)
     alg = pickle.load(open(filedict['alg'],'rb'))
-    if tododict['plot_mean_state']:
-        plot_mean_state(config_analysis, alg, dirdict)
+    if tododict['plot_snapshots']:
+        plot_snapshots(config_analysis, alg, dirdict)
+    if tododict['compute_basic_stats']:
+        compute_basic_stats(config_analysis, alg, dirdict)
     if tododict['plot_return_stats']:
         plot_return_stats(config_analysis, alg, dirdict)
     return
@@ -317,7 +438,7 @@ if __name__ == "__main__":
         idx_param = [int(arg) for arg in sys.argv[2:]]
     else:
         procedure = 'single'
-        idx_param = [1]
+        idx_param = [5]
     print(f'Got into Main')
     if procedure == 'single':
         for i_param in idx_param:

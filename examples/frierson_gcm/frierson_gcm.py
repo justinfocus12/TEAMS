@@ -343,7 +343,7 @@ class FriersonGCM(DynamicalSystem):
                 })
 
         # Augment the namelist with forcing information
-        nml['main_nml']['days'] = int(roung((icandf['frc'].fin_time - icandf['frc'].init_time) * self.dt_save))
+        nml['main_nml']['days'] = int(round((icandf['frc'].fin_time - icandf['frc'].init_time) * self.dt_save))
         numperts = len(icandf['frc'].reseed_times)
         assert numperts == len(icandf['frc'].seeds)
         if self.pert_type == 'IMP':
@@ -480,6 +480,7 @@ class FriersonGCM(DynamicalSystem):
         return runavg
     @staticmethod
     def sel_from_roi(da,roi):
+        if roi is None: return da
         slice_sels = {key: val for (key,val) in roi.items() if isinstance(val,slice)}
         nonslice_sels = {key: val for (key,val) in roi.items() if not isinstance(val,slice)}
         return da.sel(slice_sels).sel(nonslice_sels, method='nearest', drop=True)
