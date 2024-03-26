@@ -90,7 +90,7 @@ def pebr_paramset(i_param):
         'branches_per_group': 2, 
         'interbranch_interval_phys': 2.0, # small interval helps to see continuity in stability
         'branch_duration_phys': 5.0,
-        'num_branch_groups': 3,
+        'num_branch_groups': 2,
         'max_member_duration_phys': 40.0,
         })
     return config_gcm,config_algo,expt_label,expt_abbrv
@@ -320,7 +320,7 @@ def run_pebr(dirdict,filedict,config_gcm,config_algo):
     nproc = 4
     recompile = False
     root_dir = dirdict['data']
-    init_time = int(xr.open_mfdataset(filedict['init_cond']['trajectory'], decode_times=False)['time'].load()[-1].item())
+    init_time = int(round(xr.open_mfdataset(filedict['init_cond']['trajectory'], decode_times=False)['time'].load()[-1].item() * config_gcm['outputs_per_day']))
     init_cond = relpath(filedict['init_cond']['restart'], root_dir)
     if exists(filedict['alg']):
         alg = pickle.load(open(filedict['alg'], 'rb'))

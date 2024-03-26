@@ -374,7 +374,7 @@ class FriersonGCM(DynamicalSystem):
                 'tau_sppt': self.config['SPPT']['tau_sppt'], 
                 'L_sppt': self.config['SPPT']['L_sppt'],
                 'num_reseeds_sppt_actual': numperts,
-                'reseed_times_sppt': [t for t in icandf['frc'].reseed_times],
+                'reseed_times_sppt': [int(round(t*self.dt_save)) for t in icandf['frc'].reseed_times],
                 'seed_seq_sppt': icandf['frc'].seeds,
                 }))
             # Also nullify the old kind of perturbation
