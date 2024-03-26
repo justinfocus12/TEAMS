@@ -94,13 +94,16 @@ def dns_paramset(i_param):
     config_analysis = dict()
     config_analysis['spinup_phys'] = 700 # at what time to start computing statistics
     config_analysis['time_block_size_phys'] = 30 # size of block for method of block maxima
-    # Statistics to compute
-    config_analysis['stats_of_interest'] = dict({
+    config_analysis['lon_roll_step'] = 30 # size of longitudinal shift for purposes of zonal symmetry augmentation in method of block maxima
+    # Basic statistics to compute
+    config_analysis['basic_stats'] = dict({
         'moments': [1,2,3],
         'quantiles': [0.5,0.9,0.99],
         })
-    # Fields to visualize mean state
-    # Full-field observables for mean state and quantiles
+    # Primary target location
+    config_analysis['target_location'] = dict(lat=45,lon=180)
+    # Fields to visualize 
+    # 2D snapshots
     config_analysis['fields_lonlatdep'] = dict({
         'rain': dict({
             'fun': frierson_gcm.FriersonGCM.total_rain,
@@ -165,6 +168,83 @@ def dns_paramset(i_param):
             'label': r'Temp. ($p/p_s=0.7$)',
             }),
         })
+    # Observables to get extreme statistics of using zonal symmetry
+    config_analysis['observables_zonsym'] = dict({
+        'rain_lat45': dict({
+            'fun': frierson_gcm.FriersonGCM.latband_rain,
+            'kwargs': dict({
+                'roi': dict({'lat': 45}),
+                }),
+            'abbrv': 'R45',
+            'label': 'Rain ($\phi=45$)',
+            }),
+        'rain_lat35-55': dict({
+            'fun': frierson_gcm.FriersonGCM.latband_rain,
+            'kwargs': dict({
+                'roi': dict({'lat': slice(35,55)}),
+                }),
+            'abbrv': 'R35-55',
+            'label': 'Mean rain ($\phi\in(35,55)$)',
+            }),
+        'temp_lat45_pfull700': dict({
+            'fun': frierson_gcm.FriersonGCM.latband_temp,
+            'kwargs': dict({
+                'roi': dict({'lat': 45, 'pfull': 700}),
+                }),
+            'abbrv': 'Tlat45pfull700',
+            'label': 'Temperature ($\phi=45,p/p_s=0.7$)',
+            }),
+        'temp_lat35-55_pfull700': dict({
+            'fun': frierson_gcm.FriersonGCM.latband_temp,
+            'kwargs': dict({
+                'roi': dict({'lat': slice(35,55), 'pfull': 700}),
+                }),
+            'abbrv': 'Tlat35-55pfull700',
+            'label': 'Temperature ($\phi\in(35,55),p/p_s=0.7$)',
+            })
+        })
+
+    # Scalar observables to plot timeseries of 
+    config_analysis['observables'] = dict({
+        'local_rain': dict({
+            'fun': frierson_gcm.FriersonGCM.regional_rain,
+            'kwargs': dict({
+                'roi': config_analysis['target_location'],
+                }),
+            'abbrv': 'Rloc',
+            'label': r'Rain rate $(\phi,\lambda)=(45,180)$',
+            }),
+        'area_rain_60x20': dict({
+            'fun': frierson_gcm.FriersonGCM.regional_rain,
+            'kwargs': dict(
+                roi = dict({
+                    'lat': slice(config_analysis['target_location']['lat']-10,config_analysis['target_location']['lat']+10),
+                    'lon': slice(config_analysis['target_location']['lon']-30,config_analysis['target_location']['lon']+30),
+                    }),
+                ),
+            'abbrv': 'R60x20',
+            'label': r'Rain rate $(\phi,\lambda)=(45\pm10,180\pm30)$',
+            }),
+        'local_cwv': dict({
+            'fun': frierson_gcm.FriersonGCM.regional_cwv,
+            'kwargs': dict(
+                roi = config_analysis['target_location'],
+                ),
+            'abbrv': 'CWVloc',
+            'label': r'Column water vapor $(\phi,\lambda)=(45,180)$',
+            }),
+        'area_cwv_60x20': dict({
+            'fun': frierson_gcm.FriersonGCM.regional_cwv,
+            'kwargs': dict(
+                roi = dict(
+                    lat=slice(config_analysis['target_location']['lat']-10,config_analysis['target_location']['lat']+10),
+                    lon=slice(config_analysis['target_location']['lon']-30,config_analysis['target_location']['lon']+30),
+                    ),
+                ),
+            'abbrv': 'CWV60x20',
+            'label': r'Column water vapor $(\phi,\lambda)=(45\pm10,180\pm30)$',
+            }),
+        })
 
     return config_gcm,config_algo,config_analysis,expt_label,expt_abbrv
 
@@ -221,6 +301,28 @@ def plot_snapshots(config_analysis, alg, dirdict):
         plt.close(fig)
     return
 
+def plot_timeseries(config_analysis, alg, dirdict):
+    tu = alg.ens.dynsys.dt_save
+    spinup = int(config_analysis['spinup_phys']/tu)
+    time_block_size = int(config_analysis['time_block_size_phys']/tu)
+    duration = 3*time_block_size
+    all_starts,all_ends = alg.ens.get_all_timespans()
+    mem_first = np.where(all_starts >= spinup)[0][0]
+    mem_last = np.where(all_ends >= all_starts[mem_first] + duration)[0][0]
+    for (obs_name,obs_props) in config_analysis['observables'].items():
+        fun = lambda ds: obs_props['fun'](ds, **obs_props['kwargs'])
+        obs_val = xr.concat(tuple(
+            alg.ens.compute_observables([fun], mem)[0] for mem in range(mem_first,mem_last+1)), dim='time')
+        obs_val = obs_val.isel(time=slice(spinup-all_starts[mem_first], spinup+duration-all_starts[mem_first]))
+        fig,ax = plt.subplots(figsize=(18,3))
+        xr.plot.plot(obs_val, x='time', ax=ax)
+        ax.set_xlabel('Time')
+        ax.set_ylabel('')
+        ax.set_title(obs_props['label'])
+        figfilename = (r'%s_t%g-%g'%(obs_props['abbrv'],spinup,spinup+duration)).replace('.','p')
+        fig.savefig(join(dirdict['plots'], r'%s.png'%(figfilename)), **pltkwargs)
+        plt.close(fig)
+    return
 
 def compute_basic_stats(config_analysis, alg, dirdict):
     obsprop = alg.ens.dynsys.observable_props()
@@ -237,11 +339,11 @@ def compute_basic_stats(config_analysis, alg, dirdict):
         fun = lambda ds: frierson_gcm.FriersonGCM.sel_from_roi(field_props['fun'](ds), field_props['roi'])
         f = xr.concat(tuple(alg.ens.compute_observables([fun], mem)[0] for mem in mems2summarize), dim='time')
         print(f'{f.dims = }, {f.coords = }')
-        moments = config_analysis['stats_of_interest']['moments']
+        moments = config_analysis['basic_stats']['moments']
         f_stats = dict()
         for moment in moments:
             f_stats[r'moment%d'%(moment)] = np.power(f,moment).mean(dim=['time','lon'])
-        quantiles = config_analysis['stats_of_interest']['quantiles']
+        quantiles = config_analysis['basic_stats']['quantiles']
         f_stats['quantiles'] = f.quantile(quantiles, dim=['time','lon']) # TODO instead stack the longitudes and then take quantiles! 
         f_stats = xr.Dataset(data_vars = f_stats)
         f_stats.to_netcdf(join(dirdict['analysis'], r'%s.nc'%(field_props['abbrv'])))
@@ -258,98 +360,40 @@ def compute_basic_stats(config_analysis, alg, dirdict):
         plt.close(fig)
     return
 
-
-    for obs_name,roi in obs_roi.items():
-        obs_fun = {obs_name: lambda dsmem: getattr(ens.dynsys, obs_name)(dsmem)}
-        fxypt = xr.concat(ens.compute_observables(obs_fun,mems2summarize)[obs_name], dim='time')
-        # ----------------- Mean and quantiles at various latitudes ----------
-        roi = {dim: val for (dim,val) in obs_roi[obs_name].items() if dim not in ['lon','lat']}
-        sf = np.array([0.5,0.1,0.01,0.001]) # complementary quantiles of interest
-        coords_sf = dict({c: fxypt.coords[c].to_numpy() for c in set(fxypt.dims) - {'time','lon','pfull'}})
-        coords_sf['sf'] = sf
-        f_sf = xr.DataArray(coords=coords_sf, dims=tuple(coords_sf.keys()), data=np.nan)
-        for i,sfval in enumerate(sf):
-            f_sf.loc[dict(sf=sfval)] = fxypt.sel(
-                    roi,method='nearest',drop=True).quantile(1-sfval, dim=['time','lon'])
-
-        f_mean = fxypt.sel(roi,method='nearest',drop=True).mean(dim=['time','lon'])
-        f_sf_mean = xr.Dataset(data_vars={'fmean': f_mean, 'fsf': f_sf})
-        f_sf_mean.to_netcdf(join(analysis_dir,f'mean_sf_{obs_name}.nc'))
-        f_sf_mean.close()
-
-        # ----------------- Return period curves at a fixed latitude --------
-        roi = {dim: val for (dim,val) in obs_roi[obs_name].items() if dim not in ['lon']}
-        lon_roll_step_requested = 30
-        bin_lows,hist,rtime,logsf = ens.dynsys.compute_stats_dns_rotsym(fxypt, lon_roll_step_requested, time_block_size, roi)
-        location_suffix = '_'.join([r'%s%g'%(roikey,roival) for (roikey,roival) in roi.items()])
-        np.save(join(analysis_dir,f'distn_{obs_name}_{location_suffix}.npy'),np.vstack((bin_lows,hist,logsf,rtime)))
-    return
-
-
-    plot_dir = join(expt_dir,'plots')
-    makedirs(plot_dir,exist_ok=True)
-    if utils.find_true_in_dict(tododict['plot']):
-
-        if tododict['plot']['return_stats']:
-            for obs_name in ['temperature','total_rain']:
-                # ------------------- Mean and quantiles at various latitudes ------------
-                roi = {dim: val for (dim,val) in obs_roi[obs_name].items() if dim not in ['lon','lat']}
-                location_suffix = ('_'.join([r'%s%g'%(roikey,roival) for (roikey,roival) in roi.items()])).replace('.','p')
-                f_sf_mean = xr.open_dataset(join(analysis_dir,f'mean_sf_{obs_name}.nc'))
-                print(f'{f_sf_mean.coords = }')
-                print(f'{f_sf_mean["sf"].coords = }')
-                fig,ax = plt.subplots()
-                handles = []
-                for i_sfval,sfval in enumerate(f_sf_mean['fsf'].coords['sf'].to_numpy()):
-                    print(f'{i_sfval = }, {sfval = }')
-                    xdata = f_sf_mean.lat.values
-                    ydata = f_sf_mean['fsf'].isel(sf=i_sfval).to_numpy()
-                    print(f'{xdata.shape = }')
-                    print(f'{ydata.shape = }')
-                    h, = ax.plot(xdata, ydata, label=f'{sfval}')
-                    handles.append(h)
-                h, = ax.plot(f_sf_mean['fmean'].lat.values, f_sf_mean['fmean'].values, color='black', linestyle='--', linewidth=2, label='mean')
-                handles.append(h)
-                ax.legend(handles=handles,title='Comp. quantiles')
-                # Adjust x and y axis limits
-                minlat = 30
-                data4range = f_sf_mean['fsf'].sel(lat=slice(minlat,None))
-                ax.set_ylim([data4range.min().item(), data4range.max().item()])
-                ax.set_xlim([minlat,90])
-                ax.set_xlabel('Latitude')
-                fig.savefig(join(plot_dir,f'mean_sf_{obsprop[obs_name]["abbrv"]}_{location_suffix}.png'),**pltkwargs)
-                plt.close(fig)
+def compute_extreme_stats(config_analysis, alg, dirdict):
+    nmem = alg.ens.get_nmem()
+    tu = alg.ens.dynsys.dt_save
+    spinup = int(config_analysis['spinup_phys']/tu)
+    time_block_size = int(config_analysis['time_block_size_phys']/tu)
+    all_starts,all_ends = alg.ens.get_all_timespans()
+    mems2summarize = np.where(all_starts >= spinup)[0]
+    for obs_name,obs_props in config_analysis['observables_zonsym'].items():
+        fun = lambda ds: obs_props['fun'](ds, **obs_props['kwargs'])
+        fxt = xr.concat(tuple(alg.ens.compute_observables([fun], mem)[0] for mem in mems2summarize), dim='time')
+        lon_roll_step_requested = config_analysis['lon_roll_step']
+        bin_lows,hist,rtime,logsf = alg.ens.dynsys.compute_stats_dns_rotsym(fxt, lon_roll_step_requested, time_block_size)
+        extstats = dict({'bin_lows': bin_lows, 'hist': hist, 'rtime': rtime, 'logsf': logsf})
+        np.savez(join(dirdict['analysis'],r'extstats_zonsym_%s.npz'%(obs_props['abbrv'])), **extstats)
+        # Plot now 
+        bin_mids = bin_lows + 0.5*(bin_lows[1]-bin_lows[0])
+        fig,axes = plt.subplots(ncols=2,figsize=(12,4),gridspec_kw={'wspace': 0.25})
+        ax = axes[0]
+        ax.plot(bin_lows,hist,color='black',marker='.')
+        ax.set_xlabel(obs_props['label'])
+        ax.set_ylabel('Prob. density')
+        ax.set_yscale('log')
+        ax = axes[1]
+        ax.plot(rtime,bin_lows,color='black',marker='.')
+        ax.set_ylim([bin_lows[np.argmax(rtime>0)],2*bin_lows[-1]-bin_lows[-2]])
+        ax.set_xlabel('Return time')
+        ax.set_ylabel('Return level')
+        ax.set_xscale('log')
+        fig.suptitle(obs_props['label'])
+        fig.savefig(join(dirdict['plots'],r'extstats_%s.png'%(obs_props['abbrv'])),**pltkwargs)
+        plt.close(fig)
 
 
-                # ------------------- Return period plots at a fixed latitude ---------
-                roi = {dim: val for (dim,val) in obs_roi[obs_name].items() if dim not in ['lon']}
-                location_suffix = ('_'.join([r'%s%g'%(roikey,roival) for (roikey,roival) in roi.items()])).replace('.','p')
-                location_label = ', '.join([r'%s=%g'%(roikey,roival) for (roikey,roival) in roi.items()])
-                bin_lows,hist,logsf,rtime = np.load(join(analysis_dir,f'distn_{obs_name}_{location_suffix}.npy'))
-                print(f'{bin_lows[:3] = }')
-                print(f'{hist[:3] = }')
-                print(f'{rtime[:3] = }')
-                bin_mids = bin_lows + 0.5*(bin_lows[1]-bin_lows[0])
-                fig,axes = plt.subplots(ncols=2,figsize=(12,4),gridspec_kw={'wspace': 0.25})
-                ax = axes[0]
-                ax.plot(bin_lows,hist,color='black',marker='.')
-                ax.set_xlabel(obsprop[obs_name]['label'])
-                ax.set_ylabel('Prob. density')
-                ax.set_yscale('log')
-                ax = axes[1]
-                ax.plot(rtime,bin_lows,color='black',marker='.')
-                ax.set_ylim([bin_lows[np.argmax(rtime>0)],2*bin_lows[-1]-bin_lows[-2]])
-                ax.set_xlabel('Return time')
-                ax.set_ylabel('Return level')
-                ax.set_xscale('log')
-                ax.set_title(obsprop[obs_name]['label'])
-                fig.suptitle(r'%s at %s'%(obsprop[obs_name]['label'],location_label))
-                print(join(plot_dir,f'rtime_{obsprop[obs_name]["abbrv"]}.png'))
-                fig.savefig(join(plot_dir,f'rtime_{obsprop[obs_name]["abbrv"]}_{location_suffix}.png'),**pltkwargs)
-                plt.close(fig)
-
-
-        if tododict['plot']['snapshots']:
+        if 0 and tododict['plot']['snapshots']:
             lat = 45.0
             lon = 180.0
             pfull = 1000.0
@@ -414,9 +458,10 @@ def dns_workflow(i_param):
 def dns_single(i_param):
     tododict = dict({
         'run':                            0,
-        'plot_snapshots':                 1,
+        'plot_snapshots':                 0,
+        'plot_timeseries':                0,
         'compute_basic_stats':            0,
-        'plot_return_stats':              0,
+        'compute_extreme_stats':          1,
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = dns_workflow(i_param)
 
@@ -425,10 +470,12 @@ def dns_single(i_param):
     alg = pickle.load(open(filedict['alg'],'rb'))
     if tododict['plot_snapshots']:
         plot_snapshots(config_analysis, alg, dirdict)
+    if tododict['plot_timeseries']:
+        plot_timeseries(config_analysis, alg, dirdict)
     if tododict['compute_basic_stats']:
         compute_basic_stats(config_analysis, alg, dirdict)
-    if tododict['plot_return_stats']:
-        plot_return_stats(config_analysis, alg, dirdict)
+    if tododict['compute_extreme_stats']:
+        compute_extreme_stats(config_analysis, alg, dirdict)
     return
 
 

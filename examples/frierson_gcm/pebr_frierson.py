@@ -87,10 +87,10 @@ def pebr_paramset(i_param):
         'seed_min': 1000,
         'seed_max': 100000,
         'seed_inc_init': seed_incs[i_param], 
-        'branches_per_group': 12, 
-        'interbranch_interval_phys': 40.0, # small interval helps to see continuity in stability
-        'branch_duration_phys': 40.0,
-        'num_branch_groups': 20,
+        'branches_per_group': 2, 
+        'interbranch_interval_phys': 2.0, # small interval helps to see continuity in stability
+        'branch_duration_phys': 5.0,
+        'num_branch_groups': 3,
         'max_member_duration_phys': 40.0,
         })
     return config_gcm,config_algo,expt_label,expt_abbrv
@@ -110,7 +110,7 @@ def pebr_workflow(i_param):
     # List the quantities of interest
     config_analysis = dict()
     config_analysis['target_location'] = dict(lat=45, lon=180)
-    # observables
+    # observables (scalar quantities)
     obsprop = FriersonGCM.observable_props()
     observables = dict({
         'local_rain': dict({
@@ -292,8 +292,8 @@ def pebr_workflow(i_param):
     dirdict = dict()
     base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
-    date_str = "2024-03-25"
-    sub_date_str = "0"
+    date_str = "2024-03-26"
+    sub_date_str = "DEBUG/1"
     dirdict['expt'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_gcm, param_abbrv_algo)
     dirdict['data'] = join(dirdict['expt'], 'data')
     dirdict['analysis'] = join(dirdict['expt'], 'analysis')
@@ -650,8 +650,8 @@ def pebr_single(i_param):
         'run':                           1,
         'analysis': dict({
             'observable_spaghetti':      1,
-            'dispersion_rate':           1, # including both Lyapunov analysis (FSLE) and expected leadtime until fractional saturation (ELFS)
-            'running_max':               1, # watch extreme value statistics (curves and parameters) converge to the true values with longer time blocks
+            'dispersion_rate':           0, # including both Lyapunov analysis (FSLE) and expected leadtime until fractional saturation (ELFS)
+            'running_max':               0, # watch extreme value statistics (curves and parameters) converge to the true values with longer time blocks
             }),
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = pebr_workflow(i_param)

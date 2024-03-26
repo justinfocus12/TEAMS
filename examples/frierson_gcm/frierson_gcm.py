@@ -361,7 +361,7 @@ class FriersonGCM(DynamicalSystem):
             else:
                 nml['spectral_dynamics_nml'].update(dict({
                     'do_perturbation': True,
-                    'days_to_perturb': icandf['frc'].reseed_times,
+                    'days_to_perturb': [int(round(t*self.dt_save)) for t in icandf['frc'].reseed_times], # TODO will have to modify for intra-day disturbances 
                     'seed_values': icandf['frc'].seeds,
                     'perturbation_fraction': [self.config['IMP']['pert_frac'] for ipert in range(numperts)],
                     }))
@@ -535,6 +535,12 @@ class FriersonGCM(DynamicalSystem):
             da_aavg = da
         return da_aavg
     @staticmethod
+    def latband_mean(da):
+        if 'lat' not in da.dims: return da
+        cos_weight = xr.ones_like(da) * np.cos(np.deg2rad(da['lat']))
+        da_latavg = (cos_weight*da).sum(dim='lat') / cos_weight.sum(dim='lat')
+        return da_latavg
+    @staticmethod
     def dist_euc(da0,da1,roi): # Generic distance function
         t0 = da0.time.to_numpy()
         t1 = da1.time.to_numpy()
@@ -614,18 +620,18 @@ class FriersonGCM(DynamicalSystem):
         for i_fun,fun in enumerate(obs_funs):
             obs.append(fun(ds).compute())
         return obs
-    def compute_stats_dns_rotsym(self, fxypt, lon_roll_step_requested, time_block_size, sel, bounds=None):
+    def compute_stats_dns_rotsym(self, fxt, lon_roll_step_requested, time_block_size, bounds=None):
         # Given a physical input field f(x,y,t), augment it by rotations to compute return periods
         # constant parameters to adjust 
         time_block_size = 25 
         # Concatenate a long array of timeseries at different longitudes
-        dlon = fxypt.lon[:2].diff('lon').item()
-        nlon = fxypt['lon'].size
+        dlon = fxt.lon[:2].diff('lon').item()
+        nlon = fxt['lon'].size
         lon_roll_step_idx = int(round(lon_roll_step_requested/dlon))
         idx_lon = np.arange(0, nlon, step=lon_roll_step_idx)
         # Clip the time axis to contain exactly an integer multiple of the block size
-        clip_size = np.mod(fxypt['time'].size, time_block_size)
-        f_subsel = fxypt.sel(sel,method='nearest').isel(time=slice(clip_size,None))
+        clip_size = np.mod(fxt['time'].size, time_block_size)
+        f_subsel = fxt.isel(time=slice(clip_size,None))
         fconcat = np.concatenate(tuple(f_subsel.isel(lon=i_lon).to_numpy() for i_lon in idx_lon))
         return utils.compute_returnstats_and_histogram(fconcat, time_block_size, bounds=bounds)
     @staticmethod
@@ -961,14 +967,34 @@ class FriersonGCM(DynamicalSystem):
         return scaling
     # ----------- More specialized scalar observables below ------------
     @staticmethod
+    def regional_temp(ds, roi):
+        temp = FriersonGCM.temperature(ds)
+        temp = FriersonGCM.area_mean(FriersonGCM.sel_from_roi(temp, roi))
+        return temp
+    @staticmethod
+    def latband_temp(ds, roi):
+        temp = FriersonGCM.temperature(ds)
+        temp = FriersonGCM.latband_mean(FriersonGCM.sel_from_roi(temp, roi))
+        return temp
+    @staticmethod
     def regional_rain(ds, roi):
         rtot = FriersonGCM.total_rain(ds)
         rtot = FriersonGCM.area_mean(FriersonGCM.sel_from_roi(rtot, roi))
         return rtot
     @staticmethod
+    def latband_rain(ds, roi):
+        rtot = FriersonGCM.total_rain(ds)
+        rtot = FriersonGCM.latband_mean(FriersonGCM.sel_from_roi(rtot, roi))
+        return rtot
+    @staticmethod
     def regional_cwv(ds, roi):
         cwv = FriersonGCM.column_water_vapor(ds)
         cwv = FriersonGCM.area_mean(FriersonGCM.sel_from_roi(cwv, roi))
+        return cwv
+    @staticmethod
+    def latband_cwv(ds, roi):
+        cwv = FriersonGCM.column_water_vapor(ds)
+        cwv = FriersonGCM.latband_mean(FriersonGCM.sel_from_roi(cwv, roi))
         return cwv
 
 
