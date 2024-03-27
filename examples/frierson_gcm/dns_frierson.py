@@ -360,23 +360,38 @@ def compute_basic_stats(config_analysis, alg, dirdict):
         plt.close(fig)
     return
 
-def compare_basic_stats(workflows, config_meta_analysis, dirdict):
+def compare_basic_stats(workflows, config_meta_analysis, meta_dirdict):
     # group the different experiments by L_sppt and tau_sppt 
     num_expt = len(workflows['configs_gcm'])
     Ls = tuple(workflows['configs_gcm'][i]['SPPT']['L_sppt'] for i in range(num_expt))
     taus = tuple(workflows['configs_gcm'][i]['SPPT']['tau_sppt'] for i in range(num_expt))
-    Ltau = zip(Ls,taus)
+    Ltau = tuple(zip(Ls,taus))
     Ltau_unique = set(Ltau)
     Ltau_groups = tuple(
-            tuple(i for i in range(num_expt) if (Ls[i] == Ltau_unique[j][0] and taus[i] == Ltau_unique[j][1]))
-            for j in range(len(Ltau_unique))
+            tuple(i for i in range(num_expt) if Ltau[i] == Ltau_val)
+            for Ltau_val in Ltau_unique
             )
+    print(f'{Ltau_groups = }')
+    # TODO put the above construction into a separate 'workflow'-style function
     for (field_name,field_props) in config_meta_analysis['fields_latdep'].items():
         for idx in Ltau_groups:
             # TODO collect all the saved .nc files, plot 
-
-
-
+            f_stats_meta = xr.open_mfdataset(tuple(
+                join(workflows['dirdicts'][i]['analysis'],r'%s.nc'%(field_props['abbrv']))
+                for i in idx),
+                combine='nested', concat_dim={'expt': idx}
+                )
+            # Means
+            fig,ax = plt.subplots()
+            handles = []
+            for i in idx:
+                h, = xr.plot.plot(f_stats_meta['moment1'].sel(expt=i), x='lat', label=workflows['expt_labels'][i])
+                handles.append(h)
+            ax.set_xlabel('Latitude')
+            ax.set_title(field_props['label'])
+            ax.legend(handles=handles)
+            fig.savefig(join(meta_dirdict['plots'], r'mean_latdep_%s.png'%(field_props['abbrv']), **pltkwargs))
+            plt.close(fig)
     
     return
 
@@ -479,25 +494,29 @@ def dns_single_workflow(i_param):
     return config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict
 
 def dns_meta_workflow(idx_param):
+    num_expt = len(idx_param)
     workflow_tuple = tuple(dns_single_workflow(i_param) for i_param in idx_param)
-    for i_key,key in enumerate(','.split('configs_gcm,configs_algo,configs_analysis,expt_labels,expt_abbrvs,dirdicts,filedicts')):
-        workflows[key] = tuple(workflows[j][i_key] for j in range(len(workflow_tuple)))
+    workflows = dict()
+    for i_key,key in enumerate(('configs_gcm,configs_algo,configs_analysis,expt_labels,expt_abbrvs,dirdicts,filedicts').split(',')):
+        workflows[key] = tuple(workflow_tuple[j][i_key] for j in range(len(workflow_tuple)))
+    print(f'{workflows.keys() = }')
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
     date_str = "2024-03-26"
     sub_date_str = "0"
-    dirdict = dict()
-    dirdict['meta'] = join(scratch_dir,date_str,sub_date_str,'meta')
+    meta_dirdict = dict()
+    meta_dirdict['meta'] = join(scratch_dir,date_str,sub_date_str,'meta')
     for subdir in ['data','analysis','plots']:
-        dirdict[subdir] = join(dirdict['meta'],subdir)
-        makedirs(dirdict[subdir], exist_ok=True)
+        meta_dirdict[subdir] = join(meta_dirdict['meta'],subdir)
+        makedirs(meta_dirdict[subdir], exist_ok=True)
     config_meta_analysis = dict()
     for key in ['basic_stats','target_location','fields_latdep','observables_onelat_zonsym']:
         config_meta_analysis[key] = workflows['configs_analysis'][0][key]
+    # Group together fixed and variable parameters
     return workflows,config_meta_analysis,meta_dirdict
 
 
 
-def dns_meta(idx_param):
+def dns_meta_procedure(idx_param):
     tododict = dict({
         'compare_basic_stats':            1,
         'compare_extreme_stats':          1,
@@ -507,12 +526,12 @@ def dns_meta(idx_param):
         compare_basic_stats(workflows,config_meta_analysis,meta_dirdict)
     return
 
-def dns_single(i_param):
+def dns_single_procedure(i_param):
     tododict = dict({
         'run':                            0,
-        'plot_snapshots':                 0,
-        'plot_timeseries':                0,
-        'compute_basic_stats':            0,
+        'plot_snapshots':                 1,
+        'plot_timeseries':                1,
+        'compute_basic_stats':            1,
         'compute_extreme_stats':          1,
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = dns_single_workflow(i_param)
@@ -536,12 +555,12 @@ if __name__ == "__main__":
         procedure = sys.argv[1]
         idx_param = [int(arg) for arg in sys.argv[2:]]
     else:
-        procedure = 'single'
-        idx_param = [5]
+        procedure = 'meta'
+        idx_param = list(range(1,21))
     print(f'Got into Main')
     if procedure == 'single':
         for i_param in idx_param:
-            dns_single(i_param)
+            dns_single_procedure(i_param)
     elif procedure == 'meta':
-        dns_meta_analysis_procedure(idx_param)
+        dns_meta_procedure(idx_param)
 
