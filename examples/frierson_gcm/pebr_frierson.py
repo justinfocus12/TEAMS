@@ -652,7 +652,7 @@ def pebr_single(i_param):
         'run':                           0,
         'analysis': dict({
             'observable_spaghetti':      0,
-            'dispersion_rate':           0, # including both Lyapunov analysis (FSLE) and expected leadtime until fractional saturation (ELFS)
+            'dispersion_rate':           1, # including both Lyapunov analysis (FSLE) and expected leadtime until fractional saturation (ELFS)
             'running_max':               1, # watch extreme value statistics (curves and parameters) converge to the true values with longer time blocks
             }),
         })

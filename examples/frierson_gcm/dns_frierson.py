@@ -147,25 +147,25 @@ def dns_paramset(i_param):
             'fun': frierson_gcm.FriersonGCM.total_rain,
             'roi': None,
             'abbrv': 'R',
-            'label': 'Rain (6h avg)',
+            'label': 'Rain (6h avg) [mm/day]',
             }),
         'rain_lat30-90': dict({
             'fun': frierson_gcm.FriersonGCM.total_rain,
             'roi': dict(lat=slice(30,None)),
             'abbrv': 'Rlat30-90',
-            'label': 'Rain (6h avg)',
+            'label': 'Rain (6h avg) [mm/day]',
             }),
         'u_500': dict({
             'fun': frierson_gcm.FriersonGCM.zonal_velocity,
             'roi': dict(pfull=500),
             'abbrv': 'U500',
-            'label': r'Zon. Vel. ($p/p_s=0.5$)',
+            'label': r'Zon. Vel. ($p/p_s=0.5$) [m/s]',
             }),
         'temp_700': dict({
             'fun': frierson_gcm.FriersonGCM.temperature,
             'roi': dict(pfull=700),
             'abbrv': 'T700',
-            'label': r'Temp. ($p/p_s=0.7$)',
+            'label': r'Temp. ($p/p_s=0.7$) [K]',
             }),
         })
     # Observables to get extreme statistics of using zonal symmetry
@@ -176,7 +176,7 @@ def dns_paramset(i_param):
                 'roi': dict({'lat': 45}),
                 }),
             'abbrv': 'R45',
-            'label': 'Rain ($\phi=45$)',
+            'label': 'Rain (6h avg, $\phi=45$) [mm/day]',
             }),
         'rain_lat35-55': dict({
             'fun': frierson_gcm.FriersonGCM.latband_rain,
@@ -184,7 +184,7 @@ def dns_paramset(i_param):
                 'roi': dict({'lat': slice(35,55)}),
                 }),
             'abbrv': 'R35-55',
-            'label': 'Mean rain ($\phi\in(35,55)$)',
+            'label': 'Mean rain ($\phi\in(35,55)$) [mm/day]',
             }),
         'temp_lat45_pfull700': dict({
             'fun': frierson_gcm.FriersonGCM.latband_temp,
@@ -360,40 +360,134 @@ def compute_basic_stats(config_analysis, alg, dirdict):
         plt.close(fig)
     return
 
+
 def compare_basic_stats(workflows, config_meta_analysis, meta_dirdict):
     # group the different experiments by L_sppt and tau_sppt 
     num_expt = len(workflows['configs_gcm'])
     Ls = tuple(workflows['configs_gcm'][i]['SPPT']['L_sppt'] for i in range(num_expt))
     taus = tuple(workflows['configs_gcm'][i]['SPPT']['tau_sppt'] for i in range(num_expt))
+    sigmas = tuple(workflows['configs_gcm'][i]['SPPT']['std_sppt'] for i in range(num_expt))
     Ltau = tuple(zip(Ls,taus))
-    Ltau_unique = set(Ltau)
-    Ltau_groups = tuple(
+    Ltau_unique = list(set(Ltau))
+    Ltau_idx_groups = tuple(
             tuple(i for i in range(num_expt) if Ltau[i] == Ltau_val)
             for Ltau_val in Ltau_unique
             )
-    print(f'{Ltau_groups = }')
+    print(f'{Ltau_idx_groups = }')
     # TODO put the above construction into a separate 'workflow'-style function
+    quantiles = config_meta_analysis['basic_stats']['quantiles']
     for (field_name,field_props) in config_meta_analysis['fields_latdep'].items():
-        for idx in Ltau_groups:
-            # TODO collect all the saved .nc files, plot 
-            f_stats_meta = xr.open_mfdataset(tuple(
-                join(workflows['dirdicts'][i]['analysis'],r'%s.nc'%(field_props['abbrv']))
-                for i in idx),
-                combine='nested', concat_dim={'expt': idx}
-                )
-            # Means
-            fig,ax = plt.subplots()
-            handles = []
+        fig,axes = plt.subplots(ncols=len(Ltau_idx_groups),nrows=len(quantiles)+1, figsize=(6*len(Ltau_idx_groups),6*(1+len(quantiles))),sharey='row',sharex=True)
+        # ----------- Mean ---------
+        log_sig_scaled = np.log(np.array(sigmas))
+        log_sig_scaled = (log_sig_scaled - np.min(log_sig_scaled))/np.ptp(log_sig_scaled)
+        colors = plt.cm.coolwarm(log_sig_scaled)
+        for i_group,idx in enumerate(Ltau_idx_groups):
+            print(f'{idx = }')
+            f_mean = []
+            f_quantiles = []
             for i in idx:
-                h, = xr.plot.plot(f_stats_meta['moment1'].sel(expt=i), x='lat', label=workflows['expt_labels'][i])
+                fstats_i = xr.open_dataset(join(workflows['dirdicts'][i]['analysis'],r'%s.nc'%(field_props['abbrv'])))
+                f_mean.append(fstats_i['moment1'])
+                f_quantiles.append(fstats_i['quantiles'])
+            print(f'{f_mean[0] = }')
+            print(f'{f_quantiles[0] = }')
+            f_mean = xr.concat(f_mean, dim='expt').assign_coords(expt=list(idx))
+            f_quantiles = xr.concat(f_quantiles, dim='expt').assign_coords(expt=list(idx))
+            # Means
+            handles = []
+            ax = axes[0,i_group]
+            for i in idx:
+                h, = xr.plot.plot(f_mean.sel(expt=i), x='lat', label=r'$\sigma_{\mathrm{SPPT}}=%g$'%(sigmas[i]), ax=ax, color=colors[i])
                 handles.append(h)
-            ax.set_xlabel('Latitude')
-            ax.set_title(field_props['label'])
-            ax.legend(handles=handles)
-            fig.savefig(join(meta_dirdict['plots'], r'mean_latdep_%s.png'%(field_props['abbrv']), **pltkwargs))
-            plt.close(fig)
-    
+            ax.set_xlabel('')
+            ax.set_ylabel('')
+            ax.set_title('')
+            ax.xaxis.set_tick_params(which='both',labelbottom=True)
+            ax.yaxis.set_tick_params(which='both',labelbottom=True)
+            # Quantiles
+            for i_quant,quant in enumerate(config_meta_analysis['basic_stats']['quantiles']):
+                ax = axes[1+i_quant,i_group]
+                for i in idx:
+                    xr.plot.plot(f_quantiles.sel(expt=i,quantile=quant), x='lat', label=r'$\sigma_{\mathrm{SPPT}}=%g$'%(sigmas[i]), ax=ax, color=colors[i])
+                ax.set_xlabel('')
+                ax.set_ylabel('')
+                ax.set_title('')
+                ax.xaxis.set_tick_params(which='both',labelbottom=True)
+                ax.yaxis.set_tick_params(which='both',labelbottom=True)
+            group_label = r'$L=%g$km, $\tau=%g$h'%(Ltau_unique[i_group][0]/1000,Ltau_unique[i_group][1]/3600)
+            axes[0,i_group].set_title(group_label)
+            axes[-1,i_group].set_xlabel('Latitude')
+        axes[0,0].legend(handles=handles,ncol=len(handles),loc=(0,1.1))
+        axes[0,0].set_ylabel(r'Mean %s'%(field_props['label']))
+        for i_quant,quant in enumerate(quantiles):
+            axes[1+i_quant,0].set_ylabel(r'Quantile %g %s'%(quant,field_props['label']))
+        fig.savefig(join(meta_dirdict['plots'], r'mean_latdep_%s.png'%(field_props['abbrv'])), **pltkwargs)
+        plt.close(fig)
     return
+
+def compare_extreme_stats(workflows,config_meta_analysis,meta_dirdict):
+    num_expt = len(workflows['configs_gcm'])
+    Ls = tuple(workflows['configs_gcm'][i]['SPPT']['L_sppt'] for i in range(num_expt))
+    taus = tuple(workflows['configs_gcm'][i]['SPPT']['tau_sppt'] for i in range(num_expt))
+    sigmas = tuple(workflows['configs_gcm'][i]['SPPT']['std_sppt'] for i in range(num_expt))
+    tu = 1/workflows['configs_gcm'][0]['outputs_per_day']
+    Ltau = tuple(zip(Ls,taus))
+    Ltau_unique = list(set(Ltau))
+    Ltau_idx_groups = tuple(
+            tuple(i for i in range(num_expt) if Ltau[i] == Ltau_val)
+            for Ltau_val in Ltau_unique
+            )
+    print(f'{Ltau_idx_groups = }')
+    for (obs_name,obs_props) in config_meta_analysis['observables_onelat_zonsym'].items():
+        # Return period curves (together with GEV fit in dashed lines)
+        fig_curves,axes_curves = plt.subplots(ncols=len(Ltau_unique), figsize=(6*len(Ltau_unique),4), sharey='row', sharex=True)
+        # GEV parameters as a function of sigma
+        fig_gevpar,axes_gevpar = plt.subplots(nrows=3,figsize=(4,6),sharex=True)
+        log_sig_scaled = np.log(np.array(sigmas))
+        log_sig_scaled = (log_sig_scaled - np.min(log_sig_scaled))/np.ptp(log_sig_scaled)
+        colors = plt.cm.coolwarm(log_sig_scaled)
+        handles_gevpar = []
+        for i_group,idx in enumerate(Ltau_idx_groups):
+            sigmas_idx = np.array([sigmas[i] for i in idx])
+            handles_curves = []
+            shapes,locs,scales = (np.zeros(len(idx)) for _ in range(3))
+            ax = axes_curves[i_group]
+            for ii,i in enumerate(idx):
+                extstats = np.load(join(workflows['dirdicts'][i]['analysis'],r'extstats_zonsym_%s.npz'%(obs_props['abbrv'])))
+                shapes[ii],locs[ii],scales[ii] = extstats['shape'],extstats['loc'],extstats['scale']
+                h, = ax.plot(extstats['rtime']*tu, extstats['bin_lows'], color=colors[i], linestyle='-', label=r'$\sigma_{\mathrm{SPPT}}=%g$'%(sigmas[i]))
+                ax.plot(extstats['rtime_gev']*tu, extstats['bin_lows'], color=colors[i], linestyle='--')
+                handles_curves.append(h)
+            group_label = r'$L=%g$km, $\tau=%g$h'%(Ltau_unique[i_group][0]/1000,Ltau_unique[i_group][1]/3600)
+            group_color = plt.cm.Set1(i_group)
+            ax.set_title(group_label)
+            ax.set_xlabel('Return time [days]')
+            ax.set_xlim([30,20000])
+            ax.set_xscale('log')
+            axes_curves[-1].legend(handles=handles_curves,loc=(1,0))
+
+            # GEV parameters
+            ax = axes_gevpar[0]
+            h, = ax.plot(sigmas_idx,shapes,color=group_color,marker='.',linestyle='-',label=group_label)
+            handles_gevpar.append(h)
+            ax = axes_gevpar[1]
+            ax.plot(sigmas_idx,locs,color=group_color,marker='.',linestyle='-')
+            ax = axes_gevpar[2]
+            ax.plot(sigmas_idx,scales,color=group_color,marker='.',linestyle='-')
+        fig_curves.suptitle(obs_props['label'], y=1.0)
+        fig_curves.savefig(join(meta_dirdict['plots'], 'extstats_returncurves_%s.png'%(obs_props['abbrv'])), **pltkwargs)
+        plt.close(fig_curves)
+
+        axes_gevpar[0].set(ylabel='Shape',xlabel='')
+        axes_gevpar[1].set(ylabel='Location',xlabel='')
+        axes_gevpar[2].set(ylabel='Scale',xlabel=r'$\sigma_{\mathrm{SPPT}}$')
+        axes_gevpar[-1].legend(handles=handles_gevpar, loc='upper left', bbox_to_anchor=(0,-0.5))
+        fig_gevpar.suptitle(obs_props['label'])
+        fig_gevpar.savefig(join(meta_dirdict['plots'], 'exstats_gevpar_%s.png'%(obs_props['abbrv'])), **pltkwargs)
+        plt.close(fig_gevpar)
+    return
+
 
 def compute_extreme_stats(config_analysis, alg, dirdict):
     nmem = alg.ens.get_nmem()
@@ -518,12 +612,14 @@ def dns_meta_workflow(idx_param):
 
 def dns_meta_procedure(idx_param):
     tododict = dict({
-        'compare_basic_stats':            1,
+        'compare_basic_stats':            0,
         'compare_extreme_stats':          1,
         })
     workflows,config_meta_analysis,meta_dirdict = dns_meta_workflow(idx_param)
     if tododict['compare_basic_stats']:
         compare_basic_stats(workflows,config_meta_analysis,meta_dirdict)
+    if tododict['compare_extreme_stats']:
+        compare_extreme_stats(workflows,config_meta_analysis,meta_dirdict)
     return
 
 def dns_single_procedure(i_param):

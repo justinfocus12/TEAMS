@@ -366,6 +366,7 @@ class PeriodicBranching(EnsembleAlgorithm):
             ax.set_xlabel('')
             ax.xaxis.set_tick_params(which='both',labelbottom=True)
             ax.set_ylabel('Running maxes')
+            ax.set_title(label)
             ax = axes[1]
             ax.plot(time*tu, running_max_std[group,:], color='dodgerblue')
             ax.set_xlabel(r'time since split (%g)'%(split_times[group]*tu))
