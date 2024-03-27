@@ -312,7 +312,7 @@ class PeriodicBranching(EnsembleAlgorithm):
         print(f'{branch_group = }')
         print(f'{mems_trunk = }')
         print(f'{mems_branch = }')
-        print(f'{time = }')
+        print(f'{time[[0,1,-2,-1]] = }')
         pairwise_fun_vals_list = []
         for mem0 in mems_trunk:
             pairwise_fun_vals_list.append(
@@ -328,6 +328,7 @@ class PeriodicBranching(EnsembleAlgorithm):
     def measure_running_max(self, obs_fun, runmax_file, figfile_prefix, label='', abbrv=''):
         ngroups = self.branching_state['next_branch_group']+1
         split_times = np.zeros(ngroups, dtype=int)
+        tu = self.ens.dynsys.dt_save
         print(f'{split_times = }')
         running_max_branch = np.zeros((ngroups, self.branches_per_group, self.branch_duration)) 
         running_max_trunk = np.zeros((ngroups, self.branch_duration)) 
@@ -337,7 +338,7 @@ class PeriodicBranching(EnsembleAlgorithm):
 
             obs_branch = np.array([self.ens.compute_observables([obs_fun], mem)[0][tidxs_branch[i_mem]] for (i_mem,mem) in enumerate(mems_branch)])
             obs_trunk = np.concatenate(tuple(self.ens.compute_observables([obs_fun], mem)[0] for mem in mems_trunk))[tidx_trunk]
-            split_times[group] = time[0]
+            split_times[group] = time[0] - 1
             running_max_branch[group,:,:] = np.maximum.accumulate(obs_branch, axis=1)
             running_max_trunk[group,:] = np.maximum.accumulate(obs_trunk)
 
@@ -355,16 +356,19 @@ class PeriodicBranching(EnsembleAlgorithm):
         # Plot 
         ngroups,nbranches,ntimes = running_max_branch.shape
         for group in range(ngroups):
-            fig,axes = plt.subplots(nrows=2,figsize=(6,12))
+            fig,axes = plt.subplots(nrows=2,figsize=(6,8),sharex=True)
             time = np.arange(ntimes)
             ax = axes[0]
             for branch in range(nbranches):
-                ax.plot(time, running_max_branch[group,branch], color='tomato')
-            ax.plot(time, running_max_mean[group,:], color='dodgerblue')
-            ax.plot(time, running_max_trunk[group,:], color='black', linestyle='--', linewidth=2)
+                ax.plot(time*tu, running_max_branch[group,branch], color='tomato')
+            ax.plot(time*tu, running_max_mean[group,:], color='dodgerblue')
+            ax.plot(time*tu, running_max_trunk[group,:], color='black', linestyle='--', linewidth=2)
+            ax.set_xlabel('')
+            ax.xaxis.set_tick_params(which='both',labelbottom=True)
             ax.set_ylabel('Running maxes')
             ax = axes[1]
-            ax.plot(time, running_max_std[group,:], color='dodgerblue')
+            ax.plot(time*tu, running_max_std[group,:], color='dodgerblue')
+            ax.set_xlabel(r'time since split (%g)'%(split_times[group]*tu))
             ax.set_ylabel('Std. of running max')
             fig.savefig(r'%s_bg%d.png'%(figfile_prefix,group), **pltkwargs)
             plt.close(fig)
@@ -374,12 +378,12 @@ class PeriodicBranching(EnsembleAlgorithm):
         # Measure the distance of every member from the control (according to a given function), as well as the fractional saturation times
         ngroups = self.branching_state['next_branch_group']+1
         split_times = np.zeros(ngroups, dtype=int)
-        print(f'{split_times = }')
         dists = np.zeros((ngroups, self.branches_per_group, self.branch_duration)) 
         for branch_group in range(ngroups):
             print(f'About to compute distances for {branch_group = }')
             time,dists[branch_group,:,:] = self.compute_pairwise_fun_local(dist_fun, branch_group)
-            split_times[branch_group] = time[0]
+            split_times[branch_group] = time[0] - 1
+        print(f'{split_times = }')
         rmses = np.sqrt(np.mean(dists**2, axis=1))
         rmsd = np.sqrt(np.mean(rmses[:,-1]**2))
         # Finite-size Lyapunov analysis (at fixed fractions of saturation)

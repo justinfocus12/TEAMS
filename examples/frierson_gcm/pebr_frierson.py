@@ -87,10 +87,10 @@ def pebr_paramset(i_param):
         'seed_min': 1000,
         'seed_max': 100000,
         'seed_inc_init': seed_incs[i_param], 
-        'branches_per_group': 2, 
-        'interbranch_interval_phys': 2.0, # small interval helps to see continuity in stability
-        'branch_duration_phys': 5.0,
-        'num_branch_groups': 2,
+        'branches_per_group': 4, 
+        'interbranch_interval_phys': 20.0, # small interval helps to see continuity in stability
+        'branch_duration_phys': 40.0,
+        'num_branch_groups': 10,
         'max_member_duration_phys': 40.0,
         })
     return config_gcm,config_algo,expt_label,expt_abbrv
@@ -293,7 +293,7 @@ def pebr_workflow(i_param):
     base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
     date_str = "2024-03-26"
-    sub_date_str = "DEBUG/1"
+    sub_date_str = "0"
     dirdict['expt'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_gcm, param_abbrv_algo)
     dirdict['data'] = join(dirdict['expt'], 'data')
     dirdict['analysis'] = join(dirdict['expt'], 'analysis')
@@ -313,6 +313,7 @@ def pebr_workflow(i_param):
     print(f'{filedict["init_cond"] = }')
     # Algorithm manager
     filedict['alg'] = join(dirdict['data'], 'alg.pickle')
+    filedict['alg_backup'] = join(dirdict['data'], 'alg_backup.pickle')
 
     return config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict
 
@@ -343,6 +344,8 @@ def run_pebr(dirdict,filedict,config_gcm,config_algo):
             'filename_restart': f'restart_mem{mem}.cpio',
             })
         alg.take_next_step(saveinfo)
+        if exists(filedict['alg']):
+            os.rename(filedict['alg'], filedict['alg_backup'])
         pickle.dump(alg, open(filedict['alg'], 'wb'))
     return
 
@@ -354,7 +357,6 @@ def quantify_dispersion_rates(config_analysis, alg, dirdict):
             # TODO anticipate future when time samples are subdaily
             t0 = (ds0['time'].to_numpy() / alg.ens.dynsys.dt_save).astype(int)
             t1 = (ds1['time'].to_numpy() / alg.ens.dynsys.dt_save).astype(int)
-            print(f'{t0 = }\n{t1 = }')
             trange_full = np.arange(min(t0[0],t1[0]),max(t0[-1],t1[-1])+1)
             trange_valid = np.arange(max(t0[0],t1[0]),min(t0[-1],t1[-1])+1)
             tidx0 = trange_valid - t0[0]
@@ -364,7 +366,7 @@ def quantify_dispersion_rates(config_analysis, alg, dirdict):
             return dist
         dispersion_file = join(dirdict['analysis'],r'dispersion_%s.npz'%(dist_props['abbrv']))
         dispersion_stats = alg.measure_dispersion(dist_fun, config_analysis['satfracs'], dispersion_file)
-        # Should we also plot right here? Yes, why not 
+        # Plot 
         figfile_prefix = join(dirdict['plots'],r'dispersion_%s'%(dist_props['abbrv']))
         groups2plot = np.arange(min(dispersion_stats['dists'].shape[0],10), dtype=int)
         alg.plot_dispersion(
@@ -647,11 +649,11 @@ def old_thing():
 
 def pebr_single(i_param):
     tododict = dict({
-        'run':                           1,
+        'run':                           0,
         'analysis': dict({
-            'observable_spaghetti':      1,
+            'observable_spaghetti':      0,
             'dispersion_rate':           0, # including both Lyapunov analysis (FSLE) and expected leadtime until fractional saturation (ELFS)
-            'running_max':               0, # watch extreme value statistics (curves and parameters) converge to the true values with longer time blocks
+            'running_max':               1, # watch extreme value statistics (curves and parameters) converge to the true values with longer time blocks
             }),
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = pebr_workflow(i_param)
@@ -672,8 +674,8 @@ if __name__ == "__main__":
         procedure = sys.argv[1]
         idx_param = [int(arg) for arg in sys.argv[2:]]
     else:
-        procedure = 'meta'
-        idx_param = list(range(1,21))
+        procedure = 'single'
+        idx_param = [5] #list(range(1,21))
     print(f'Got into Main')
     if procedure == 'single':
         for i_param in idx_param:

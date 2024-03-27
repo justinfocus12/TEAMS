@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.special import logsumexp
+from scipy.stats import genextreme as spgex
 
 def find_true_in_dict(d):
     # Thanks Bing Chat
@@ -45,17 +46,29 @@ def compute_block_maxima(x,T):
     # T should be an integer, and x is a timeseries
     nx = len(x)
     nb = int(nx/T) # number of blocks
-    print(f'{x.shape = }')
-    print(f'{nb = }')
-    print(f'{T = }')
     m = np.max(x[:(nb*T)].reshape((nb,T)), axis=1)
     return m
 
+def fit_gev_distn(block_maxima):
+    neg_shape,loc,scale = spgex.fit(block_maxima)
+    return -neg_shape,loc,scale
+
+def gev_return_time(x,T,shape,loc,scale):
+    logsf = spgex.logsf(x,-shape,loc=loc,scale=scale)
+    print(f'{logsf = }')
+    rtime = convert_logsf_to_rtime(logsf,T)
+    return logsf,rtime
+
 def compute_return_time_block_maxima(x,T):
     block_maxima = compute_block_maxima(x,T)
-    rlev,lsf = compute_logsf_empirical(block_maxima)
-    rtime = convert_logsf_to_rtime(lsf,T)
-    return rlev,rtime,lsf
+    rlev,logsf = compute_logsf_empirical(block_maxima)
+    rtime = convert_logsf_to_rtime(logsf,T)
+    # Also do a GEV fit 
+    shape,loc,scale = fit_gev_distn(block_maxima)
+    print(f'{rlev = }')
+    print(f'{(shape,loc,scale) = }')
+    logsf_gev,rtime_gev = gev_return_time(rlev,T,shape,loc,scale)
+    return rlev,rtime,logsf,rtime_gev,logsf_gev,shape,loc,scale
 
 def convert_logsf_to_rtime(logsf, T):
     # log-survival function to return period
@@ -68,8 +81,9 @@ def compute_returnstats_and_histogram(f, time_block_size, bounds=None):
         bounds = [np.min(f),np.max(f)]
     bins = np.linspace(bounds[0]-1e-10,bounds[1]+1e-10,30)
     hist,bin_edges = np.histogram(f, density=False, bins=bins)
-    rlev,rtime,logsf = compute_return_time_block_maxima(f, time_block_size)
+    rlev,rtime,logsf,rtime_gev,logsf_gev,shape,loc,scale = compute_return_time_block_maxima(f, time_block_size)
     idx = np.searchsorted(rlev, bin_edges[:-1])
     print(f'{idx = }')
-    return bin_edges[:-1], hist, rtime[idx], logsf[idx]
+    logsf_gev,rtime_gev = gev_return_time(bin_edges[:-1],time_block_size,shape,loc,scale)
+    return bin_edges[:-1], hist, rtime[idx], logsf[idx], rtime_gev, logsf_gev, shape, loc, scale
 

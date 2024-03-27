@@ -169,7 +169,7 @@ def dns_paramset(i_param):
             }),
         })
     # Observables to get extreme statistics of using zonal symmetry
-    config_analysis['observables_zonsym'] = dict({
+    config_analysis['observables_onelat_zonsym'] = dict({
         'rain_lat45': dict({
             'fun': frierson_gcm.FriersonGCM.latband_rain,
             'kwargs': dict({
@@ -360,6 +360,26 @@ def compute_basic_stats(config_analysis, alg, dirdict):
         plt.close(fig)
     return
 
+def compare_basic_stats(workflows, config_meta_analysis, dirdict):
+    # group the different experiments by L_sppt and tau_sppt 
+    num_expt = len(workflows['configs_gcm'])
+    Ls = tuple(workflows['configs_gcm'][i]['SPPT']['L_sppt'] for i in range(num_expt))
+    taus = tuple(workflows['configs_gcm'][i]['SPPT']['tau_sppt'] for i in range(num_expt))
+    Ltau = zip(Ls,taus)
+    Ltau_unique = set(Ltau)
+    Ltau_groups = tuple(
+            tuple(i for i in range(num_expt) if (Ls[i] == Ltau_unique[j][0] and taus[i] == Ltau_unique[j][1]))
+            for j in range(len(Ltau_unique))
+            )
+    for (field_name,field_props) in config_meta_analysis['fields_latdep'].items():
+        for idx in Ltau_groups:
+            # TODO collect all the saved .nc files, plot 
+
+
+
+    
+    return
+
 def compute_extreme_stats(config_analysis, alg, dirdict):
     nmem = alg.ens.get_nmem()
     tu = alg.ens.dynsys.dt_save
@@ -367,14 +387,14 @@ def compute_extreme_stats(config_analysis, alg, dirdict):
     time_block_size = int(config_analysis['time_block_size_phys']/tu)
     all_starts,all_ends = alg.ens.get_all_timespans()
     mems2summarize = np.where(all_starts >= spinup)[0]
-    for obs_name,obs_props in config_analysis['observables_zonsym'].items():
+    for obs_name,obs_props in config_analysis['observables_onelat_zonsym'].items():
         fun = lambda ds: obs_props['fun'](ds, **obs_props['kwargs'])
         fxt = xr.concat(tuple(alg.ens.compute_observables([fun], mem)[0] for mem in mems2summarize), dim='time')
         lon_roll_step_requested = config_analysis['lon_roll_step']
-        bin_lows,hist,rtime,logsf = alg.ens.dynsys.compute_stats_dns_rotsym(fxt, lon_roll_step_requested, time_block_size)
-        extstats = dict({'bin_lows': bin_lows, 'hist': hist, 'rtime': rtime, 'logsf': logsf})
+        bin_lows,hist,rtime,logsf,rtime_gev,logsf_gev,shape,loc,scale = alg.ens.dynsys.compute_stats_dns_rotsym(fxt, lon_roll_step_requested, time_block_size)
+        extstats = dict({'bin_lows': bin_lows, 'hist': hist, 'rtime': rtime, 'logsf': logsf, 'rtime_gev': rtime_gev, 'logsf_gev': logsf_gev, 'shape': shape, 'loc': loc, 'scale': scale})
         np.savez(join(dirdict['analysis'],r'extstats_zonsym_%s.npz'%(obs_props['abbrv'])), **extstats)
-        # Plot now 
+        # Plot 
         bin_mids = bin_lows + 0.5*(bin_lows[1]-bin_lows[0])
         fig,axes = plt.subplots(ncols=2,figsize=(12,4),gridspec_kw={'wspace': 0.25})
         ax = axes[0]
@@ -383,7 +403,10 @@ def compute_extreme_stats(config_analysis, alg, dirdict):
         ax.set_ylabel('Prob. density')
         ax.set_yscale('log')
         ax = axes[1]
-        ax.plot(rtime,bin_lows,color='black',marker='.')
+        hemp, = ax.plot(rtime,bin_lows,color='black',marker='.',label='Empirical')
+        hgev, = ax.plot(rtime_gev,bin_lows,color='cyan',marker='.',label='GEV fit')
+        ax.legend(handles=[hemp,hgev])
+        print(f'{rtime_gev = }')
         ax.set_ylim([bin_lows[np.argmax(rtime>0)],2*bin_lows[-1]-bin_lows[-2]])
         ax.set_xlabel('Return time')
         ax.set_ylabel('Return level')
@@ -436,7 +459,7 @@ def compute_extreme_stats(config_analysis, alg, dirdict):
                     plt.close(fig)
     return
 
-def dns_workflow(i_param):
+def dns_single_workflow(i_param):
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv = dns_paramset(i_param)
     param_abbrv_gcm,param_label_gcm = frierson_gcm.FriersonGCM.label_from_config(config_gcm)
     param_abbrv_algo,param_label_algo = algorithms_frierson.FriersonGCMDirectNumericalSimulation.label_from_config(config_algo)
@@ -455,6 +478,35 @@ def dns_workflow(i_param):
         })
     return config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict
 
+def dns_meta_workflow(idx_param):
+    workflow_tuple = tuple(dns_single_workflow(i_param) for i_param in idx_param)
+    for i_key,key in enumerate(','.split('configs_gcm,configs_algo,configs_analysis,expt_labels,expt_abbrvs,dirdicts,filedicts')):
+        workflows[key] = tuple(workflows[j][i_key] for j in range(len(workflow_tuple)))
+    scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
+    date_str = "2024-03-26"
+    sub_date_str = "0"
+    dirdict = dict()
+    dirdict['meta'] = join(scratch_dir,date_str,sub_date_str,'meta')
+    for subdir in ['data','analysis','plots']:
+        dirdict[subdir] = join(dirdict['meta'],subdir)
+        makedirs(dirdict[subdir], exist_ok=True)
+    config_meta_analysis = dict()
+    for key in ['basic_stats','target_location','fields_latdep','observables_onelat_zonsym']:
+        config_meta_analysis[key] = workflows['configs_analysis'][0][key]
+    return workflows,config_meta_analysis,meta_dirdict
+
+
+
+def dns_meta(idx_param):
+    tododict = dict({
+        'compare_basic_stats':            1,
+        'compare_extreme_stats':          1,
+        })
+    workflows,config_meta_analysis,meta_dirdict = dns_meta_workflow(idx_param)
+    if tododict['compare_basic_stats']:
+        compare_basic_stats(workflows,config_meta_analysis,meta_dirdict)
+    return
+
 def dns_single(i_param):
     tododict = dict({
         'run':                            0,
@@ -463,7 +515,7 @@ def dns_single(i_param):
         'compute_basic_stats':            0,
         'compute_extreme_stats':          1,
         })
-    config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = dns_workflow(i_param)
+    config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = dns_single_workflow(i_param)
 
     if tododict['run']:
         run_dns(dirdict,filedict,config_gcm,config_algo)

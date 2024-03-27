@@ -354,14 +354,14 @@ class FriersonGCM(DynamicalSystem):
             if numperts == 0:
                 nml['spectral_dynamics_nml'].update(dict({
                     'do_perturbation': False,
-                    'days_to_perturb': [-1],
+                    'seconds_to_perturb': [-1],
                     'seed_values': [-1],
                     'perturbation_fraction': [0.0],
                     }))
             else:
                 nml['spectral_dynamics_nml'].update(dict({
                     'do_perturbation': True,
-                    'days_to_perturb': [int(round(t*self.dt_save)) for t in icandf['frc'].reseed_times], # TODO will have to modify for intra-day disturbances 
+                    'seconds_to_perturb': [int(round(t*self.dt_save*86400)) for t in icandf['frc'].reseed_times], # TODO will have to modify for intra-day disturbances 
                     'seed_values': icandf['frc'].seeds,
                     'perturbation_fraction': [self.config['IMP']['pert_frac'] for ipert in range(numperts)],
                     }))
@@ -374,13 +374,13 @@ class FriersonGCM(DynamicalSystem):
                 'tau_sppt': self.config['SPPT']['tau_sppt'], 
                 'L_sppt': self.config['SPPT']['L_sppt'],
                 'num_reseeds_sppt_actual': numperts,
-                'reseed_times_sppt': [int(round(t*self.dt_save)) for t in icandf['frc'].reseed_times],
+                'reseed_times_sppt': [int(round(t*self.dt_save*86400)) for t in icandf['frc'].reseed_times],
                 'seed_seq_sppt': icandf['frc'].seeds,
                 }))
             # Also nullify the old kind of perturbation
             nml['spectral_dynamics_nml'].update(dict({
                 'do_perturbation': False,
-                'days_to_perturb': [-1],
+                'seconds_to_perturb': [-1],
                 'seed_values': [-1],
                 'perturbation_fraction': [0.0],
                 }))
@@ -623,7 +623,6 @@ class FriersonGCM(DynamicalSystem):
     def compute_stats_dns_rotsym(self, fxt, lon_roll_step_requested, time_block_size, bounds=None):
         # Given a physical input field f(x,y,t), augment it by rotations to compute return periods
         # constant parameters to adjust 
-        time_block_size = 25 
         # Concatenate a long array of timeseries at different longitudes
         dlon = fxt.lon[:2].diff('lon').item()
         nlon = fxt['lon'].size
