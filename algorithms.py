@@ -640,9 +640,9 @@ class SDEPeriodicBranching(PeriodicBranching):
 
 class ITEAMS(EnsembleAlgorithm):
     # TEAMS starting from a fixed initial condition. The TEAMS algorithm may wrap this, or just be similar; TBD
-    def __init__(self, init_time, init_cond, config, ens, seed):
+    def __init__(self, init_time, init_cond, config, ens):
         self.set_init_cond(init_time, init_cond) # Unlike for general Algorithms, an initial condition is mandatory
-        super().__init__(config, ens, seed)
+        super().__init__(config, ens)
         return
     def derive_parameters(self, config):
         self.autonomy = config['autonomy'] # True if this single family is isolated, False if part of a team.
@@ -735,7 +735,6 @@ class ITEAMS(EnsembleAlgorithm):
         self.branching_state['scores_tdep'].append(new_score_combined)
         self.branching_state['scores_max'].append(new_score_max)
         self.branching_state['scores_max_timing'].append(init_time_new+np.nanargmax(new_score_combined))
-        self.branching_state['branch_times'].append(branch_time)
         success = (new_score_max > self.branching_state['score_levels'][-1])
         memact = self.branching_state['members_active']
         # Update the weights
@@ -781,12 +780,12 @@ class ITEAMS(EnsembleAlgorithm):
         print(f'The replenished queue is {self.branching_state["parent_queue"] = }')
         return
     # ----------------------- Plotting functions --------------------------------
-    def plot_obs_spaghetti(self, obs_fun, plotdir, ylabel='', title='', abbrv='', is_score=False):
+    def plot_observable_spaghetti(self, obs_fun, outfile, ylabel='', title='', is_score=False):
+        print(f'******************* \n \t {self.branching_state["branch_times"] = } \n *************')
         # Get all timespans
         tu = self.ens.dynsys.dt_save
         nmem = self.ens.get_nmem()
         obs = [self.ens.compute_observables([obs_fun], mem)[0] for mem in range(nmem)]
-        # TODO update this generic plotting function to extract time span from the metadata
         print(f'{obs[0] = }')
         fig,axes = plt.subplots(ncols=2,figsize=(20,5),width_ratios=[3,1],sharey=is_score)
         ax = axes[0]
@@ -799,6 +798,7 @@ class ITEAMS(EnsembleAlgorithm):
             h, = ax.plot(np.arange(tinit,tfin)*tu, obs[mem], **kwargs)
             tbr = self.branching_state['branch_times'][mem]
             tmx = self.branching_state['scores_max_timing'][mem]
+            print(f'{tbr*tu = }, {tmx*tu = }')
             ax.plot(tbr*tu, obs[mem][tmx-tinit], markerfacecolor="None", markeredgecolor=kwargs['color'], markeredgewidth=3, marker='o')
             ax.plot(tmx*tu, obs[mem][tmx-tinit], markerfacecolor="None", markeredgecolor=kwargs['color'], markeredgewidth=3, marker='x')
         ax.set_xlabel('time')
@@ -810,7 +810,7 @@ class ITEAMS(EnsembleAlgorithm):
         ax.set_xlabel('Generation')
         ax.set_ylabel('')
         #ax.set_xlim([time[0],time[-1]+1])
-        fig.savefig(join(plotdir,r'spaghetti_%s.png'%(abbrv)), **pltkwargs)
+        fig.savefig(outfile, **pltkwargs)
         plt.close(fig)
         return
 

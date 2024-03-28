@@ -541,6 +541,11 @@ class FriersonGCM(DynamicalSystem):
         da_latavg = (cos_weight*da).sum(dim='lat') / cos_weight.sum(dim='lat')
         return da_latavg
     @staticmethod
+    def rolling_time_mean(da,num_steps):
+        da_tavg = da.rolling({'time': num_steps}, min_periods=num_steps).mean()
+        return da_tavg
+
+    @staticmethod
     def dist_euc(da0,da1,roi): # Generic distance function
         t0 = da0.time.to_numpy()
         t1 = da1.time.to_numpy()

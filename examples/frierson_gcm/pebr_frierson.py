@@ -124,7 +124,6 @@ def pebr_single_workflow(i_param):
     config_analysis = dict()
     config_analysis['target_location'] = dict(lat=45, lon=180)
     # observables (scalar quantities)
-    obsprop = FriersonGCM.observable_props()
     observables = dict({
         'local_rain': dict({
             'fun': FriersonGCM.regional_rain,
@@ -303,7 +302,6 @@ def pebr_single_workflow(i_param):
 
     # Set up directories
     dirdict = dict()
-    base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
     date_str = "2024-03-26"
     sub_date_str = "0"
@@ -334,7 +332,9 @@ def run_pebr(dirdict,filedict,config_gcm,config_algo):
     nproc = 4
     recompile = False
     root_dir = dirdict['data']
-    init_time = int(round(xr.open_mfdataset(filedict['init_cond']['trajectory'], decode_times=False)['time'].load()[-1].item() * config_gcm['outputs_per_day']))
+    init_time = int(round(
+        xr.open_mfdataset(filedict['init_cond']['trajectory'], decode_times=False)['time'].load()[-1].item() 
+        * config_gcm['outputs_per_day']))
     init_cond = relpath(filedict['init_cond']['restart'], root_dir)
     if exists(filedict['alg']):
         alg = pickle.load(open(filedict['alg'], 'rb'))

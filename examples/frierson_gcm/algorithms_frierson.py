@@ -107,8 +107,8 @@ class FriersonGCMITEAMS(algorithms.ITEAMS):
             conv = np.convolve(
                     np.ones(compval['tavg'])/compval['tavg'],
                     sccomps.sel(component=compkey).to_numpy(),
-                    mode='full')[:sccomps['time'].size-(compval['tavg']-1)]
-            conv[:compval['tavg']-1] = np.nan
+                    mode='full')[:sccomps['time'].size]
+            conv[:(compval['tavg']-1)] = np.nan
             score += compval['weight']*conv
             total_weight += compval['weight']
         score /= total_weight
