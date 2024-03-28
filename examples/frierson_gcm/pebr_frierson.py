@@ -83,16 +83,29 @@ def pebr_paramset(i_param):
     print(f'{i_param = }')
     pprint.pprint(config_gcm)
 
-    config_algo = dict({
-        'seed_min': 1000,
-        'seed_max': 100000,
-        'seed_inc_init': seed_incs[i_param], 
-        'branches_per_group': 4, 
-        'interbranch_interval_phys': 20.0, # small interval helps to see continuity in stability
-        'branch_duration_phys': 40.0,
-        'num_branch_groups': 10,
-        'max_member_duration_phys': 40.0,
-        })
+    case = 1
+    if case == 0:
+        config_algo = dict({
+            'seed_min': 1000,
+            'seed_max': 100000,
+            'seed_inc_init': seed_incs[i_param], 
+            'branches_per_group': 4, 
+            'interbranch_interval_phys': 20.0, # small interval helps to see continuity in stability
+            'branch_duration_phys': 40.0,
+            'num_branch_groups': 10,
+            'max_member_duration_phys': 40.0,
+            })
+    elif case == 1:
+        config_algo = dict({
+            'seed_min': 1000,
+            'seed_max': 100000,
+            'seed_inc_init': seed_incs[i_param], 
+            'branches_per_group': 12, 
+            'interbranch_interval_phys': 2.0, # small interval helps to see continuity in stability
+            'branch_duration_phys': 40.0,
+            'num_branch_groups': 20,
+            'max_member_duration_phys': 40.0,
+            })
     return config_gcm,config_algo,expt_label,expt_abbrv
 
 # -------------- Define the observable functions of interest (to be further parameterized) ---------
@@ -100,7 +113,7 @@ def pebr_paramset(i_param):
 
 
 
-def pebr_workflow(i_param):
+def pebr_single_workflow(i_param):
     print(f'About to generate default config; {i_param = }')
     config_gcm,config_algo,expt_label,expt_abbrv = pebr_paramset(i_param)
     ngroups = config_algo['num_branch_groups']
@@ -471,63 +484,39 @@ def old_thing():
     return
 
 
-def pebr_meta_analysis_workflow(idx_param):
+def pebr_meta_workflow(idx_param):
     num_expts = len(idx_param)
-    workflows = []
-    for i_param in idx_param:
-        workflows.append(pebr_workflow(i_param))
-    configs_gcm,configs_algo,configs_analysis,expt_labels,expt_abbrvs,dirdicts,filedicts = tuple(
-            [workflows[i][j] for i in range(len(idx_param))]
-            for j in range(7))
+    num_expt = len(idx_param)
+    workflow_tuple = tuple(pebr_single_workflow(i_param) for i_param in idx_param)
+    workflows = dict()
+    for i_key,key in enumerate(('configs_gcm,configs_algo,configs_analysis,expt_labels,expt_abbrvs,dirdicts,filedicts').split(',')):
+        workflows[key] = tuple(workflow_tuple[j][i_key] for j in range(len(workflow_tuple)))
 
     config_meta_analysis = dict()
-    # Divergence timescales
+    for key in ['target_location','observables','dist_metrics','satfracs']:
+        config_meta_analysis[key] = workflows['configs_analysis'][0][key]
 
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
-    date_str = "2024-03-21"
+    date_str = "2024-03-26"
     sub_date_str = "0"
     meta_dirdict = dict()
-    meta_dirdict['expts'] = join(scratch_dir, date_str, sub_date_str)
-    meta_dirdict['analysis'] = join(meta_dirdict['expts'], 'meta_analysis')
-    meta_dirdict['plots'] = join(meta_dirdict['expts'], 'meta_plots')
+    meta_dirdict['meta'] = join(scratch_dir, date_str, sub_date_str, 'meta_pebr')
+    meta_dirdict['analysis'] = join(meta_dirdict['meta'], 'meta_analysis')
+    meta_dirdict['plots'] = join(meta_dirdict['meta'], 'meta_plots')
     for meta_dir in ['analysis','plots']:
         makedirs(meta_dirdict[meta_dir], exist_ok=True)
 
-    # Configure the meta-analysis (e.g. which observables and metrics to plot) based on the config in one of the list
-    config_meta_analysis = dict()
-    config_meta_analysis['dist_metrics'] = configs_analysis[0]['dist_metrics']
-    config_meta_analysis['satfracs'] = configs_analysis[0]['satfracs']
-    config_meta_analysis['observables'] = configs_analysis[0]['observables'] # TODO decide on some extreme value analysis for selected observables, especially over finite-time horizons etc. For example, how do block maxima statistics converge as the block size gets longer? 
+    return workflows,config_meta_analysis,meta_dirdict
 
-
-
-    meta_filedict = dict()
-    meta_filedict['analysis'] = dict()
-    meta_filedict['plots'] = dict()
-    meta_filedict['plots']['elfs_vs_sigma'] = dict()
-    dist_names = list(config_meta_analysis['dist_metrics'].keys())
-    for dist_name in dist_names:
-        meta_filedict['plots']['elfs_vs_sigma'][dist_name] = join(meta_dirdict['plots'], r'elfs_vs_sigma_dist%s.png'%(config_meta_analysis['dist_metrics'][dist_name]['abbrv']))
-
-    return config_meta_analysis,meta_dirdict,meta_filedict,workflows
-
-def pebr_meta_analysis_procedure(idx_param):
+def pebr_meta_procedure(idx_param):
     tododict = dict({
-        'analysis': 0,
-        'plots': dict({
-            'elfs_vs_sigma':        1,
-            'fsle_vs_sigma':        0,
-            }),
+        'compare_elfs':        1,
         })
-    config_meta_analysis,meta_dirdict,meta_filedict,workflows = pebr_meta_analysis_workflow(idx_param)
-    num_expts = len(idx_param)
-    configs_gcm,configs_algo,configs_analysis,expt_labels,expt_abbrvs,dirdicts,filedicts = tuple(
-            [workflows[i][j] for i in range(len(idx_param))]
-            for j in range(7))
-
-
+    workflows,config_meta_analysis,meta_dirdict = pebr_meta_workflow(idx_param)
     # Plot fractional saturation time 
-    if tododict['plots']['elfs_vs_sigma']:
+    if tododict['compare_elfs']:
+        compare_elfs(workflows, config_meta_analysis, meta_dirdict)
+        # TODO put the following into a new function compare_elfs
         for dist_name,dist_metric in config_meta_analysis['dist_metrics'].items():
             print(f'{filedicts[0].keys() = }')
             elfs_files = [filedicts[i]['dispersion']['satfractime'][dist_name] for i in range(len(idx_param))]
@@ -647,16 +636,16 @@ def old_thing():
         FriersonGCMPeriodicBranching.plot_pert_growth_meta(param2vary_vals, fracsat, t2fracsat, join(meta_dir,f't2fracsat_{fixed_param_abbrv}.png'), r'$\sigma_{\mathrm{SPPT}}$', tu=tu, fracsat_ref=fracsat_nosppt, t2fracsat_ref=t2fracsat_nosppt)
     return
 
-def pebr_single(i_param):
+def pebr_single_procedure(i_param):
     tododict = dict({
-        'run':                           0,
+        'run':                           1,
         'analysis': dict({
-            'observable_spaghetti':      0,
+            'observable_spaghetti':      1,
             'dispersion_rate':           1, # including both Lyapunov analysis (FSLE) and expected leadtime until fractional saturation (ELFS)
             'running_max':               1, # watch extreme value statistics (curves and parameters) converge to the true values with longer time blocks
             }),
         })
-    config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = pebr_workflow(i_param)
+    config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = pebr_single_workflow(i_param)
     if tododict['run']:
         run_pebr(dirdict,filedict,config_gcm,config_algo)
     alg = pickle.load(open(filedict['alg'], 'rb'))
@@ -679,7 +668,7 @@ if __name__ == "__main__":
     print(f'Got into Main')
     if procedure == 'single':
         for i_param in idx_param:
-            pebr_single(i_param)
+            pebr_single_procedure(i_param)
     elif procedure == 'meta':
-        pebr_meta_analysis_procedure(idx_param)
+        pebr_meta_procedure(idx_param)
 
