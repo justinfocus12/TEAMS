@@ -367,8 +367,8 @@ def compare_basic_stats(workflows, config_meta_analysis, meta_dirdict):
     Ls = tuple(workflows['configs_gcm'][i]['SPPT']['L_sppt'] for i in range(num_expt))
     taus = tuple(workflows['configs_gcm'][i]['SPPT']['tau_sppt'] for i in range(num_expt))
     sigmas = tuple(workflows['configs_gcm'][i]['SPPT']['std_sppt'] for i in range(num_expt))
-    Ltau = tuple(zip(Ls,taus))
-    Ltau_unique = list(set(Ltau))
+    Ltau = list(set(Ltau))
+    Ltau_unique = np.unique(np.array(Ltau),axis=0)
     Ltau_idx_groups = tuple(
             tuple(i for i in range(num_expt) if Ltau[i] == Ltau_val)
             for Ltau_val in Ltau_unique

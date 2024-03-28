@@ -516,45 +516,58 @@ def pebr_meta_procedure(idx_param):
     # Plot fractional saturation time 
     if tododict['compare_elfs']:
         compare_elfs(workflows, config_meta_analysis, meta_dirdict)
-        # TODO put the following into a new function compare_elfs
-        for dist_name,dist_metric in config_meta_analysis['dist_metrics'].items():
-            print(f'{filedicts[0].keys() = }')
-            elfs_files = [filedicts[i]['dispersion']['satfractime'][dist_name] for i in range(len(idx_param))]
-            # Split these files into groups based on non-sigma parameters
-            plot_meta_elfs_vs_sigma(config_meta_analysis, configs_gcm, expt_labels, elfs_files, meta_filedict['plots']['elfs_vs_sigma'][dist_name], title=dist_metric['label'])
     return
 
             
 
-def plot_meta_elfs_vs_sigma(config_meta_analysis, configs_gcm, expt_labels, elfs_files, outfile, title=''):
-    # Group experiments by non-sigma parameter
-    num_expts = len(configs_gcm)
-    Ls = np.array([configs_gcm[i]['SPPT']['L_sppt'] for i in range(num_expts)])
-    taus = np.array([configs_gcm[i]['SPPT']['tau_sppt'] for i in range(num_expts)])
-    sigmas = np.array([configs_gcm[i]['SPPT']['std_sppt'] for i in range(num_expts)])
-    unique_Ls_taus,unique_inverse = np.unique(np.array([Ls,taus]).T, axis=0, return_inverse=True)
+def compare_elfs(workflows, config_meta_analysis, meta_dirdict):
+    # group the different experiments by L_sppt and tau_sppt 
+    num_expt = len(workflows['configs_gcm'])
+    tu = 1/workflows['configs_gcm'][0]['outputs_per_day']
+    Ls = tuple(workflows['configs_gcm'][i]['SPPT']['L_sppt'] for i in range(num_expt))
+    taus = tuple(workflows['configs_gcm'][i]['SPPT']['tau_sppt'] for i in range(num_expt))
+    sigmas = tuple(workflows['configs_gcm'][i]['SPPT']['std_sppt'] for i in range(num_expt))
+    Ltau = tuple(zip(Ls,taus))
+    Ltau_unique = list(set(Ltau))
+    Ltau_idx_groups = tuple(
+            tuple(i for i in range(num_expt) if Ltau[i] == Ltau_val)
+            for Ltau_val in Ltau_unique
+            )
     satfracs = config_meta_analysis['satfracs']
-    fig,axes = plt.subplots(ncols=len(satfracs),figsize=(6*len(satfracs),6),sharey=True)
-    handles = []
-    for i_Ltau in range(len(unique_Ls_taus)):
-        color = plt.cm.Set1(i_Ltau/len(unique_Ls_taus))
-        L,tau = unique_Ls_taus[i_Ltau]
-        idx = np.where(unique_inverse == i_Ltau)[0]
-        elfs_mean = np.nan*np.ones((len(idx),len(satfracs)))
-        for ii,i in enumerate(idx):
-            elfs = np.load(elfs_files[i])
-            elfs_mean[ii,:] = np.mean(elfs['elfs'], axis=0) # mean across branch groups 
+    for dist_name,dist_props in config_meta_analysis['dist_metrics'].items():
+        fig,axes = plt.subplots(ncols=len(satfracs), figsize=(6*len(satfracs),4), sharey='row')
+        handles = []
+        for i_group,Ltau in enumerate(Ltau_unique):
+            idx = Ltau_idx_groups[i_group]
+            elfs_mean = np.nan*np.ones((len(satfracs),len(idx)))
+            elfs_std = np.nan*np.ones((len(satfracs),len(idx)))
+            for ii,i in enumerate(idx):
+                disp_file = join(workflows['dirdicts'][i]['analysis'], r'dispersion_%s.npz'%(dist_props['abbrv']))
+                if exists(disp_file):
+                    dispersion_stats = np.load(disp_file)
+                    elfs_mean[:,ii] = np.mean(dispersion_stats['elfs'], axis=0)
+                    elfs_std[:,ii] = np.std(dispersion_stats['elfs'], axis=0)
+                else:
+                    print(f'WARNING missing the dispersion file {disp_file}')
+
+            sigmas_idx = np.array([sigmas[i] for i in idx])
+            group_color = plt.cm.Set1(i_group)
+            group_label = r'$L=%g$km, $\tau=%g$h'%(Ltau_unique[i_group][0]/1000,Ltau_unique[i_group][1]/3600)
+            for i_sf,sf in enumerate(satfracs):
+                ax = axes[i_sf]
+                h, = ax.plot(sigmas_idx,elfs_mean[i_sf,:]*tu,color=group_color,label=group_label)
+                lo,hi = ((elfs_mean[i_sf,:] + sgn*elfs_std[i_sf,:])*tu for sgn in (-1,1))
+                ax.fill_between(sigmas_idx, lo, hi, facecolor=group_color, zorder=-1, edgecolor='none', alpha=0.25)
+            handles.append(h)
         for i_sf,sf in enumerate(satfracs):
-            ax = axes[i_sf]
-            h, = ax.plot(sigmas[idx], elfs_mean[:,i_sf], label=r'$L=%g$km, $\tau=%g$h'%(L/1000,tau/3600),color=color,marker='.')
-            if i_sf == 0: handles.append(h)
-            ax.set_title(f'$f=%g$'%(sf))
-            ax.set_xlabel(r'$\sigma_{\mathrm{SPPT}}$')
-            ax.set_ylabel(r'$\tau(f)$')
-    axes[0].legend(handles=handles)
-    fig.suptitle(title)
-    fig.savefig(outfile, **pltkwargs)
-    plt.close(fig)
+            axes[i_sf].set(title=r'$\varepsilon=%g$'%(sf), xlabel=r'$\sigma_{\mathrm{SPPT}}$', ylabel='')
+            axes[i_sf].yaxis.set_tick_params(which='both', labelbottom=True)
+        fig.suptitle(dist_props['label'], y=1.0)
+        axes[0].set_ylabel(r'$\overline{t_\varepsilon}\pm\mathrm{SD}(t_\varepsilon)$')
+        axes[-1].legend(handles=handles, bbox_to_anchor=(1.05,1), loc='upper left')
+        fig.savefig(join(meta_dirdict['plots'], r'elfs_%s.png'%(dist_props['abbrv'])), **pltkwargs)
+        plt.close(fig)
+            
     return
 
 
@@ -663,8 +676,8 @@ if __name__ == "__main__":
         procedure = sys.argv[1]
         idx_param = [int(arg) for arg in sys.argv[2:]]
     else:
-        procedure = 'single'
-        idx_param = [5] #list(range(1,21))
+        procedure = 'meta'
+        idx_param = list(range(1,21))
     print(f'Got into Main')
     if procedure == 'single':
         for i_param in idx_param:
