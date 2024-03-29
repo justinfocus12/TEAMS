@@ -792,9 +792,9 @@ class ITEAMS(EnsembleAlgorithm):
         ax = axes[0]
         for mem in range(nmem):
             if mem < self.population_size:
-                kwargs = {'color': 'black', 'linestyle': '--', 'linewidth': 2, 'zorder': 1}
+                kwargs = {'color': 'black', 'linestyle': '--', 'linewidth': 2, 'zorder': 0}
             else:
-                kwargs = {'color': plt.cm.rainbow(mem/nmem), 'linestyle': '-', 'linewidth': 1, 'zorder': 0}
+                kwargs = {'color': plt.cm.rainbow(mem/nmem), 'linestyle': '-', 'linewidth': 1, 'zorder': 1}
             tinit,tfin = self.ens.get_member_timespan(mem)
             h, = ax.plot(np.arange(tinit,tfin)*tu, obs[mem], **kwargs)
             tbr = self.branching_state['branch_times'][mem]

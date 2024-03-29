@@ -83,7 +83,7 @@ def iteams_paramset(i_param):
 
     config_algo = dict({
         'autonomy': True,
-        'num_levels_max': 1,
+        'num_levels_max': 1, # This parameter shouldn't affect the filenaming or anything like that 
         'seed_min': 1000,
         'seed_max': 100000,
         'seed_inc_init': seed_incs[i_param], 
@@ -221,6 +221,31 @@ def plot_observable_spaghetti(config_analysis, alg, dirdict):
         alg.plot_observable_spaghetti(obs_fun, outfile, title=obs_props['label'], is_score=is_score)
     return
 
+def plot_score_spaghetti(config_analysis, alg, dirdict):
+    pass
+
+def plot_score_distribution(config_analysis, alg, dirdict):
+    # Three histograms: initial population, weighted, and unweighted
+    scmax,sclev,logw,mult,tbr,tmx = (alg.branching_state[s] for s in 'scores_max score_levels log_weights multiplicities branch_times scores_max_timing'.split(' '))
+    hist_init,bin_edges_init = np.histogram(scmax[:alg.population_size], bins=10, density=True)
+    hist_unif,bin_edges_unif = np.histogram(scmax, bins=10, density=True)
+    hist_wted,bin_edges_wted = np.histogram(scmax, bins=10, weights=mult*np.exp(logw), density=True)
+    fig,ax = plt.subplots()
+    cbinfunc = lambda bin_edges: (bin_edges[1:] + bin_edges[:-1])/2
+    hinit, = ax.plot(cbinfunc(bin_edges_init), hist_init, marker='.', color='dodgerblue', label=r'Init (%g)'%(alg.population_size))
+    hunif, = ax.plot(cbinfunc(bin_edges_unif), hist_unif, marker='.', color='red', label=r'Fin. unweighted (%g)'%(alg.ens.get_nmem()))
+    hwted, = ax.plot(cbinfunc(bin_edges_wted), hist_wted, marker='.', color='black', linestyle='--', linewidth=3, label=r'Fin. weighted (%g)'%(np.sum(mult)))
+    ax.set_yscale('log')
+    ax.legend(handles=[hinit,hunif,hwted])
+    ax.set_title('Score distribution')
+    ax.set_ylabel(r'$S(X)$')
+    fig.savefig(join(dirdict['plots'],'score_hist.png'), **pltkwargs)
+    plt.close(fig)
+    return
+
+
+
+
 def run_iteams(dirdict,filedict,config_gcm,config_algo):
     nproc = 4
     recompile = False
@@ -257,9 +282,10 @@ def run_iteams(dirdict,filedict,config_gcm,config_algo):
 def iteams_single_procedure(i_param):
 
     tododict = dict({
-        'run':             1,
+        'run':             0,
         'analysis': dict({
-            'observable_spaghetti':     1,
+            'observable_spaghetti':     0,
+            'score_distribution':       1,
             }),
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = iteams_single_workflow(i_param)
@@ -268,6 +294,9 @@ def iteams_single_procedure(i_param):
     alg = pickle.load(open(filedict['alg'], 'rb'))
     if tododict['analysis']['observable_spaghetti']:
         plot_observable_spaghetti(config_analysis, alg, dirdict)
+        # TODO have another ancestor-wise version, and another that shows family lines improving in parallel and dropping out
+    if tododict['analysis']['score_distribution']:
+        plot_score_distribution(config_analysis, alg, dirdict)
     return
 
 if __name__ == "__main__":
@@ -277,7 +306,7 @@ if __name__ == "__main__":
         idx_param = [int(arg) for arg in sys.argv[2:]]
     else:
         procedure = 'single'
-        idx_param = [1] #list(range(1,21))
+        idx_param = [1,2,3,4,5] #list(range(1,21))
     print(f'Got into Main')
     if procedure == 'single':
         for i_param in idx_param:

@@ -120,10 +120,10 @@ class FriersonGCMITEAMS(algorithms.ITEAMS):
         comp_labels = []
         for compkey,compval in config['score_components'].items():
             roi_abbrv,roi_label = FriersonGCM.label_from_roi(compval['roi'])
-            comp_label = r'%s%stavg%d'%(
+            comp_label = r'%s%stavg%gd'%(
                     obsprop[compval['observable']]['abbrv'],
                     roi_abbrv,
-                    compval['tavg']
+                    compval['tavg']/config['outputs_per_day'], # TODO switch to compval['tavg_phys']
                     )
             comp_labels.append(comp_label)
         abbrv_score = '_'.join(comp_labels) 
