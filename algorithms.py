@@ -710,7 +710,7 @@ class ITEAMS(EnsembleAlgorithm):
             parent = self.branching_state['parent_queue'].popleft()
             init_time_parent,fin_time_parent = self.ens.get_member_timespan(parent)
             assert self.branching_state['scores_max'][parent] > self.branching_state['score_levels'][-1]
-            first_exceedance_time_parent = init_time_parent + np.where(self.branching_state['scores_tdep'][parent]  > self.branching_state['score_levels'][-1])[0][0]
+            first_exceedance_time_parent = init_time_parent + np.where(self.branching_state['scores_tdep'][parent] > self.branching_state['score_levels'][-1])[0][0]
             # TODO correct the branch timing
             branch_time = first_exceedance_time_parent - self.advance_split_time #TODO
             print(f'{branch_time = }')
@@ -763,7 +763,7 @@ class ITEAMS(EnsembleAlgorithm):
     def raise_level_replenish_queue(self):
         assert len(self.branching_state['parent_queue']) == 0
         scores_active = np.array([self.branching_state['scores_max'][ma] for ma in self.branching_state['members_active']])
-        if len(scores_active) > 1: # Past the startup phase
+        if self.ens.get_nmem() >= self.population_size: # Past the startup phase
             order = np.argsort(scores_active)
             num_leq = np.cumsum([self.branching_state['multiplicities'][order[j]] for j in range(len(order))])
             next_level = scores_active[order[np.where(num_leq >= self.num2drop)[0][0]]]
@@ -772,12 +772,13 @@ class ITEAMS(EnsembleAlgorithm):
                 self.terminate = True
             # Re-populate the parent queue
             self.branching_state['members_active'] = [ma for ma in self.branching_state['members_active'] if self.branching_state['scores_max'][ma] > next_level]
-        parent_pool = self.rng.permutation(np.concatenate(tuple([parent]*self.branching_state['multiplicities'][parent] for parent in self.branching_state['members_active']))) # TODO consider weighting parents' occurrence in this pool by weight
-        lenpp = len(parent_pool)
-        deficit = self.population_size - len(self.branching_state['members_active'])
-        for i in range(deficit):
-            self.branching_state['parent_queue'].append(parent_pool[i % lenpp])
-        print(f'The replenished queue is {self.branching_state["parent_queue"] = }')
+        if not self.terminate:
+            parent_pool = self.rng.permutation(np.concatenate(tuple([parent]*self.branching_state['multiplicities'][parent] for parent in self.branching_state['members_active']))) # TODO consider weighting parents' occurrence in this pool by weight
+            lenpp = len(parent_pool)
+            deficit = self.population_size - len(self.branching_state['members_active'])
+            for i in range(deficit):
+                self.branching_state['parent_queue'].append(parent_pool[i % lenpp])
+            print(f'The replenished queue is {self.branching_state["parent_queue"] = }')
         return
     # ----------------------- Plotting functions --------------------------------
     def plot_observable_spaghetti(self, obs_fun, outfile, ylabel='', title='', is_score=False):
@@ -790,7 +791,7 @@ class ITEAMS(EnsembleAlgorithm):
         fig,axes = plt.subplots(ncols=2,figsize=(20,5),width_ratios=[3,1],sharey=is_score)
         ax = axes[0]
         for mem in range(nmem):
-            if mem == 0:
+            if mem < self.population_size:
                 kwargs = {'color': 'black', 'linestyle': '--', 'linewidth': 2, 'zorder': 1}
             else:
                 kwargs = {'color': plt.cm.rainbow(mem/nmem), 'linestyle': '-', 'linewidth': 1, 'zorder': 0}

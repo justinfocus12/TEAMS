@@ -83,12 +83,12 @@ def iteams_paramset(i_param):
 
     config_algo = dict({
         'autonomy': True,
-        'num_levels_max': 15,
+        'num_levels_max': 1,
         'seed_min': 1000,
         'seed_max': 100000,
         'seed_inc_init': seed_incs[i_param], 
-        'population_size': 4,
-        'time_horizon_phys': 15,
+        'population_size': 100,
+        'time_horizon_phys': 100,
         'buffer_time_phys': 0,
         'advance_split_time_phys': 2,
         'num2drop': 1,
@@ -277,7 +277,7 @@ if __name__ == "__main__":
         idx_param = [int(arg) for arg in sys.argv[2:]]
     else:
         procedure = 'single'
-        idx_param = [5] #list(range(1,21))
+        idx_param = [1] #list(range(1,21))
     print(f'Got into Main')
     if procedure == 'single':
         for i_param in idx_param:

@@ -5,3 +5,4 @@ __pycache__/
 *.nc
 *.npz
 *.out
+*.nfs*
