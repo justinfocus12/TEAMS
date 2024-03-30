@@ -72,6 +72,32 @@ class FriersonGCMPeriodicBranching(algorithms.PeriodicBranching):
             })
         return icandf
 
+class FriersonGCMAncestorGenerator(algorithms.AncestorGenerator):
+    def generate_icandf_from_uic(self):
+        init_cond = self.uic
+        init_time = self.uic_time
+        fin_time = init_time + self.burnin_time
+        reseed_times = [init_time]
+        seeds = [self.rng.integers(low=self.seed_min, high=self.seed_max)]
+        icandf = dict({
+            'init_cond': self.uic,
+            'frc': forcing.OccasionalReseedForcing(init_time, fin_time, reseed_times, seeds),
+            })
+        return icandf
+    def generate_icandf_from_buick(self, parent):
+        init_cond = self.ens.traj_metadata[parent]['filename_restart']
+        init_time_parent,fin_time_parent = self.ens.get_member_timespan(parent)
+        init_time = fin_time_parent
+        fin_time = init_time + self.time_horizon
+        reseed_times = [init_time]
+        seeds = [self.rng.integers(low=self.seed_min, high=self.seed_max)]
+        icandf = dict({
+            'init_cond': init_cond,
+            'frc': forcing.OccasionalReseedForcing(init_time, fin_time, reseed_times, seeds),
+            })
+        return icandf
+
+
 class FriersonGCMITEAMS(algorithms.ITEAMS):
     def derive_parameters(self, config):
         # Parameterize the score function in a simple way: the components will be area-averages of fields over specified regions. The combined score will be a linear combination.

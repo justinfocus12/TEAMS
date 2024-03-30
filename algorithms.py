@@ -47,7 +47,7 @@ class DirectNumericalSimulation(EnsembleAlgorithm):
     # This is unfinished and maybe should never be used. 
     @staticmethod
     def label_from_config(config):
-        abbrv = 'DNS_si%d'%(config['seed_inc_init'])
+        abbrv = r'DNS_si%d'%(config['seed_inc_init'])
         label = r'DNS ($\delta$seed %g)'%(config['seed_inc_init'])
         return abbrv,label
     def derive_parameters(self, config):
@@ -637,6 +637,108 @@ class SDEPeriodicBranching(PeriodicBranching):
 
 
 # --------------------- end PeriodicBranching section -------------------------
+
+class AncestorGenerator(EnsembleAlgorithm):
+    # From one single initial condition (maybe even a coldstart), spawn off a branching ensemble long enough to generate totally independent samples
+    def __init__(self, uic_time, uic, config, ens):
+        # uic = universal initial condition
+        self.uic_time = uic_time
+        self.uic = uic 
+        super().__init__(config, ens)
+        return
+    @abstractmethod
+    def generate_icandf_from_uic(self):
+        # Put a random seed or small perturbation into an integration that will start from the universal common ancestor
+        pass
+    @abstractmethod
+    def generate_icandf_from_buick(self, parent): 
+        # Initialize an integration from a burnt-in condition (kicked)
+        pass
+    @staticmethod
+    def label_from_config(config):
+        abbrv = r'AnGe_si%d_Tbrn%g_Thrz%g'%(
+                config['seed_inc_init'],
+                config['burnin_time_phys'],
+                config['time_horizon_phys'],
+                )
+        abbrv = abbrv.replace('.','p')
+        label = r'Ancestor Generator (burn-in %g, horizon %g)'%(config['burnin_time_phys'],config['time_horizon_phys'])
+        return abbrv,label
+    def derive_parameters(self, config):
+        tu = self.ens.dynsys.dt_save
+        self.burnin_time = int(round(config['burnin_time_phys']/tu))
+        self.time_horizon = int(round(config['time_horizon_phys']/tu)) # Time to run after burnin
+        # Capacity parameters (mutable, in case we want to extend the dataset later)
+        self.num_buicks = config['num_buicks'] 
+        self.branches_per_buick = config['branches_per_buick']
+        return
+    def set_capacity(self, num_buicks, branches_per_buick):
+        num_new_buicks = num_buicks - self.branching_state['num_buicks_generated']
+        num_new_branches = [branches_per_buick - self.branching_state['num_branches_generated'][i] for i in range(self.branching_state['num_buicks_generated'])]
+        if num_new_buicks < 0 or min(num_new_branches) < 0:
+            raise Exception(f'{num_new_buicks = }, {num_new_branches = }')
+        if num_new_buicks > 0 or max(num_new_branches) > 0:
+            self.terminate = False
+        self.num_buicks = num_buicks
+        self.branches_per_buick = branches_per_buick
+        return
+    def take_next_step(self, saveinfo):
+        if self.terminate:
+            return
+        nmem = self.ens.get_nmem()
+        if nmem == 0:
+            self.branching_state = dict({
+                'num_buicks_generated': 0,
+                'num_branches_generated': [],
+                'generation_0': [], # List of all burn-in trajectories
+                })
+            parent = None
+        # If we've generated fewer than all the requested initial conditions, go ahead and generate them 
+        if self.branching_state['num_buicks_generated'] < self.num_buicks: 
+            icandf = self.generate_icandf_from_uic()
+            branching_state_update = dict({
+                'num_buicks_generated': self.branching_state['num_buicks_generated'] + 1,
+                'num_branches_generated': self.branching_state['num_branches_generated'] + [0],
+                'generation_0': self.branching_state['generation_0'] + [nmem],
+                })
+            parent = None
+        elif min(self.branching_state['num_branches_generated']) < self.branches_per_buick:
+            # Find first branch with a deficit
+            first_underbranched_buick = np.argmax(np.array(self.branching_state['num_branches_generated']) < self.branches_per_buick)
+            parent = self.branching_state['generation_0'][first_underbranched_buick]
+            icandf = self.generate_icandf_from_buick(parent=parent) 
+            nbg = self.branching_state['num_branches_generated'].copy()
+            nbg[first_underbranched_buick] += 1
+            branching_state_update = dict({
+                'num_branches_generated': nbg,
+                })
+        else:
+            self.terminate = True
+            return
+
+        # ---------------------- Run the new trajectory -----------------------------
+        obs_fun = lambda t,x: None
+        _ = self.ens.branch_or_plant(icandf, obs_fun, saveinfo, parent=parent)
+        # ---------------------------------------------------------------------------
+        self.branching_state.update(branching_state_update)
+        return
+    # ------------------ Plotting methods ----------------------
+    def plot_observable_spaghetti_burnin(self, obs_fun, outfile, ylabel='', title=''):
+        pass
+    def plot_observable_spaghetti_branching(self, parent, obs_fun, ylabel='', title=''):
+        pass
+
+
+class TEAMS(EnsembleAlgorithm):
+    def __init__(self, init_times, init_conds, config, ens):
+        # init_conds is a whole list 
+        assert config['population_size'] == len(init_times) == len(init_conds)
+        self.init_times = init_times
+        self.init_conds = init_conds
+        super().__init__(config, ens)
+        return
+# --------------- ITEAMS, where I stands for {initial condition-based, individual, whatever it stands for in Apple because the Apple doesn't fall far from the tree} ---------
+
 
 class ITEAMS(EnsembleAlgorithm):
     # TEAMS starting from a fixed initial condition. The TEAMS algorithm may wrap this, or just be similar; TBD
