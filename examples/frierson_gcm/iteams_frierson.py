@@ -52,17 +52,25 @@ print(f'{i = }'); i += 1
 import algorithms_frierson; reload(algorithms_frierson)
 
 
-def iteams_paramset(i_param):
+def iteams_paramset(i_expt):
     base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
     config_gcm = frierson_gcm.FriersonGCM.default_config(base_dir_absolute,base_dir_absolute)
 
-    # Parameters to loop over
+    # i_expt is a flat index in a multidimensional parameter space 
+
+    # SPPT parameters
     pert_types = ['IMP']        + ['SPPT']*20
     std_sppts = [0.5]           + [0.5,0.3,0.1,0.05,0.01]*4
     tau_sppts = [6.0*3600]      + [6.0*3600]*5   + [6.0*3600]*5    + [24.0*3600]*5     + [96.0*3600]*5 
     L_sppts = [500.0*1000]      + [500.0*1000]*5 + [2000.0*1000]*5 + [500.0*1000]*5    + [500.0*1000]*5
-    outputs_per_days = [4]*21
-    seed_incs = [0]*21
+
+    # Buick choices
+    buicks = list(range(8))
+
+    # Possible seeds to use 
+    seed_incs = list(range(12))
+
+    i_param,i_buick,i_seed_inc = np.unravel_index(i_expt, (len(std_sppts), len(buicks), len(seed_incs)))
 
     if pert_types[i_param] == 'IMP':
         expt_label = 'Impulsive'
@@ -71,7 +79,7 @@ def iteams_paramset(i_param):
         expt_label = r'SPPT, $\sigma=%g$, $\tau=%g$ h, $L=%g$ km'%(std_sppts[i_param],tau_sppts[i_param]/3600,L_sppts[i_param]/1000)
         expt_abbrv = r'SPPT_std%g_tau%gh_L%gkm'%(std_sppts[i_param],tau_sppts[i_param]/3600,L_sppts[i_param]/1000)
 
-    config_gcm['outputs_per_day'] = outputs_per_days[i_param]
+    config_gcm['outputs_per_day'] = 4
     config_gcm['pert_type'] = pert_types[i_param]
     if config_gcm['pert_type'] == 'SPPT':
         config_gcm['SPPT']['tau_sppt'] = tau_sppts[i_param]
@@ -83,12 +91,13 @@ def iteams_paramset(i_param):
 
     config_algo = dict({
         'autonomy': True,
-        'num_levels_max': 1, # This parameter shouldn't affect the filenaming or anything like that 
+        'num_levels_max': 12, # This parameter shouldn't affect the filenaming or anything like that 
         'seed_min': 1000,
         'seed_max': 100000,
-        'seed_inc_init': seed_incs[i_param], 
-        'population_size': 100,
-        'time_horizon_phys': 100,
+        'seed_inc_init': i_seed_inc,
+        'buick': i_buick,
+        'population_size': 12,
+        'time_horizon_phys': 20,
         'buffer_time_phys': 0,
         'advance_split_time_phys': 2,
         'num2drop': 1,
@@ -106,8 +115,10 @@ def iteams_paramset(i_param):
         })
     return config_gcm,config_algo,expt_label,expt_abbrv
 
-def iteams_single_workflow(i_param):
-    config_gcm,config_algo,expt_label,expt_abbrv = iteams_paramset(i_param)
+def iteams_single_workflow(i_expt):
+    # i_expt is a flat index, from which both i_param and i_buick are derived
+    # Cluge; rely on knowing the menu of options from the Buick dealership and from the parameter sets 
+    config_gcm,config_algo,expt_label,expt_abbrv = iteams_paramset(i_expt)
     param_abbrv_gcm,param_label_gcm = frierson_gcm.FriersonGCM.label_from_config(config_gcm)
     param_abbrv_algo,param_label_algo = algorithms_frierson.FriersonGCMITEAMS.label_from_config(config_algo)
     config_analysis = dict()
@@ -196,17 +207,18 @@ def iteams_single_workflow(i_param):
     dirdict['data'] = join(dirdict['expt'], 'data')
     dirdict['analysis'] = join(dirdict['expt'], 'analysis')
     dirdict['plots'] = join(dirdict['expt'], 'plots')
+    # TODO maybe do all the buick-linking here instead, and don't make the ITEAMS object worry about it 
     dirdict['init_cond'] = join(
             f'/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/2024-03-26/0/',
-            param_abbrv_gcm, 'DNS_si0', 'data')
+            param_abbrv_gcm, 'AnGe_si0_Tbrn50_Thrz25', 'data')
     for dirname in ('data','analysis','plots'):
         makedirs(dirdict[dirname], exist_ok=True)
     filedict = dict()
     # Initial conditions
-    filedict['init_cond'] = dict()
-    filedict['init_cond']['restart'] = join(dirdict['init_cond'],'restart_mem20.cpio')
-    filedict['init_cond']['trajectory'] = join(dirdict['init_cond'],'mem20.nc')
-    print(f'{filedict["init_cond"] = }')
+    filedict['angel'] = join(
+            f'/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/2024-03-26/0/',
+            param_abbrv_gcm, 'AnGe_si0_Tbrn50_Thrz25', 'data',
+            'alg.pickle') 
     # Algorithm manager
     filedict['alg'] = join(dirdict['data'], 'alg.pickle')
     filedict['alg_backup'] = join(dirdict['data'], 'alg_backup.pickle')
@@ -250,16 +262,13 @@ def run_iteams(dirdict,filedict,config_gcm,config_algo):
     nproc = 4
     recompile = False
     root_dir = dirdict['data']
-    init_time = int(round(
-        xr.open_mfdataset(filedict['init_cond']['trajectory'], decode_times=False)['time'].load()[-1].item() 
-        * config_gcm['outputs_per_day']))
-    init_cond = relpath(filedict['init_cond']['restart'], root_dir)
+    angel = pickle.load(open(filedict['angel'], 'rb'))
     if exists(filedict['alg']):
         alg = pickle.load(open(filedict['alg'], 'rb'))
     else:
         gcm = frierson_gcm.FriersonGCM(config_gcm, recompile=recompile)
         ens = ensemble.Ensemble(gcm, root_dir=root_dir)
-        alg = algorithms_frierson.FriersonGCMITEAMS(init_time, init_cond, config_algo, ens)
+        alg = algorithms_frierson.FriersonGCMITEAMS.initialize_from_ancestorgenerator(angel, config_algo, ens)
 
     alg.ens.dynsys.set_nproc(nproc)
     alg.ens.set_root_dir(root_dir)
@@ -279,16 +288,16 @@ def run_iteams(dirdict,filedict,config_gcm,config_algo):
         pickle.dump(alg, open(filedict['alg'], 'wb'))
     return
 
-def iteams_single_procedure(i_param):
+def iteams_single_procedure(i_expt):
 
     tododict = dict({
-        'run':             0,
+        'run':             1,
         'analysis': dict({
-            'observable_spaghetti':     0,
+            'observable_spaghetti':     1,
             'score_distribution':       1,
             }),
         })
-    config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = iteams_single_workflow(i_param)
+    config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = iteams_single_workflow(i_expt)
     if tododict['run']:
         run_iteams(dirdict,filedict,config_gcm,config_algo)
     alg = pickle.load(open(filedict['alg'], 'rb'))
@@ -303,16 +312,19 @@ if __name__ == "__main__":
     print(f'Got into Main')
     if len(sys.argv) > 1:
         procedure = sys.argv[1]
-        idx_param = [int(arg) for arg in sys.argv[2:]]
+        idx_expt = [int(arg) for arg in sys.argv[2:]]
     else:
         procedure = 'single'
-        idx_param = [1,2,3,4,5] #list(range(1,21))
+        i_param,i_buick,i_seed_inc = 2,0,0
+        shp = (21,8,12)
+        i_expt = np.ravel_multi_index((i_param,i_buick,i_seed_inc), shp)
+        idx_expt = [i_expt] #list(range(1,21))
     print(f'Got into Main')
     if procedure == 'single':
-        for i_param in idx_param:
-            iteams_single_procedure(i_param)
+        for i_expt in idx_expt:
+            iteams_single_procedure(i_expt)
     elif procedure == 'meta':
-        iteams_meta_procedure(idx_param)
+        iteams_meta_procedure(idx_expt)
 
 
 

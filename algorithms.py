@@ -764,8 +764,7 @@ class TEAMS(EnsembleAlgorithm):
 
 
 class ITEAMS(EnsembleAlgorithm):
-    # TODO (1) Allow for ingesting a pre-existing database of initial trajectories, (2) allow to reseed at multiple times
-    # TEAMS starting from a fixed initial condition. The TEAMS algorithm may wrap this, or just be similar; TBD
+    # TODO Allow to reseed at multiple times, or for limited time 
     def __init__(self, init_time, init_cond, config, ens):
         self.set_init_cond(init_time, init_cond) # Unlike for general Algorithms, an initial condition is mandatory
         super().__init__(config, ens)
@@ -792,12 +791,13 @@ class ITEAMS(EnsembleAlgorithm):
     @staticmethod
     def label_from_config(config):
         abbrv = (
-                r'N%d_T%g_ast%g_drop%d_si%d'%(
+                r'N%d_T%g_ast%g_drop%d_si%d_buick%d'%(
                     config['population_size'],
                     config['time_horizon_phys'],
                     config['advance_split_time_phys'],
                     config['num2drop'],
                     config['seed_inc_init'],
+                    config['buick'], # This option might be irrelevant 
                     )
                 ).replace('.','p')
         label = 'ITEAMS'
@@ -865,7 +865,7 @@ class ITEAMS(EnsembleAlgorithm):
         self.branching_state['branch_times'].append(branch_time)
         self.branching_state['scores_tdep'].append(new_score_combined)
         self.branching_state['scores_max'].append(new_score_max)
-        self.branching_state['scores_max_timing'].append(init_time_new+np.nanargmax(new_score_combined))
+        self.branching_state['scores_max_timing'].append(1+init_time_new+np.nanargmax(new_score_combined))
         success = (new_score_max > self.branching_state['score_levels'][-1])
         memact = self.branching_state['members_active']
         # Update the weights
@@ -927,7 +927,7 @@ class ITEAMS(EnsembleAlgorithm):
             else:
                 kwargs = {'color': plt.cm.rainbow(mem/nmem), 'linestyle': '-', 'linewidth': 1, 'zorder': 1}
             tinit,tfin = self.ens.get_member_timespan(mem)
-            h, = ax.plot(np.arange(tinit,tfin+1)*tu, obs[mem], **kwargs)
+            h, = ax.plot(np.arange(tinit+1,tfin+1)*tu, obs[mem], **kwargs)
             tbr = self.branching_state['branch_times'][mem]
             tmx = self.branching_state['scores_max_timing'][mem]
             print(f'{tbr*tu = }, {tmx*tu = }')

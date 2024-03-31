@@ -100,11 +100,13 @@ class FriersonGCMAncestorGenerator(algorithms.AncestorGenerator):
 
 class FriersonGCMITEAMS(algorithms.ITEAMS):
     @classmethod
-    def initialize_from_ancestorgenerator(cls, angel, family, config, ens):
-        parent = angel.branching_state['generation_0'][family]
+    def initialize_from_ancestorgenerator(cls, angel, config, ens):
+        parent = angel.branching_state['generation_0'][config['buick']]
 
         init_time_parent,fin_time_parent = angel.ens.get_member_timespan(parent)
-        init_cond = angel.ens.traj_metadata[parent]['icandf']['filename_restart']
+        init_cond = relpath(
+                join(angel.ens.root_dir, angel.ens.traj_metadata[parent]['filename_restart']),
+                ens.root_dir)
         return cls(fin_time_parent, init_cond, config, ens)
     def derive_parameters(self, config):
         # Parameterize the score function in a simple way: the components will be area-averages of fields over specified regions. The combined score will be a linear combination.
@@ -149,6 +151,7 @@ class FriersonGCMITEAMS(algorithms.ITEAMS):
     @staticmethod
     def label_from_config(config):
         abbrv_population,label_population = algorithms.ITEAMS.label_from_config(config)
+        # Append a code for the score
         obsprop = FriersonGCM.observable_props()
         comp_labels = []
         for compkey,compval in config['score_components'].items():
@@ -156,7 +159,7 @@ class FriersonGCMITEAMS(algorithms.ITEAMS):
             comp_label = r'%s%stavg%gd'%(
                     obsprop[compval['observable']]['abbrv'],
                     roi_abbrv,
-                    compval['tavg']/config['outputs_per_day'], # TODO switch to compval['tavg_phys']
+                    compval['tavg'], 
                     )
             comp_labels.append(comp_label)
         abbrv_score = '_'.join(comp_labels) 
@@ -193,7 +196,8 @@ class FriersonGCMITEAMS(algorithms.ITEAMS):
             seeds.append(new_seed)
         else:
             reseed_times = [branch_time]
-            seeds = [new_seed] # TODO if possible, when on trunk, continue the random number generator
+            seeds = [new_seed] 
+        # TODO If parent also has seeds following the branch time, MAYBE copy those too, to make use of useful forcing discovered by the parent 
         icandf = dict({
             'init_cond': init_cond,
             'frc': forcing.OccasionalReseedForcing(init_time, fin_time, reseed_times, seeds),
