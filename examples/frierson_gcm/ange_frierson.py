@@ -108,6 +108,7 @@ def ange_single_workflow(i_param):
                 }),
             'abbrv': 'Rloc',
             'label': r'Rain rate $(\phi,\lambda)=(45,180)$',
+            'unit_symbol': 'mm/day',
             }),
         'local_dayavg_rain': dict({
             'fun': lambda ds,num_steps=1,roi=None: frierson_gcm.FriersonGCM.rolling_time_mean(
@@ -118,6 +119,7 @@ def ange_single_workflow(i_param):
                 }),
             'abbrv': 'Rloc1day',
             'label': r'Rain rate (day avg) $(\phi,\lambda)=(45,180)$',
+            'unit_symbol': 'mm/day',
             }),
         'area_rain_60x20': dict({
             'fun': frierson_gcm.FriersonGCM.regional_rain,
@@ -129,6 +131,7 @@ def ange_single_workflow(i_param):
                 ),
             'abbrv': 'R60x20',
             'label': r'Rain rate $(\phi,\lambda)=(45\pm10,180\pm30)$',
+            'unit_symbol': 'mm/day',
             }),
         'area_rain_90x30': dict({
             'fun': frierson_gcm.FriersonGCM.regional_rain,
@@ -140,6 +143,7 @@ def ange_single_workflow(i_param):
                 ),
             'abbrv': 'R90x30',
             'label': r'Rain rate $(\phi,\lambda)=(45\pm15,180\pm45)$',
+            'unit_symbol': 'mm/day',
             }),
         'local_cwv': dict({
             'fun': frierson_gcm.FriersonGCM.regional_cwv,
@@ -148,6 +152,7 @@ def ange_single_workflow(i_param):
                 ),
             'abbrv': 'CWVloc',
             'label': r'Column water vapor $(\phi,\lambda)=(45,180)$',
+            "unit_symbol": r"kg m$^{-2}$",
             }),
         'area_cwv_60x20': dict({
             'fun': frierson_gcm.FriersonGCM.regional_cwv,
@@ -159,6 +164,7 @@ def ange_single_workflow(i_param):
                 ),
             'abbrv': 'CWV60x20',
             'label': r'Column water vapor $(\phi,\lambda)=(45\pm10,180\pm30)$',
+            "unit_symbol": r"kg m$^{-2}$",
             }),
         'area_cwv_90x30': dict({
             'fun': frierson_gcm.FriersonGCM.regional_cwv,
@@ -170,6 +176,7 @@ def ange_single_workflow(i_param):
                 }),
             'abbrv': 'CWV90x30',
             'label': r'Column water vapor $(\phi,\lambda)=(45\pm15,180\pm45)$',
+            "unit_symbol": r"kg m$^{-2}$",
             }),
         })
     config_analysis['observables'] = observables
@@ -204,9 +211,10 @@ def plot_observable_spaghetti(config_analysis, alg, dirdict):
     for (obs_name,obs_props) in config_analysis['observables'].items():
         obs_fun = lambda ds: obs_props['fun'](ds, **obs_props['kwargs'])
         outfile = join(dirdict['plots'], r'spaghetti_burnin_%s.png'%(obs_props['abbrv']))
-        alg.plot_observable_spaghetti_burnin(obs_fun, outfile, title=obs_props['label'])
-        outfile = join(dirdict['plots'], r'spaghetti_branching_%s.png'%(obs_props['abbrv']))
-        alg.plot_observable_spaghetti_branching(obs_fun, outfile, title=obs_props['label'])
+        alg.plot_observable_spaghetti_burnin(obs_fun, outfile, title=obs_props['label'], ylabel=r'[%s]'%(obs_props['unit_symbol']))
+        for family in range(alg.num_buicks):
+            outfile = join(dirdict['plots'], r'spaghetti_branching_%s_fam%d.png'%(obs_props['abbrv'],family))
+            alg.plot_observable_spaghetti_branching(obs_fun, family, outfile, title=obs_props['label'], ylabel=r'[%s]'%(obs_props['unit_symbol']))
     return
 
 
@@ -227,6 +235,7 @@ def run_ange(dirdict,filedict,config_gcm,config_algo):
 
     alg.ens.dynsys.set_nproc(nproc)
     alg.ens.set_root_dir(root_dir)
+    alg.set_capacity(config_algo['num_buicks'], config_algo['branches_per_buick'])
     while not alg.terminate:
         mem = alg.ens.get_nmem()
         print(f'----------- Starting member {mem} ----------------')
@@ -245,9 +254,9 @@ def run_ange(dirdict,filedict,config_gcm,config_algo):
 
 def ange_single_procedure(i_param):
     tododict = dict({
-        'run':             1,
+        'run':             0,
         'analysis': dict({
-            'observable_spaghetti':     0,
+            'observable_spaghetti':     1,
             }),
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = ange_single_workflow(i_param)
@@ -266,7 +275,7 @@ if __name__ == "__main__":
         idx_param = [int(arg) for arg in sys.argv[2:]]
     else:
         procedure = 'single'
-        idx_param = [2] #list(range(1,21))
+        idx_param = [1,2,3,4,5] #list(range(1,21))
     print(f'Got into Main')
     if procedure == 'single':
         for i_param in idx_param:

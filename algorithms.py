@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod
+from abc import ABC, abstractmethod, abstractclassmethod
 from collections import deque
 import pprint
 import numpy as np
@@ -723,10 +723,27 @@ class AncestorGenerator(EnsembleAlgorithm):
         self.branching_state.update(branching_state_update)
         return
     # ------------------ Plotting methods ----------------------
+    def plot_observable_spaghetti(self, obs_fun, mems2plot, outfile, ylabel='', title=''):
+        tu = self.ens.dynsys.dt_save
+        fig,ax = plt.subplots(figsize=(12,4))
+        for mem in mems2plot:
+            memobs = self.ens.compute_observables([obs_fun], mem)[0]
+            init_time,fin_time = self.ens.get_member_timespan(mem)
+            time = np.arange(init_time+1,fin_time+1)
+            ax.plot(time*tu, memobs)
+        ax.set_xlabel(r'Time [days]')
+        ax.set(ylabel=ylabel, title=title)
+        fig.savefig(outfile, **pltkwargs)
+        plt.close(fig)
+        return
     def plot_observable_spaghetti_burnin(self, obs_fun, outfile, ylabel='', title=''):
-        pass
-    def plot_observable_spaghetti_branching(self, parent, obs_fun, ylabel='', title=''):
-        pass
+        mems2plot = self.branching_state['generation_0']
+        self.plot_observable_spaghetti(obs_fun, mems2plot, outfile, ylabel=ylabel, title=title)
+        return
+    def plot_observable_spaghetti_branching(self, obs_fun, family, outfile, ylabel='', title=''):
+        mems2plot = tuple(self.ens.memgraph.successors(self.branching_state['generation_0'][family]))
+        self.plot_observable_spaghetti(obs_fun, mems2plot, outfile, ylabel=ylabel, title=title)
+        return
 
 
 class TEAMS(EnsembleAlgorithm):
@@ -737,15 +754,27 @@ class TEAMS(EnsembleAlgorithm):
         self.init_conds = init_conds
         super().__init__(config, ens)
         return
+    @abstractclassmethod
+    def initialize_from_ancestorgenerator(cls, angel):
+        # angel = instance of AncestorGenerator
+        assert family < angel.branching_state['num_buicks_generated']
+        assert branch < angel.branching_state['num_branches_generated'][family]
+        pass
 # --------------- ITEAMS, where I stands for {initial condition-based, individual, whatever it stands for in Apple because the Apple doesn't fall far from the tree} ---------
 
 
 class ITEAMS(EnsembleAlgorithm):
+    # TODO (1) Allow for ingesting a pre-existing database of initial trajectories, (2) allow to reseed at multiple times
     # TEAMS starting from a fixed initial condition. The TEAMS algorithm may wrap this, or just be similar; TBD
     def __init__(self, init_time, init_cond, config, ens):
         self.set_init_cond(init_time, init_cond) # Unlike for general Algorithms, an initial condition is mandatory
         super().__init__(config, ens)
         return
+    @classmethod
+    @abstractmethod
+    def initialize_from_ancestorgenerator(cls, angel, family):
+        # angel is an instance of AncestorGenerator
+        pass
     def derive_parameters(self, config):
         self.autonomy = config['autonomy'] # True if this single family is isolated, False if part of a team.
         self.num_levels_max = config['num_levels_max']
@@ -898,7 +927,7 @@ class ITEAMS(EnsembleAlgorithm):
             else:
                 kwargs = {'color': plt.cm.rainbow(mem/nmem), 'linestyle': '-', 'linewidth': 1, 'zorder': 1}
             tinit,tfin = self.ens.get_member_timespan(mem)
-            h, = ax.plot(np.arange(tinit,tfin)*tu, obs[mem], **kwargs)
+            h, = ax.plot(np.arange(tinit,tfin+1)*tu, obs[mem], **kwargs)
             tbr = self.branching_state['branch_times'][mem]
             tmx = self.branching_state['scores_max_timing'][mem]
             print(f'{tbr*tu = }, {tmx*tu = }')

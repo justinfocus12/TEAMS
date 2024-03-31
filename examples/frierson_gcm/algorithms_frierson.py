@@ -99,6 +99,13 @@ class FriersonGCMAncestorGenerator(algorithms.AncestorGenerator):
 
 
 class FriersonGCMITEAMS(algorithms.ITEAMS):
+    @classmethod
+    def initialize_from_ancestorgenerator(cls, angel, family, config, ens):
+        parent = angel.branching_state['generation_0'][family]
+
+        init_time_parent,fin_time_parent = angel.ens.get_member_timespan(parent)
+        init_cond = angel.ens.traj_metadata[parent]['icandf']['filename_restart']
+        return cls(fin_time_parent, init_cond, config, ens)
     def derive_parameters(self, config):
         # Parameterize the score function in a simple way: the components will be area-averages of fields over specified regions. The combined score will be a linear combination.
         self.score_params = dict({
