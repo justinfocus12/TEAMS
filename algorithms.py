@@ -931,8 +931,8 @@ class ITEAMS(EnsembleAlgorithm):
             tbr = self.branching_state['branch_times'][mem]
             tmx = self.branching_state['scores_max_timing'][mem]
             print(f'{tbr*tu = }, {tmx*tu = }')
-            ax.plot(tbr*tu, obs[mem][tmx-tinit], markerfacecolor="None", markeredgecolor=kwargs['color'], markeredgewidth=3, marker='o')
-            ax.plot(tmx*tu, obs[mem][tmx-tinit], markerfacecolor="None", markeredgecolor=kwargs['color'], markeredgewidth=3, marker='x')
+            ax.plot(tbr*tu, obs[mem][tmx-(tinit+1)], markerfacecolor="None", markeredgecolor=kwargs['color'], markeredgewidth=3, marker='o')
+            ax.plot(tmx*tu, obs[mem][tmx-(tinit+1)], markerfacecolor="None", markeredgecolor=kwargs['color'], markeredgewidth=3, marker='x')
         ax.set_xlabel('time')
         ax.set_ylabel(ylabel)
         ax.set_title(title)

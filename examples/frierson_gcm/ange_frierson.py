@@ -89,7 +89,7 @@ def ange_paramset(i_param):
         'time_horizon_phys': 25,
         # mutable parameters below 
         'num_buicks': 8,
-        'branches_per_buick': 4, 
+        'branches_per_buick': 50, 
         })
     return config_gcm,config_algo,expt_label,expt_abbrv
 
@@ -217,6 +217,10 @@ def plot_observable_spaghetti(config_analysis, alg, dirdict):
             alg.plot_observable_spaghetti_branching(obs_fun, family, outfile, title=obs_props['label'], ylabel=r'[%s]'%(obs_props['unit_symbol']))
     return
 
+def plot_observable_distribution(config_analysis, alg, dirdict):
+    # Show the probability distribution of some (scalar) observable, like a score, of the path functional, over all paths 
+    pass
+
 
 def run_ange(dirdict,filedict,config_gcm,config_algo):
     nproc = 4
@@ -254,7 +258,7 @@ def run_ange(dirdict,filedict,config_gcm,config_algo):
 
 def ange_single_procedure(i_param):
     tododict = dict({
-        'run':             0,
+        'run':             1,
         'analysis': dict({
             'observable_spaghetti':     1,
             }),

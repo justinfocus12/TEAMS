@@ -58,6 +58,9 @@ def iteams_paramset(i_expt):
 
     # i_expt is a flat index in a multidimensional parameter space 
 
+    # Possible seeds to use 
+    seed_incs = list(range(12))
+
     # SPPT parameters
     pert_types = ['IMP']        + ['SPPT']*20
     std_sppts = [0.5]           + [0.5,0.3,0.1,0.05,0.01]*4
@@ -67,10 +70,7 @@ def iteams_paramset(i_expt):
     # Buick choices
     buicks = list(range(8))
 
-    # Possible seeds to use 
-    seed_incs = list(range(12))
-
-    i_param,i_buick,i_seed_inc = np.unravel_index(i_expt, (len(std_sppts), len(buicks), len(seed_incs)))
+    i_seed_inc,i_param,i_buick = np.unravel_index(i_expt, (len(seed_incs), len(std_sppts), len(buicks)))
 
     if pert_types[i_param] == 'IMP':
         expt_label = 'Impulsive'
@@ -94,7 +94,7 @@ def iteams_paramset(i_expt):
         'num_levels_max': 12, # This parameter shouldn't affect the filenaming or anything like that 
         'seed_min': 1000,
         'seed_max': 100000,
-        'seed_inc_init': i_seed_inc,
+        'seed_inc_init': seed_incs[i_seed_inc],
         'buick': i_buick,
         'population_size': 12,
         'time_horizon_phys': 20,
@@ -315,9 +315,9 @@ if __name__ == "__main__":
         idx_expt = [int(arg) for arg in sys.argv[2:]]
     else:
         procedure = 'single'
-        i_param,i_buick,i_seed_inc = 2,0,0
-        shp = (21,8,12)
-        i_expt = np.ravel_multi_index((i_param,i_buick,i_seed_inc), shp)
+        i_seed_inc,i_param,i_buick = 0,1,0
+        shp = (12,21,8)
+        i_expt = np.ravel_multi_index((i_seed_inc,i_param,i_buick,), shp)
         idx_expt = [i_expt] #list(range(1,21))
     print(f'Got into Main')
     if procedure == 'single':
