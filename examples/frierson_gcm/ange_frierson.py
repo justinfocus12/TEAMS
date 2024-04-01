@@ -100,7 +100,7 @@ def ange_single_workflow(i_param):
     config_analysis = dict()
     config_analysis['target_location'] = dict(lat=45, lon=180)
     # observables (scalar quantities)
-    observables = dict({
+    config_analysis['observables'] = dict({
         'local_rain': dict({
             'fun': frierson_gcm.FriersonGCM.regional_rain,
             'kwargs': dict({
@@ -179,8 +179,9 @@ def ange_single_workflow(i_param):
             "unit_symbol": r"kg m$^{-2}$",
             }),
         })
-    config_analysis['observables'] = observables
-    obs_names = list(observables.keys())
+    
+
+    obs_names = list(config_analysis['observables'].keys())
     # Set up directories
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
     date_str = "2024-03-26"
@@ -219,7 +220,14 @@ def plot_observable_spaghetti(config_analysis, alg, dirdict):
 
 def plot_observable_distribution(config_analysis, alg, dirdict):
     # Show the probability distribution of some (scalar) observable, like a score, of the path functional, over all paths 
-    pass
+    for obs_name in ['local_dayavg_rain']:
+        obs_props = config_analysis['observables'][obs_name]
+        print(f'{obs_props = }')
+        score_fun = lambda ds: obs_props['fun'](ds, **obs_props['kwargs'])
+        for buick in range(alg.branching_state['num_buicks_generated']):
+            outfile = join(dirdict['plots'], r'score_distn_%s_buick%d.png'%(obs_props['abbrv'],buick))
+            alg.plot_score_distribution_branching(score_fun, buick, outfile, label=obs_props['label'])
+    return
 
 
 def run_ange(dirdict,filedict,config_gcm,config_algo):
@@ -258,9 +266,10 @@ def run_ange(dirdict,filedict,config_gcm,config_algo):
 
 def ange_single_procedure(i_param):
     tododict = dict({
-        'run':             1,
+        'run':             0,
         'analysis': dict({
-            'observable_spaghetti':     1,
+            'observable_spaghetti':     0,
+            'observable_distribution':  1,
             }),
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = ange_single_workflow(i_param)
@@ -270,6 +279,8 @@ def ange_single_procedure(i_param):
     if tododict['analysis']['observable_spaghetti']:
         plot_observable_spaghetti(config_analysis, alg, dirdict)
         # TODO have another ancestor-wise version, and another that shows family lines improving in parallel and dropping out
+    if tododict['analysis']['observable_distribution']:
+        plot_observable_distribution(config_analysis, alg, dirdict)
     return
 
 if __name__ == "__main__":
@@ -279,7 +290,7 @@ if __name__ == "__main__":
         idx_param = [int(arg) for arg in sys.argv[2:]]
     else:
         procedure = 'single'
-        idx_param = [1,2,3,4,5] #list(range(1,21))
+        idx_param = [2] #list(range(1,21))
     print(f'Got into Main')
     if procedure == 'single':
         for i_param in idx_param:

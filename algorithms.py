@@ -744,6 +744,36 @@ class AncestorGenerator(EnsembleAlgorithm):
         mems2plot = tuple(self.ens.memgraph.successors(self.branching_state['generation_0'][family]))
         self.plot_observable_spaghetti(obs_fun, mems2plot, outfile, ylabel=ylabel, title=title)
         return
+    def plot_score_distribution_branching(self, score_fun, buick, outfile, label=''):
+        # Assume the score is the maximum of some scalar observable 
+        # Plot a timeseries on the left and a sideways histogram on the right 
+        tu = self.ens.dynsys.dt_save
+        fig,axes = plt.subplots(ncols=2, figsize=(20,5), width_ratios=[3,1], sharey=True)
+        mems2plot = list(self.ens.memgraph.successors(self.branching_state['generation_0'][buick]))
+        init_time,fin_time = self.ens.get_member_timespan(mems2plot[0])
+        time = np.arange(init_time+1,fin_time+1)
+        max_scores = np.zeros(len(mems2plot))
+        max_score_timings = np.zeros(len(mems2plot), dtype=int)
+        ax = axes[0]
+        for i_mem,mem in enumerate(mems2plot):
+            memscore = self.ens.compute_observables([score_fun], mem)[0]
+            ax.plot(time*tu, memscore, color='black')
+            max_scores[i_mem] = np.nanmax(memscore)
+            max_score_timings[i_mem] = time[np.nanargmax(max_scores[i_mem])]
+            ax.plot(max_score_timings[i_mem]*tu, max_scores[i_mem], marker='x', markerfacecolor="None", markeredgecolor='black')
+        ax.set_xlabel('Time')
+        ax.set_ylabel(label)
+        ax = axes[1]
+        hist,bin_edges = np.histogram(max_scores, bins=10)
+        bin_centers = (bin_edges[:-1] + bin_edges[1:])/2
+        ax.plot(bin_centers, hist, marker='o', color='black')
+        ax.set_xlabel(label)
+
+        fig.savefig(outfile, **pltkwargs)
+        plt.close(fig)
+        return
+
+
 
 
 class TEAMS(EnsembleAlgorithm):
