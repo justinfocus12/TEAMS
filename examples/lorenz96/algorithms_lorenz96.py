@@ -127,6 +127,11 @@ class Lorenz96SDEDirectNumericalSimulation(algorithms.SDEDirectNumericalSimulati
         plt.close(fig)
         return
 
+class Lorenz96AncestorGenerator(algorithms.SDEAncestorGenerator):
+    def do_something():
+        return
+
+
 
 
 

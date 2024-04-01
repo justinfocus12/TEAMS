@@ -99,7 +99,7 @@ def iteams_paramset(i_expt):
         'population_size': 12,
         'time_horizon_phys': 20,
         'buffer_time_phys': 0,
-        'advance_split_time_phys': 1, # TODO put this into a parameter
+        'advance_split_time_phys': 4, # TODO put this into a parameter
         'num2drop': 1,
         'score_components': dict({
             'rainrate': dict({
@@ -226,11 +226,14 @@ def iteams_single_workflow(i_expt):
     return config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict
 
 def plot_observable_spaghetti(config_analysis, alg, dirdict):
+    tu = alg.ens.dynsys.dt_save
     for (obs_name,obs_props) in config_analysis['observables'].items():
-        is_score = False #(obs_name in list(alg.score_params['components'].keys()))
-        obs_fun = lambda ds: obs_props['fun'](ds, **obs_props['kwargs'])
-        outfile = join(dirdict['plots'], r'spaghetti_%s.png'%(obs_props['abbrv']))
-        alg.plot_observable_spaghetti(obs_fun, outfile, title=obs_props['label'], is_score=is_score)
+        is_score = (obs_name == 'local_dayavg_rain')
+        if is_score:
+            obs_fun = lambda ds: obs_props['fun'](ds, **obs_props['kwargs'])
+            outfile = join(dirdict['plots'], r'spaghetti_%s.png'%(obs_props['abbrv']))
+            title = r'%s ($\delta=%g$)'%(obs_props['label'],alg.advance_split_time*tu)
+            alg.plot_observable_spaghetti(obs_fun, outfile, title=title, is_score=is_score)
     return
 
 def plot_score_spaghetti(config_analysis, alg, dirdict):
@@ -244,9 +247,9 @@ def plot_score_distribution(config_analysis, alg, dirdict):
     hist_wted,bin_edges_wted = np.histogram(scmax, bins=10, weights=mult*np.exp(logw), density=True)
     fig,ax = plt.subplots()
     cbinfunc = lambda bin_edges: (bin_edges[1:] + bin_edges[:-1])/2
-    hinit, = ax.plot(cbinfunc(bin_edges_init), hist_init, marker='.', color='dodgerblue', label=r'Init (%g)'%(alg.population_size))
-    hunif, = ax.plot(cbinfunc(bin_edges_unif), hist_unif, marker='.', color='red', label=r'Fin. unweighted (%g)'%(alg.ens.get_nmem()))
-    hwted, = ax.plot(cbinfunc(bin_edges_wted), hist_wted, marker='.', color='black', linestyle='--', linewidth=3, label=r'Fin. weighted (%g)'%(np.sum(mult)))
+    hinit, = ax.plot(cbinfunc(bin_edges_init), hist_init, marker='.', color='black', linestyle='--', linewidth=3, label=r'Init (%g)'%(alg.population_size))
+    hunif, = ax.plot(cbinfunc(bin_edges_unif), hist_unif, marker='.', color='dodgerblue', label=r'Fin. unweighted (%g)'%(alg.ens.get_nmem()))
+    hwted, = ax.plot(cbinfunc(bin_edges_wted), hist_wted, marker='.', color='red', label=r'Fin. weighted (%g)'%(np.sum(mult)))
     ax.set_yscale('log')
     ax.legend(handles=[hinit,hunif,hwted])
     ax.set_title('Score distribution')
@@ -291,7 +294,7 @@ def run_iteams(dirdict,filedict,config_gcm,config_algo):
 def iteams_single_procedure(i_expt):
 
     tododict = dict({
-        'run':             1,
+        'run':             0,
         'analysis': dict({
             'observable_spaghetti':     1,
             'score_distribution':       1,
@@ -315,10 +318,12 @@ if __name__ == "__main__":
         idx_expt = [int(arg) for arg in sys.argv[2:]]
     else:
         procedure = 'single'
-        i_seed_inc,i_param,i_buick = 0,1,0
+        idx_seed_param_buick = [(0,2,i) for i in range(8)]
         shp = (12,21,8)
-        i_expt = np.ravel_multi_index((i_seed_inc,i_param,i_buick,), shp)
-        idx_expt = [i_expt] #list(range(1,21))
+        idx_expt = []
+        for (i_seed_inc,i_param,i_buick) in idx_seed_param_buick:
+            i_expt = np.ravel_multi_index((i_seed_inc,i_param,i_buick,), shp)
+            idx_expt.append(i_expt) #list(range(1,21))
     print(f'Got into Main')
     if procedure == 'single':
         for i_expt in idx_expt:

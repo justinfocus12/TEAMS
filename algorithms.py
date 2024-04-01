@@ -773,6 +773,38 @@ class AncestorGenerator(EnsembleAlgorithm):
         plt.close(fig)
         return
 
+class SDEAncestorGenerator(AncestorGenerator):
+    # where the system of interest is an SDE driven by white noise
+    @classmethod
+    def default_init(cls, config, ens):
+        uic_time = 0
+        uic = ens.dynsys.generate_default_init_cond(uic_time)
+        return cls(uic_time, uic, config, ens)
+    def generate_icandf_from_uic(self):
+        frc_reseed = forcing.OccasionalReseedForcing(self.init_time, self.init_time+self.burnin_time, [branch_time], [seed])
+        seed = self.rng.integers(low=self.seed_min,high=self.seed_max)
+        init_rngstate = default_rng(seed=seed).bit_generator.state 
+        frc_vector = forcing.OccasionalVectorForcing(self.init_time, self.init_time+self.burnin_time, [], [])
+        icandf = dict({
+            'init_cond': self.uic,
+            'init_rngstate': init_rngstate,
+            'frc': forcing.SuperposedForcing([frc_vector,frc_reseed]),
+            })
+        return icandf
+    def generate_icandf_from_buick(self, parent):
+        init_time_parent,fin_time_parent = self.ens.get_member_timespan(parent)
+        mdp = self.ens.traj_metadata[parent]
+        parent_t,parent_x = self.ens.dynsys.load_trajectory(mdp, self.ens.root_dir, tspan=[fin_time_parent]*2)
+        init_cond = parent_x[0]
+        init_rngstate = mdp['fin_rngstate']
+        frc_reseed = forcing.OccasionalReseedForcing(fin_time_parent, fin_time_parent+self.time_horizon, [], [])
+        frc_vector = forcing.OccasionalVectorForcing(fin_time_parent, fin_time_parent+duration, [], [])
+        icandf = dict({
+            'init_cond': init_cond,
+            'init_rngstate': init_rngstate,
+            'frc': forcing.SuperposedForcing([frc_vector,frc_reseed]),
+            })
+        return icandf
 
 
 
@@ -947,15 +979,16 @@ class ITEAMS(EnsembleAlgorithm):
         # Get all timespans
         tu = self.ens.dynsys.dt_save
         nmem = self.ens.get_nmem()
+        N = self.population_size
         obs = [self.ens.compute_observables([obs_fun], mem)[0] for mem in range(nmem)]
         print(f'{obs[0] = }')
         fig,axes = plt.subplots(ncols=2,figsize=(20,5),width_ratios=[3,1],sharey=is_score)
         ax = axes[0]
         for mem in range(nmem):
-            if mem < self.population_size:
+            if mem < N:
                 kwargs = {'color': 'black', 'linestyle': '--', 'linewidth': 2, 'zorder': 0}
             else:
-                kwargs = {'color': plt.cm.rainbow(mem/nmem), 'linestyle': '-', 'linewidth': 1, 'zorder': 1}
+                kwargs = {'color': plt.cm.rainbow((mem-N)/(nmem-N)), 'linestyle': '-', 'linewidth': 1, 'zorder': 1}
             tinit,tfin = self.ens.get_member_timespan(mem)
             h, = ax.plot(np.arange(tinit+1,tfin+1)*tu, obs[mem], **kwargs)
             tbr = self.branching_state['branch_times'][mem]
@@ -967,7 +1000,8 @@ class ITEAMS(EnsembleAlgorithm):
         ax.set_ylabel(ylabel)
         ax.set_title(title)
         ax = axes[1]
-        ax.scatter(np.arange(nmem), self.branching_state['scores_max'], color='gray', marker='o')
+        ax.scatter(np.arange(N), self.branching_state['scores_max'][:N], c='black', marker='o')
+        ax.scatter(np.arange(N,nmem,1), self.branching_state['scores_max'][N:nmem], c=plt.cm.rainbow(np.arange(nmem-N)/(nmem-N)), marker='o')
         ax.plot(np.arange(nmem), self.branching_state['goals_at_birth'], color='gray', linestyle='--')
         ax.set_xlabel('Generation')
         ax.set_ylabel('')
