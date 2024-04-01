@@ -89,7 +89,7 @@ def ange_paramset(i_param):
         'time_horizon_phys': 25,
         # mutable parameters below 
         'num_buicks': 8,
-        'branches_per_buick': 50, 
+        'branches_per_buick': 100, 
         })
     return config_gcm,config_algo,expt_label,expt_abbrv
 
@@ -225,6 +225,7 @@ def plot_observable_distribution(config_analysis, alg, dirdict):
         print(f'{obs_props = }')
         score_fun = lambda ds: obs_props['fun'](ds, **obs_props['kwargs'])
         for buick in range(alg.branching_state['num_buicks_generated']):
+            print(f'Starting {buick = }')
             outfile = join(dirdict['plots'], r'score_distn_%s_buick%d.png'%(obs_props['abbrv'],buick))
             alg.plot_score_distribution_branching(score_fun, buick, outfile, label=obs_props['label'])
     return
@@ -266,9 +267,9 @@ def run_ange(dirdict,filedict,config_gcm,config_algo):
 
 def ange_single_procedure(i_param):
     tododict = dict({
-        'run':             0,
+        'run':             1,
         'analysis': dict({
-            'observable_spaghetti':     0,
+            'observable_spaghetti':     1,
             'observable_distribution':  1,
             }),
         })

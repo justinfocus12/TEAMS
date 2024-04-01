@@ -748,7 +748,7 @@ class AncestorGenerator(EnsembleAlgorithm):
         # Assume the score is the maximum of some scalar observable 
         # Plot a timeseries on the left and a sideways histogram on the right 
         tu = self.ens.dynsys.dt_save
-        fig,axes = plt.subplots(ncols=2, figsize=(20,5), width_ratios=[3,1], sharey=True)
+        fig,axes = plt.subplots(ncols=2, figsize=(20,5), width_ratios=[3,1], sharey=False)
         mems2plot = list(self.ens.memgraph.successors(self.branching_state['generation_0'][buick]))
         init_time,fin_time = self.ens.get_member_timespan(mems2plot[0])
         time = np.arange(init_time+1,fin_time+1)

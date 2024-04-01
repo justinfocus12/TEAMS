@@ -99,7 +99,7 @@ def iteams_paramset(i_expt):
         'population_size': 12,
         'time_horizon_phys': 20,
         'buffer_time_phys': 0,
-        'advance_split_time_phys': 2,
+        'advance_split_time_phys': 1, # TODO put this into a parameter
         'num2drop': 1,
         'score_components': dict({
             'rainrate': dict({
