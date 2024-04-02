@@ -241,6 +241,7 @@ def run_ange(dirdict,filedict,config_gcm,config_algo):
     uic = relpath(filedict['init_cond']['restart'], root_dir)
     if exists(filedict['alg']):
         alg = pickle.load(open(filedict['alg'], 'rb'))
+        alg.set_capacity(config_algo['num_buicks'], config_algo['branches_per_buick'])
     else:
         gcm = frierson_gcm.FriersonGCM(config_gcm, recompile=recompile)
         ens = ensemble.Ensemble(gcm, root_dir=root_dir)
@@ -248,7 +249,6 @@ def run_ange(dirdict,filedict,config_gcm,config_algo):
 
     alg.ens.dynsys.set_nproc(nproc)
     alg.ens.set_root_dir(root_dir)
-    alg.set_capacity(config_algo['num_buicks'], config_algo['branches_per_buick'])
     while not alg.terminate:
         mem = alg.ens.get_nmem()
         print(f'----------- Starting member {mem} ----------------')
@@ -265,7 +265,7 @@ def run_ange(dirdict,filedict,config_gcm,config_algo):
         pickle.dump(alg, open(filedict['alg'], 'wb'))
     return
 
-def ange_single_procedure(i_param):
+def ange_single_procedure(i_expt):
     tododict = dict({
         'run':             1,
         'analysis': dict({
@@ -273,7 +273,7 @@ def ange_single_procedure(i_param):
             'observable_distribution':  1,
             }),
         })
-    config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = ange_single_workflow(i_param)
+    config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = ange_single_workflow(i_expt)
     if tododict['run']:
         run_ange(dirdict,filedict,config_gcm,config_algo)
     alg = pickle.load(open(filedict['alg'], 'rb'))

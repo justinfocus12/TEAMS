@@ -250,6 +250,8 @@ class SDESystem(DynamicalSystem):
         ftimes = f.get_forcing_times()
         ftimes_bytype = [frc.get_forcing_times() for frc in f.frc_list]
         nfrc_bytype = [len(frc.get_forcing_times()) for frc in f.frc_list]
+        print(f'{nfrc_bytype = }')
+        print(f'{ftimes_bytype = }')
         nfrc = len(ftimes)
         print(f'{ftimes = }')
         if nfrc == 0:
@@ -272,12 +274,22 @@ class SDESystem(DynamicalSystem):
         nseg = len(seg_starts)
         i_save = 0
         for i_seg in range(nseg):
+            print(f'{i_seg = }')
             for i_type,i_frc in enumerate(i_frc_bytype):
-                if i_frc < nfrc_bytype[i_type] and ftimes_bytype[i_frc] == seg_starts[i_seg]:
+                print(f'{i_type = }, {i_frc = }')
+                cond0 = (i_frc < nfrc_bytype[i_type]) 
+                print(f'{cond0 = }')
+                if cond0:
+                    cond1 = (ftimes_bytype[i_type][i_frc] == seg_starts[i_seg])
+                    print(f'{cond0 = }, {cond1 = }')
+                if i_frc < nfrc_bytype[i_type] and ftimes_bytype[i_type][i_frc] == seg_starts[i_seg]:
                     if isinstance(f.frc_list[i_type], forcing.OccasionalVectorForcing):
                         init_cond_temp = self.apply_impulse(seg_starts[i_seg], init_cond_temp, f.frc_list[i_type].forces[i_frc])
                     elif isinstance(f.frc_list[i_type], forcing.OccasionalReseedForcing):
+                        print(f'Found an occasional reseed with seed {f.frc_list[i_type].seeds[i_frc]}')
                         rng = default_rng(f.frc_list[i_type].seeds[i_frc])
+                    else:
+                        raise Exception('The force needs to be either OccasionalVectorForcing or OccasionalReseedForcing')
                     i_frc_bytype[i_type] += 1
             t_temp,x_temp = self.run_trajectory_unperturbed(init_cond_temp, seg_starts[i_seg], seg_ends[i_seg], method, rng)
             x[i_save:i_save+len(t_temp)] = x_temp

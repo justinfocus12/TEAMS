@@ -781,10 +781,10 @@ class SDEAncestorGenerator(AncestorGenerator):
         uic = ens.dynsys.generate_default_init_cond(uic_time)
         return cls(uic_time, uic, config, ens)
     def generate_icandf_from_uic(self):
-        frc_reseed = forcing.OccasionalReseedForcing(self.init_time, self.init_time+self.burnin_time, [branch_time], [seed])
         seed = self.rng.integers(low=self.seed_min,high=self.seed_max)
         init_rngstate = default_rng(seed=seed).bit_generator.state 
-        frc_vector = forcing.OccasionalVectorForcing(self.init_time, self.init_time+self.burnin_time, [], [])
+        frc_reseed = forcing.OccasionalReseedForcing(self.uic_time, self.uic_time+self.burnin_time, [], [])
+        frc_vector = forcing.OccasionalVectorForcing(self.uic_time, self.uic_time+self.burnin_time, [], [])
         icandf = dict({
             'init_cond': self.uic,
             'init_rngstate': init_rngstate,
@@ -793,12 +793,14 @@ class SDEAncestorGenerator(AncestorGenerator):
         return icandf
     def generate_icandf_from_buick(self, parent):
         init_time_parent,fin_time_parent = self.ens.get_member_timespan(parent)
+        print(f'{init_time_parent = }, {fin_time_parent = }')
         mdp = self.ens.traj_metadata[parent]
         parent_t,parent_x = self.ens.dynsys.load_trajectory(mdp, self.ens.root_dir, tspan=[fin_time_parent]*2)
         init_cond = parent_x[0]
         init_rngstate = mdp['fin_rngstate']
-        frc_reseed = forcing.OccasionalReseedForcing(fin_time_parent, fin_time_parent+self.time_horizon, [], [])
-        frc_vector = forcing.OccasionalVectorForcing(fin_time_parent, fin_time_parent+duration, [], [])
+        seed = self.rng.integers(low=self.seed_min,high=self.seed_max)
+        frc_reseed = forcing.OccasionalReseedForcing(fin_time_parent, fin_time_parent+self.time_horizon, [fin_time_parent], [seed])
+        frc_vector = forcing.OccasionalVectorForcing(fin_time_parent, fin_time_parent+self.time_horizon, [], [])
         icandf = dict({
             'init_cond': init_cond,
             'init_rngstate': init_rngstate,
