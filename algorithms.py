@@ -772,6 +772,94 @@ class AncestorGenerator(EnsembleAlgorithm):
         fig.savefig(outfile, **pltkwargs)
         plt.close(fig)
         return
+    # ************** Dispersion characteristics ****************
+    def plot_gev_convergence(self, obs_fun):
+        # Do block maximum method, per initial condition, over increasing-length intervals, and hope that the local GEV parameters converge first to something local and then to the global GEV parameters
+        #TODO
+        # ... or maybe rely less on GEV as a parameter, and focus on mean, variance, skew etc.
+        # Basically this is another way to quantify the mixing time. A test of whether mixing time w.r.t. different observables is very different
+        pass
+    def measure_running_max(self, obs_fun, runmax_file, figfile_prefix, label='', abbrv='', precomputed=False):
+        buicks = np.array([i for i in range(min(12,self.branching_state['num_buicks_generated'])) if self.branching_state['num_branches_generated'][i] == self.branches_per_buick])
+        print(f'{len(buicks) = }, {self.branches_per_buick = }')
+        tu = self.ens.dynsys.dt_save
+        time = np.arange(self.burnin_time+1, self.burnin_time+self.time_horizon+1)
+        if precomputed:
+            runmax_stats = np.load(runmax_file)
+            buicks,running_max,running_max_mean,running_max_std,current_std = [runmax_stats[key] for key in 'buicks,running_max,running_max_mean,running_max_std,current_std'.split(',')]
+        else:
+            running_max = np.zeros((len(buicks), self.branches_per_buick, self.time_horizon)) 
+            current_std = np.zeros((len(buicks), self.time_horizon))
+            for buick in buicks:
+                print(f'About to compute running maxes for {buick = }')
+                print(f'Computed the time vector (how hard could that be?)')
+                mems = list(self.ens.memgraph.successors(self.branching_state['generation_0'][buick]))
+                print(f'Computed the graph successors: {mems = }')
+                obs = []
+                print(f'Computing observables for mem ...')
+                for i_mem,mem in enumerate(mems):
+                    obs.append(self.ens.compute_observables([obs_fun], mem)[0])
+                    print(f'{i_mem},')
+                print(f'\n')
+                running_max[buick,:,:] = np.maximum.accumulate(obs, axis=1)
+                current_std[buick,:] = np.std(obs, axis=0)
+
+            running_max_std = np.std(running_max, axis=1)
+            running_max_mean = np.mean(running_max, axis=1)
+            runmax_stats = dict(
+                    buicks = buicks,
+                    running_max = running_max, 
+                    running_max_mean = running_max_mean,
+                    running_max_std = running_max_std,
+                    current_std = current_std,
+                    )
+            np.savez(runmax_file, **runmax_stats)
+        # Plot 
+        nbuicks,nbranches,ntimes = running_max.shape
+        ylim_runmax = [np.min(running_max),np.max(running_max)]
+        ylim_runmaxstd = [0,np.max(running_max_std)]
+        for buick in range(nbuicks):
+            fig,axes = plt.subplots(nrows=2,ncols=2,figsize=(20,6),sharex='col',height_ratios=[2,1],width_ratios=[3,1])
+            ax = axes[0,0]
+            for branch in range(nbranches):
+                hbranch, = ax.plot(time*tu, running_max[buick,branch], color='tomato', label=r'Running max')
+            hmean, = ax.plot(time*tu, running_max_mean[buick,:], color='dodgerblue', label=r'Mean running max')
+            ax.legend(handles=[hbranch,hmean])
+            ax.set_xlabel('')
+            ax.xaxis.set_tick_params(which='both',labelbottom=True)
+            ax.set_ylabel(label)
+            ax.set_ylim(ylim_runmax)
+            ax = axes[1,0]
+            hstd, = ax.plot(time*tu, current_std[buick,:], color='cyan', label='Std.')
+            hmaxstd, = ax.plot(time*tu, running_max_std[buick,:], color='black', label='Std. running max')
+            ax.legend(handles=[hstd,hmaxstd])
+            ax.set_xlabel(r'Time')
+            ax.set_ylabel(r'SD(%s)'%(label))
+            ax.set_ylim(ylim_runmaxstd)
+
+            # Plot complementary CDF 
+            idx_time = np.unique(np.power(2, np.linspace(np.log2(1),np.log2(ntimes-1),8)).astype(int))
+            handles = []
+            for i in range(len(idx_time)):
+                t = time[idx_time[i]]
+                color = plt.cm.rainbow(i/len(idx_time))
+                hist,bin_edges = np.histogram(running_max[buick,:,idx_time[i]], bins=10)
+                prob_exc = np.cumsum(hist[::-1])[::-1] / self.branches_per_buick
+                axes[0,0].axvline(t*tu, color=color)
+                h, = axes[0,1].plot(prob_exc,bin_edges[:-1],color=color,label=r'$t=%g$'%(t*tu))
+                handles.append(h)
+            ax = axes[0,1]
+            ax.set_xlabel('Exc. Prob.')
+            ax.set_ylim(ylim_runmax)
+            ax.xaxis.set_tick_params(which='both',labelbottom=True)
+            axes[1,1].axis('off')
+            #axes[1,1].legend(handles=handles)
+
+
+
+            fig.savefig(r'%s_buick%d.png'%(figfile_prefix,buick), **pltkwargs)
+            plt.close(fig)
+        return
 
 class SDEAncestorGenerator(AncestorGenerator):
     # where the system of interest is an SDE driven by white noise

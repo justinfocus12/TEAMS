@@ -41,15 +41,15 @@ def ange_paramset(i_expt):
         'burnin_time_phys': 15, # should be about 100; start small for testing 
         'time_horizon_phys': 20,
         # mutable parameters below 
-        'num_buicks': 10,
+        'num_buicks': 40,
         'branches_per_buick': 30, 
-
         })
     expt_label = r'$F_4=%g$, seed %d'%(F4s[i_F4],seed_incs[i_seed_inc])
     expt_abbrv = (r'F%g_seed%d'%(F4s[i_F4],seed_incs[i_seed_inc])).replace('.','p')
     return config_sde,config_algo,expt_label,expt_abbrv
 
 def ange_single_workflow(i_expt):
+    print(f'Starting to set up workflow')
     config_sde,config_algo,expt_label,expt_abbrv = ange_paramset(i_expt)
     param_abbrv_sde,param_label_sde = lorenz96.Lorenz96SDE.label_from_config(config_sde)
     param_abbrv_algo,param_label_algo = algorithms_lorenz96.Lorenz96AncestorGenerator.label_from_config(config_algo)
@@ -63,7 +63,7 @@ def ange_single_workflow(i_expt):
             }),
         'E0': dict({
             'fun': lambda t,x: x[:,0]**2/2,
-            'abbrv': 'x0',
+            'abbrv': 'E0',
             'label': r'$\frac{1}{2}x_0^2$',
             }),
         'E': dict({
@@ -80,12 +80,15 @@ def ange_single_workflow(i_expt):
     dirdict['data'] = join(dirdict['expt'], 'data')
     dirdict['analysis'] = join(dirdict['expt'], 'analysis')
     dirdict['plots'] = join(dirdict['expt'], 'plots')
+    print(f'Before makedirs')
     for dirname in ('data','analysis','plots'):
         makedirs(dirdict[dirname], exist_ok=True)
+    print(f'After makedirs')
     filedict = dict()
     filedict['alg'] = join(dirdict['data'], 'alg.pickle')
     filedict['alg_backup'] = join(dirdict['data'], 'alg_backup.pickle')
 
+    print(f'Finished setting up workflow')
     return config_sde,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict
 
 def run_ange(dirdict,filedict,config_sde,config_algo):
@@ -122,23 +125,31 @@ def plot_observable_spaghetti(config_analysis, alg, dirdict):
 
 def plot_observable_distribution(config_analysis, alg, dirdict):
     # Show the probability distribution of some (scalar) observable, like a score, of the path functional, over all paths 
-    for obs_name in ['local_dayavg_rain']:
-        obs_props = config_analysis['observables'][obs_name]
+    for (obs_name,obs_props) in config_analysis['observables'].items():
         print(f'{obs_props = }')
-        score_fun = lambda ds: obs_props['fun'](ds, **obs_props['kwargs'])
+        score_fun = obs_props['fun']
         for buick in range(alg.branching_state['num_buicks_generated']):
             print(f'Starting {buick = }')
             outfile = join(dirdict['plots'], r'score_distn_%s_buick%d.png'%(obs_props['abbrv'],buick))
             alg.plot_score_distribution_branching(score_fun, buick, outfile, label=obs_props['label'])
     return
 
+def measure_running_max(config_analysis, alg, dirdict):
+    for (obs_name,obs_props) in config_analysis['observables'].items():
+        print(f'Beginning running max analysis of {obs_name}')
+        runmax_file = join(dirdict['analysis'], r'running_max_%s.npz'%(obs_props['abbrv']))
+        figfile_prefix = join(dirdict['plots'], r'running_max_%s'%(obs_props['abbrv']))
+        alg.measure_running_max(obs_props['fun'], runmax_file, figfile_prefix, label=obs_props['label'], abbrv=obs_props['abbrv'], precomputed=False)
+    return
+
 def ange_single_procedure(i_expt):
-    print(f'Got into ASP')
+    print(f'Got into ange_single_procedure')
     tododict = dict({
-        'run':             1,
+        'run':             0,
         'analysis': dict({
-            'observable_spaghetti':     1,
+            'observable_spaghetti':     0,
             'observable_distribution':  0,
+            'observable_running_max':   1,
             }),
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = ange_single_workflow(i_expt)
@@ -150,6 +161,8 @@ def ange_single_procedure(i_expt):
         plot_observable_spaghetti(config_analysis, alg, dirdict)
     if tododict['analysis']['observable_distribution']:
         plot_observable_distribution(config_analysis, alg, dirdict)
+    if tododict['analysis']['observable_running_max']:
+        measure_running_max(config_analysis, alg, dirdict)
     return
 
 if __name__ == "__main__":
