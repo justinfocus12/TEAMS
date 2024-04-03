@@ -19,7 +19,7 @@ class DynamicalSystem(ABC):
     def list_required_instance_variables(self):
         return []
     @abstractmethod
-    def generate_default_icandf(self,init_time,fin_time): # for spinup
+    def generate_default_icandf(self,init_time,fin_time,seed=None): # for spinup
         pass
     @staticmethod
     @abstractmethod
@@ -307,10 +307,12 @@ class SDESystem(DynamicalSystem):
         f_vector = forcing.OccasionalVectorForcing(init_time, fin_time, [], [])
         f = forcing.SuperposedForcing([f_reseed, f_vector])
         return f
-    def generate_default_icandf(self,init_time,fin_time):
+    def generate_default_icandf(self,init_time,fin_time,seed=None):
+        if seed is None:
+            seed = self.seed_min
         icandf = dict({
             'init_cond': self.generate_default_init_cond(init_time),
-            'init_rngstate': default_rng(seed=self.seed_min).bit_generator.state,
+            'init_rngstate': default_rng(seed=seed).bit_generator.state,
 
             'frc': self.generate_default_forcing_sequence(init_time, fin_time),
             })

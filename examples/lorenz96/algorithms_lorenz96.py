@@ -132,6 +132,36 @@ class Lorenz96AncestorGenerator(algorithms.SDEAncestorGenerator):
         return
 
 
+class Lorenz96SDEITEAMS(algorithms.SDEITEAMS):
+    def derive_parameters(self, config):
+        sc = config['score']
+        self.score_params = dict({
+            'ks2avg': sc['ks'], # List of sites of interest to sum over
+            'kweights': sc['kweights'],
+            'tavg': max(1,int(round(sc['tavg_phys']/self.ens.dynsys.dt_save))),
+            })
+        super().derive_parameters(config)
+        return
+    def score_components(self, t, x):
+        scores = list((x[:,self.score_params['ks2avg']]**2).T/2)
+        return scores
+    def score_combined(self, sccomps):
+        score = np.mean(np.array([sccomps[i]*self.score_params['kweights'][i] for i in range(len(sccomps))]), axis=0)
+        score[:self.advance_split_time] = np.nan
+        return score
+    @staticmethod
+    def label_from_config(config):
+        abbrv_population,label_population = algorithms.ITEAMS.label_from_config(config)
+        abbrv_k = 'score'+'_'.join([
+            r'%gx%g'%(
+                config['score']['kweights'][i],
+                config['score']['ks'][i]) 
+                for i in range(len(config['score']['ks']))
+            ])
+        abbrv_t = r'tavg%g'%(config['score']['tavg_phys'])
+        abbrv = r'%s_%s_%s'%(abbrv_population,abbrv_k,abbrv_t)
+        abbrv = abbrv.replace('.','p')
+        return abbrv,label_population
 
 
 

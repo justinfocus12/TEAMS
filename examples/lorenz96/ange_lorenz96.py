@@ -42,7 +42,7 @@ def ange_paramset(i_expt):
         'time_horizon_phys': 20,
         # mutable parameters below 
         'num_buicks': 40,
-        'branches_per_buick': 30, 
+        'branches_per_buick': 50, 
         })
     expt_label = r'$F_4=%g$, seed %d'%(F4s[i_F4],seed_incs[i_seed_inc])
     expt_abbrv = (r'F%g_seed%d'%(F4s[i_F4],seed_incs[i_seed_inc])).replace('.','p')
@@ -145,10 +145,10 @@ def measure_running_max(config_analysis, alg, dirdict):
 def ange_single_procedure(i_expt):
     print(f'Got into ange_single_procedure')
     tododict = dict({
-        'run':             0,
+        'run':             1,
         'analysis': dict({
-            'observable_spaghetti':     0,
-            'observable_distribution':  0,
+            'observable_spaghetti':     1,
+            'observable_distribution':  1,
             'observable_running_max':   1,
             }),
         })

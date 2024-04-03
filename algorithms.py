@@ -933,6 +933,7 @@ class ITEAMS(EnsembleAlgorithm):
         self.time_horizon = int(round(config['time_horizon_phys']/tu))
         self.buffer_time = int(round(config['buffer_time_phys']/tu)) # Time between the end of one interval and the beginning of the next, when generating the initial ensemble. Add this to the END of ancestral trajectories. 
         self.advance_split_time = int(round(config['advance_split_time_phys']/tu))
+        self.split_landmark = config['split_landmark'] # either 'max' or 'thx'
         self.population_size = config['population_size']
         self.num2drop = config['num2drop']
         return
@@ -943,10 +944,11 @@ class ITEAMS(EnsembleAlgorithm):
     @staticmethod
     def label_from_config(config):
         abbrv = (
-                r'N%d_T%g_ast%g_drop%d_si%d_buick%d'%(
+                r'ITEAMS_N%d_T%g_ast%gb4%s_drop%d_si%d_buick%d'%(
                     config['population_size'],
                     config['time_horizon_phys'],
                     config['advance_split_time_phys'],
+                    config['split_landmark'],
                     config['num2drop'],
                     config['seed_inc_init'],
                     config['buick'], # This option might be irrelevant 
@@ -968,37 +970,59 @@ class ITEAMS(EnsembleAlgorithm):
     def take_next_step(self, saveinfo):
         if self.terminate:
             return
-        if self.ens.get_nmem() == 0:
-            self.branching_state = dict({
-                'scores_tdep': [],
-                'scores_max': [],
-                'scores_max_timing': [],
-                'score_levels': [-np.inf], 
-                'goals_at_birth': [],
-                'members_active': [],
-                'parent_queue': deque(),
-                'log_weights': [],
-                'multiplicities': [],
-                'branch_times': [],
-                })
+        if self.ens.get_nmem() < self.population_size:
+            if self.ens.get_nmem() == 0:
+                self.branching_state = dict({
+                    'scores_tdep': [],
+                    'scores_max': [],
+                    'scores_max_timing': [],
+                    'score_levels': [-np.inf], 
+                    'goals_at_birth': [],
+                    'members_active': [],
+                    'parent_queue': deque(),
+                    'log_weights': [],
+                    'multiplicities': [],
+                    'branch_times': [],
+                    })
 
             parent = None
-            icandf = self.ens.dynsys.generate_default_icandf(self.init_time,self.init_time+self.time_horizon+self.buffer_time)
+            icandf = self.ens.dynsys.generate_default_icandf(self.init_time,self.init_time+self.time_horizon+self.buffer_time,seed=self.rng.integers(low=self.seed_min,high=self.seed_max))
             icandf['init_cond'] = self.init_cond
             log_active_weight_old = -np.inf
             branch_time = self.init_time
         else:
             print(f'self.branching_state = ')
-            pprint.pprint(self.branching_state)
+            pprint.pprint({bskey: bsval for (bskey,bsval) in self.branching_state.items() if bskey != 'scores_tdep'})
             parent = self.branching_state['parent_queue'].popleft()
             init_time_parent,fin_time_parent = self.ens.get_member_timespan(parent)
             assert self.branching_state['scores_max'][parent] > self.branching_state['score_levels'][-1]
-            first_exceedance_time_parent = init_time_parent + np.where(self.branching_state['scores_tdep'][parent] > self.branching_state['score_levels'][-1])[0][0]
-            # TODO correct the branch timing
-            branch_time = first_exceedance_time_parent - self.advance_split_time #TODO
+            score_parent = self.branching_state['scores_tdep'][parent]
+            level = self.branching_state['score_levels'][-1]
+            exceedance_tidx_parent = np.where(score_parent > level)[0]
+            nonexceedance_tidx_parent = np.where(score_parent <= level)[0]
+            if self.split_landmark == 'thx':
+                landmark_ti = exceedance_tidx_parent[0] 
+            elif self.split_landmark == 'lmx': # local max
+                ti_lower = exceedance_tidx_parent[0]
+                if len(nonexceedance_tidx_parent) > 0 and nonexceedance_tidx_parent[-1] > ti_lower:
+                    ti_upper = nonexceedance_tidx_parent[np.where(nonexceedance_tidx_parent > ti_lower)[0][0]]
+                else:
+                    ti_upper = len(score_parent) - 1 # Don't allow splitting at the very last time point
+                landmark_ti = ti_lower + np.nanargmax(score_parent[ti_lower:ti_upper])
+                #print(f'{score_parent[ti_lower:ti_upper] = }')
+                print(f'{np.nanmax(score_parent[ti_lower:ti_upper]) = }')
+            elif self.split_landmark == 'gmx': # global max
+                landmark_ti = np.nanargmax(score_parent)
+            else:
+                raise Exception(f'Unsupported choice of {self.split_landmark = }')
+            print(f'{score_parent[landmark_ti] = }')
+            branch_time = init_time_parent + landmark_ti - self.advance_split_time 
             print(f'{branch_time = }')
             if branch_time < init_time_parent:
                 branch_time = init_time_parent
+                print(f'...modified to {branch_time = }')
+            elif branch_time >= fin_time_parent:
+                branch_time = fin_time_parent - 1
                 print(f'...modified to {branch_time = }')
             icandf = self.generate_icandf_from_parent(parent, branch_time)
             memact = self.branching_state['members_active']
@@ -1017,7 +1041,7 @@ class ITEAMS(EnsembleAlgorithm):
         self.branching_state['branch_times'].append(branch_time)
         self.branching_state['scores_tdep'].append(new_score_combined)
         self.branching_state['scores_max'].append(new_score_max)
-        self.branching_state['scores_max_timing'].append(1+init_time_new+np.nanargmax(new_score_combined))
+        self.branching_state['scores_max_timing'].append(1+init_time_new+np.nanargmax(new_score_combined)) 
         success = (new_score_max > self.branching_state['score_levels'][-1])
         memact = self.branching_state['members_active']
         # Update the weights
@@ -1039,14 +1063,15 @@ class ITEAMS(EnsembleAlgorithm):
 
 
         # Raise level? TODO allow the next level to be set by an external meta-manager, in between calls to take_next_step 
-        if len(self.branching_state['parent_queue']) == 0 and self.autonomy:
+        if len(self.branching_state['parent_queue']) == 0 and self.autonomy and self.ens.get_nmem() >= self.population_size:
             self.raise_level_replenish_queue()
             # otherwise, the external caller will raise the level
         return
     def raise_level_replenish_queue(self):
+        print(f'Raising level/replenishing queue')
         assert len(self.branching_state['parent_queue']) == 0
         scores_active = np.array([self.branching_state['scores_max'][ma] for ma in self.branching_state['members_active']])
-        if self.ens.get_nmem() >= self.population_size: # Past the startup phase
+        if True and self.ens.get_nmem() >= self.population_size: # Past the startup phase
             order = np.argsort(scores_active)
             num_leq = np.cumsum([self.branching_state['multiplicities'][order[j]] for j in range(len(order))])
             next_level = scores_active[order[np.where(num_leq >= self.num2drop)[0][0]]]
@@ -1071,7 +1096,6 @@ class ITEAMS(EnsembleAlgorithm):
         nmem = self.ens.get_nmem()
         N = self.population_size
         obs = [self.ens.compute_observables([obs_fun], mem)[0] for mem in range(nmem)]
-        print(f'{obs[0] = }')
         fig,axes = plt.subplots(ncols=2,figsize=(20,5),width_ratios=[3,1],sharey=is_score)
         ax = axes[0]
         for mem in range(nmem):
@@ -1083,7 +1107,6 @@ class ITEAMS(EnsembleAlgorithm):
             h, = ax.plot(np.arange(tinit+1,tfin+1)*tu, obs[mem], **kwargs)
             tbr = self.branching_state['branch_times'][mem]
             tmx = self.branching_state['scores_max_timing'][mem]
-            print(f'{tbr*tu = }, {tmx*tu = }')
             ax.plot(tbr*tu, obs[mem][tmx-(tinit+1)], markerfacecolor="None", markeredgecolor=kwargs['color'], markeredgewidth=3, marker='o')
             ax.plot(tmx*tu, obs[mem][tmx-(tinit+1)], markerfacecolor="None", markeredgecolor=kwargs['color'], markeredgewidth=3, marker='x')
         ax.set_xlabel('time')
@@ -1102,6 +1125,15 @@ class ITEAMS(EnsembleAlgorithm):
 
 
 class SDEITEAMS(ITEAMS):
+    @classmethod
+    def initialize_from_ancestorgenerator(cls, angel, config, ens):
+        parent = angel.branching_state['generation_0'][config['buick']]
+
+        init_time_parent,fin_time_parent = angel.ens.get_member_timespan(parent)
+        mdp = angel.ens.traj_metadata[parent]
+        parent_t,parent_x = angel.ens.dynsys.load_trajectory(mdp, angel.ens.root_dir, tspan=[fin_time_parent]*2)
+        init_cond = parent_x[0]
+        return cls(fin_time_parent, init_cond, config, ens)
     def generate_icandf_from_parent(self, parent, branch_time):
         init_time_parent,fin_time_parent = self.ens.get_member_timespan(parent)
         assert init_time_parent <= branch_time < init_time_parent + self.time_horizon
@@ -1116,12 +1148,11 @@ class SDEITEAMS(ITEAMS):
         frc_reseed = forcing.OccasionalReseedForcing(branch_time, fin_time_parent, [branch_time], [seed])
         frc_vector = forcing.OccasionalVectorForcing(branch_time, fin_time_parent, [], [])
         icandf = dict({
-            'init_cond': parent_x[0],
+            'init_cond': init_cond,
             'init_rngstate': init_rngstate,
             'frc': forcing.SuperposedForcing([frc_vector,frc_reseed]),
             })
         return icandf
-
             
 
 

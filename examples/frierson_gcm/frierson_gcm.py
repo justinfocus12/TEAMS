@@ -68,7 +68,9 @@ class FriersonGCM(DynamicalSystem):
         self.nproc = nproc
         return
 
-    def generate_default_icandf(self, init_time, fin_time):
+    def generate_default_icandf(self, init_time, fin_time, seed=None):
+        if seed is None:
+            seed = self.seed_min
         if self.pert_type == 'IMP':
             icandf = dict({
                 'init_cond': None,
@@ -78,7 +80,7 @@ class FriersonGCM(DynamicalSystem):
             # The time units here are in days, but will be converted to seconds for the namelist file. This basically restricts reseeding times to day boundaries.
             icandf = dict({
                 'init_cond': None,
-                'frc': forcing.OccasionalReseedForcing.reseed_from_start([init_time], [self.seed_min], fin_time),
+                'frc': forcing.OccasionalReseedForcing.reseed_from_start([init_time], [seed], fin_time),
                 })
         return icandf
     @staticmethod
