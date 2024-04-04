@@ -149,24 +149,40 @@ def plot_observable_spaghetti(config_analysis, alg, dirdict):
         alg.plot_observable_spaghetti(obs_fun, outfile, title=title, is_score=is_score)
     return
 
-def plot_score_distribution(config_analysis, alg, dirdict, filedict):
+def plot_score_distribution(config_analysis, config_algo, alg, dirdict, filedict):
+    print(f'Plotting score distribution')
     # TODO overlay the angel distribution on top 
     # Three histograms: initial population, weighted, and unweighted
     scmax,sclev,logw,mult,tbr,tmx = (alg.branching_state[s] for s in 'scores_max score_levels log_weights multiplicities branch_times scores_max_timing'.split(' '))
     hist_init,bin_edges_init = np.histogram(scmax[:alg.population_size], bins=10, density=True)
     hist_unif,bin_edges_unif = np.histogram(scmax, bins=10, density=True)
     hist_wted,bin_edges_wted = np.histogram(scmax, bins=10, weights=mult*np.exp(logw), density=True)
+    print(f'About to read in Buick')
+    # Measure corresponding Buick distribution
+    angel = pickle.load(open(filedict['angel'], 'rb'))
+    parent = angel.branching_state['generation_0'][config_algo['buick']]
+    mems_buick = list(angel.ens.memgraph.successors(parent))
+    score_fun = lambda t,x: alg.score_combined(alg.score_components(t,x))
+    scbuick = np.array([angel.ens.compute_observables([score_fun], mem)[0] for mem in mems_buick])
+    scmax_buick = np.nanmax(scbuick[:,:alg.time_horizon], axis=1)
+    hist_buick,bin_edges_buick = np.histogram(scmax_buick, bins=10, density=True)
+    print(f'{scbuick = }')
+
+
     fig,ax = plt.subplots()
     cbinfunc = lambda bin_edges: (bin_edges[1:] + bin_edges[:-1])/2
     hinit, = ax.plot(cbinfunc(bin_edges_init), hist_init, marker='.', color='black', linestyle='--', linewidth=3, label=r'Init (%g)'%(alg.population_size))
     hunif, = ax.plot(cbinfunc(bin_edges_unif), hist_unif, marker='.', color='dodgerblue', label=r'Fin. unweighted (%g)'%(alg.ens.get_nmem()))
     hwted, = ax.plot(cbinfunc(bin_edges_wted), hist_wted, marker='.', color='red', label=r'Fin. weighted (%g)'%(np.sum(mult)))
-    ax.set_yscale('log')
-    ax.legend(handles=[hinit,hunif,hwted])
+    hbuick, = ax.plot(cbinfunc(bin_edges_buick), hist_buick, marker='.', color='gray', label=r'Buick (%g)'%(len(mems_buick)))
+    #ax.set_yscale('log')
+    ax.legend(handles=[hinit,hunif,hwted,hbuick])
     ax.set_title('Score distribution')
-    ax.set_ylabel(r'$S(X)$')
+    ax.set_xlabel(r'$S(X)$')
+    ax.set_ylabel('Frequency')
     fig.savefig(join(dirdict['plots'],'score_hist.png'), **pltkwargs)
     plt.close(fig)
+    print(f'{dirdict["plots"] = }')
     return
 
 def run_iteams(dirdict,filedict,config_sde,config_algo):
@@ -193,9 +209,9 @@ def run_iteams(dirdict,filedict,config_sde,config_algo):
 def iteams_single_procedure(i_expt):
 
     tododict = dict({
-        'run':             1,
+        'run':             0,
         'analysis': dict({
-            'observable_spaghetti':     1,
+            'observable_spaghetti':     0,
             'score_distribution':       1,
             }),
         })
@@ -207,7 +223,7 @@ def iteams_single_procedure(i_expt):
         plot_observable_spaghetti(config_analysis, alg, dirdict)
         # TODO have another ancestor-wise version, and another that shows family lines improving in parallel and dropping out
     if tododict['analysis']['score_distribution']:
-        plot_score_distribution(config_analysis, alg, dirdict, filedict)
+        plot_score_distribution(config_analysis, config_algo, alg, dirdict, filedict)
     return
 
 if __name__ == "__main__":
@@ -218,10 +234,11 @@ if __name__ == "__main__":
     else:
         procedure = 'single'
         seed_incs,buicks,F4s,deltas_phys,split_landmarks = iteams_multiparams()
-        iseed_ibuick_iF4_idelta_islm = [(0,i_buick,3,4,i_slm) for i_buick in range(1,2) for i_slm in range(3)]
+        iseed_ibuick_iF4_idelta_islm = [(0,i_buick,0,i_delta,i_slm) for i_buick in range(10) for i_delta in range(3) for i_slm in range(3)]
         shp = (len(seed_incs),len(buicks),len(F4s),len(deltas_phys),len(split_landmarks))
         idx_expt = []
         for i_multiparam in iseed_ibuick_iF4_idelta_islm:
+            print(f'{i_multiparam = }, {shp = }')
             i_expt = np.ravel_multi_index(i_multiparam,shp)
             idx_expt.append(i_expt) #list(range(1,21))
     if procedure == 'single':

@@ -101,15 +101,6 @@ def ange_single_workflow(i_param):
     config_analysis['target_location'] = dict(lat=45, lon=180)
     # observables (scalar quantities)
     config_analysis['observables'] = dict({
-        'local_rain': dict({
-            'fun': frierson_gcm.FriersonGCM.regional_rain,
-            'kwargs': dict({
-                'roi': config_analysis['target_location'],
-                }),
-            'abbrv': 'Rloc',
-            'label': r'Rain rate $(\phi,\lambda)=(45,180)$',
-            'unit_symbol': 'mm/day',
-            }),
         'local_dayavg_rain': dict({
             'fun': lambda ds,num_steps=1,roi=None: frierson_gcm.FriersonGCM.rolling_time_mean(
                 frierson_gcm.FriersonGCM.regional_rain(ds,roi), num_steps),
@@ -121,67 +112,78 @@ def ange_single_workflow(i_param):
             'label': r'Rain rate (day avg) $(\phi,\lambda)=(45,180)$',
             'unit_symbol': 'mm/day',
             }),
-        'area_rain_60x20': dict({
-            'fun': frierson_gcm.FriersonGCM.regional_rain,
-            'kwargs': dict(
-                roi = dict({
-                    'lat': slice(config_analysis['target_location']['lat']-10,config_analysis['target_location']['lat']+10),
-                    'lon': slice(config_analysis['target_location']['lon']-30,config_analysis['target_location']['lon']+30),
-                    }),
-                ),
-            'abbrv': 'R60x20',
-            'label': r'Rain rate $(\phi,\lambda)=(45\pm10,180\pm30)$',
-            'unit_symbol': 'mm/day',
-            }),
-        'area_rain_90x30': dict({
-            'fun': frierson_gcm.FriersonGCM.regional_rain,
-            'kwargs': dict(
-                roi = dict({
-                    'lat': slice(config_analysis['target_location']['lat']-15,config_analysis['target_location']['lat']+15),
-                    'lon': slice(config_analysis['target_location']['lon']-45,config_analysis['target_location']['lon']+45),
-                    }),
-                ),
-            'abbrv': 'R90x30',
-            'label': r'Rain rate $(\phi,\lambda)=(45\pm15,180\pm45)$',
-            'unit_symbol': 'mm/day',
-            }),
-        'local_cwv': dict({
-            'fun': frierson_gcm.FriersonGCM.regional_cwv,
-            'kwargs': dict(
-                roi = config_analysis['target_location'],
-                ),
-            'abbrv': 'CWVloc',
-            'label': r'Column water vapor $(\phi,\lambda)=(45,180)$',
-            "unit_symbol": r"kg m$^{-2}$",
-            }),
-        'area_cwv_60x20': dict({
-            'fun': frierson_gcm.FriersonGCM.regional_cwv,
-            'kwargs': dict(
-                roi = dict(
-                    lat=slice(config_analysis['target_location']['lat']-10,config_analysis['target_location']['lat']+10),
-                    lon=slice(config_analysis['target_location']['lon']-30,config_analysis['target_location']['lon']+30),
-                    ),
-                ),
-            'abbrv': 'CWV60x20',
-            'label': r'Column water vapor $(\phi,\lambda)=(45\pm10,180\pm30)$',
-            "unit_symbol": r"kg m$^{-2}$",
-            }),
-        'area_cwv_90x30': dict({
-            'fun': frierson_gcm.FriersonGCM.regional_cwv,
-            'kwargs': dict({
-                'roi': dict(
-                    lat=slice(config_analysis['target_location']['lat']-15,config_analysis['target_location']['lat']+15),
-                    lon=slice(config_analysis['target_location']['lon']-45,config_analysis['target_location']['lon']+45),
-                    ),
-                }),
-            'abbrv': 'CWV90x30',
-            'label': r'Column water vapor $(\phi,\lambda)=(45\pm15,180\pm45)$',
-            "unit_symbol": r"kg m$^{-2}$",
-            }),
         })
 
+    #    'local_rain': dict({
+    #        'fun': frierson_gcm.FriersonGCM.regional_rain,
+    #        'kwargs': dict({
+    #            'roi': config_analysis['target_location'],
+    #            }),
+    #        'abbrv': 'Rloc',
+    #        'label': r'Rain rate $(\phi,\lambda)=(45,180)$',
+    #        'unit_symbol': 'mm/day',
+    #        }),
+    #    'area_rain_60x20': dict({
+    #        'fun': frierson_gcm.FriersonGCM.regional_rain,
+    #        'kwargs': dict(
+    #            roi = dict({
+    #                'lat': slice(config_analysis['target_location']['lat']-10,config_analysis['target_location']['lat']+10),
+    #                'lon': slice(config_analysis['target_location']['lon']-30,config_analysis['target_location']['lon']+30),
+    #                }),
+    #            ),
+    #        'abbrv': 'R60x20',
+    #        'label': r'Rain rate $(\phi,\lambda)=(45\pm10,180\pm30)$',
+    #        'unit_symbol': 'mm/day',
+    #        }),
+    #    'area_rain_90x30': dict({
+    #        'fun': frierson_gcm.FriersonGCM.regional_rain,
+    #        'kwargs': dict(
+    #            roi = dict({
+    #                'lat': slice(config_analysis['target_location']['lat']-15,config_analysis['target_location']['lat']+15),
+    #                'lon': slice(config_analysis['target_location']['lon']-45,config_analysis['target_location']['lon']+45),
+    #                }),
+    #            ),
+    #        'abbrv': 'R90x30',
+    #        'label': r'Rain rate $(\phi,\lambda)=(45\pm15,180\pm45)$',
+    #        'unit_symbol': 'mm/day',
+    #        }),
+    #    'local_cwv': dict({
+    #        'fun': frierson_gcm.FriersonGCM.regional_cwv,
+    #        'kwargs': dict(
+    #            roi = config_analysis['target_location'],
+    #            ),
+    #        'abbrv': 'CWVloc',
+    #        'label': r'Column water vapor $(\phi,\lambda)=(45,180)$',
+    #        "unit_symbol": r"kg m$^{-2}$",
+    #        }),
+    #    'area_cwv_60x20': dict({
+    #        'fun': frierson_gcm.FriersonGCM.regional_cwv,
+    #        'kwargs': dict(
+    #            roi = dict(
+    #                lat=slice(config_analysis['target_location']['lat']-10,config_analysis['target_location']['lat']+10),
+    #                lon=slice(config_analysis['target_location']['lon']-30,config_analysis['target_location']['lon']+30),
+    #                ),
+    #            ),
+    #        'abbrv': 'CWV60x20',
+    #        'label': r'Column water vapor $(\phi,\lambda)=(45\pm10,180\pm30)$',
+    #        "unit_symbol": r"kg m$^{-2}$",
+    #        }),
+    #    'area_cwv_90x30': dict({
+    #        'fun': frierson_gcm.FriersonGCM.regional_cwv,
+    #        'kwargs': dict({
+    #            'roi': dict(
+    #                lat=slice(config_analysis['target_location']['lat']-15,config_analysis['target_location']['lat']+15),
+    #                lon=slice(config_analysis['target_location']['lon']-45,config_analysis['target_location']['lon']+45),
+    #                ),
+    #            }),
+    #        'abbrv': 'CWV90x30',
+    #        'label': r'Column water vapor $(\phi,\lambda)=(45\pm15,180\pm45)$',
+    #        "unit_symbol": r"kg m$^{-2}$",
+    #        }),
+    #    })
+
     # Prune
-    config_analysis['observables'] = {key: val for (key,val) in config_analysis['observables'].items() if key == 'local_dayavg_rain'}
+    #config_analysis['observables'] = {key: val for (key,val) in config_analysis['observables'].items() if key == 'local_dayavg_rain'}
     
 
     obs_names = list(config_analysis['observables'].keys())
@@ -268,12 +270,22 @@ def run_ange(dirdict,filedict,config_gcm,config_algo):
         pickle.dump(alg, open(filedict['alg'], 'wb'))
     return
 
+def measure_running_max(config_analysis, alg, dirdict):
+    for (obs_name,obs_props) in config_analysis['observables'].items():
+        print(f'Beginning running max analysis of {obs_name}')
+        runmax_file = join(dirdict['analysis'], r'running_max_%s.npz'%(obs_props['abbrv']))
+        figfile_prefix = join(dirdict['plots'], r'running_max_%s'%(obs_props['abbrv']))
+        score_fun = lambda ds: obs_props['fun'](ds, **obs_props['kwargs'])
+        alg.measure_running_max(score_fun, runmax_file, figfile_prefix, label=obs_props['label'], abbrv=obs_props['abbrv'], precomputed=False)
+    return
+
 def ange_single_procedure(i_expt):
     tododict = dict({
         'run':             0,
         'analysis': dict({
-            'observable_spaghetti':     1,
+            'observable_spaghetti':     0,
             'observable_distribution':  1,
+            'observable_running_max':   0,
             }),
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = ange_single_workflow(i_expt)
@@ -285,6 +297,8 @@ def ange_single_procedure(i_expt):
         # TODO have another ancestor-wise version, and another that shows family lines improving in parallel and dropping out
     if tododict['analysis']['observable_distribution']:
         plot_observable_distribution(config_analysis, alg, dirdict)
+    if tododict['analysis']['observable_running_max']:
+        measure_running_max(config_analysis, alg, dirdict)
     return
 
 if __name__ == "__main__":

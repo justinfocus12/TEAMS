@@ -753,6 +753,7 @@ class AncestorGenerator(EnsembleAlgorithm):
         tu = self.ens.dynsys.dt_save
         fig,axes = plt.subplots(ncols=2, figsize=(20,5), width_ratios=[3,1], sharey=False)
         mems2plot = list(self.ens.memgraph.successors(self.branching_state['generation_0'][buick]))
+        print(f'{mems2plot = }')
         init_time,fin_time = self.ens.get_member_timespan(mems2plot[0])
         time = np.arange(init_time+1,fin_time+1)
         max_scores = np.zeros(len(mems2plot))
@@ -762,10 +763,11 @@ class AncestorGenerator(EnsembleAlgorithm):
             memscore = self.ens.compute_observables([score_fun], mem)[0]
             ax.plot(time*tu, memscore, color='black')
             max_scores[i_mem] = np.nanmax(memscore)
+            print(f'{max_scores[i_mem] = }')
             max_score_timings[i_mem] = time[np.nanargmax(max_scores[i_mem])]
             ax.plot(max_score_timings[i_mem]*tu, max_scores[i_mem], marker='x', markerfacecolor="None", markeredgecolor='black')
         ax.set_xlabel('Time')
-        ax.set_ylabel(label)
+        ax.set_title(label)
         ax = axes[1]
         hist,bin_edges = np.histogram(max_scores, bins=10)
         bin_centers = (bin_edges[:-1] + bin_edges[1:])/2
@@ -786,7 +788,7 @@ class AncestorGenerator(EnsembleAlgorithm):
         buicks = np.array([i for i in range(min(12,self.branching_state['num_buicks_generated'])) if self.branching_state['num_branches_generated'][i] == self.branches_per_buick])
         print(f'{len(buicks) = }, {self.branches_per_buick = }')
         tu = self.ens.dynsys.dt_save
-        time = np.arange(self.burnin_time+1, self.burnin_time+self.time_horizon+1)
+        time = self.uic_time + np.arange(self.burnin_time+1, self.burnin_time+self.time_horizon+1)
         if precomputed:
             runmax_stats = np.load(runmax_file)
             buicks,running_max,running_max_mean,running_max_std,current_std = [runmax_stats[key] for key in 'buicks,running_max,running_max_mean,running_max_std,current_std'.split(',')]
@@ -802,13 +804,18 @@ class AncestorGenerator(EnsembleAlgorithm):
                 print(f'Computing observables for mem ...')
                 for i_mem,mem in enumerate(mems):
                     obs.append(self.ens.compute_observables([obs_fun], mem)[0])
-                    print(f'{i_mem},')
+                    print(f'{mem},', end='')
                 print(f'\n')
-                running_max[buick,:,:] = np.maximum.accumulate(obs, axis=1)
+                obs = np.array(obs)
+                print(f'{obs[0,:] = }')
+                running_max[buick,:,:] = np.maximum.accumulate(np.where((np.isnan(obs)==0), obs, -np.inf), axis=1)
                 current_std[buick,:] = np.std(obs, axis=0)
+                print(f'{running_max[buick,:,-1] = }')
 
+            running_max = np.where(np.isfinite(running_max), running_max, np.nan)
             running_max_std = np.std(running_max, axis=1)
             running_max_mean = np.mean(running_max, axis=1)
+            print(f'{running_max[:,:,-1] = }')
             runmax_stats = dict(
                     buicks = buicks,
                     running_max = running_max, 
@@ -819,8 +826,8 @@ class AncestorGenerator(EnsembleAlgorithm):
             np.savez(runmax_file, **runmax_stats)
         # Plot 
         nbuicks,nbranches,ntimes = running_max.shape
-        ylim_runmax = [np.min(running_max),np.max(running_max)]
-        ylim_runmaxstd = [0,np.max(running_max_std)]
+        ylim_runmax = [np.nanmin(running_max),np.nanmax(running_max)]
+        ylim_runmaxstd = [0,np.nanmax(running_max_std)]
         for buick in range(nbuicks):
             fig,axes = plt.subplots(nrows=2,ncols=2,figsize=(20,6),sharex='col',height_ratios=[2,1],width_ratios=[3,1])
             ax = axes[0,0]
@@ -830,14 +837,13 @@ class AncestorGenerator(EnsembleAlgorithm):
             ax.legend(handles=[hbranch,hmean])
             ax.set_xlabel('')
             ax.xaxis.set_tick_params(which='both',labelbottom=True)
-            ax.set_ylabel(label)
+            ax.set_title(label)
             ax.set_ylim(ylim_runmax)
             ax = axes[1,0]
             hstd, = ax.plot(time*tu, current_std[buick,:], color='cyan', label='Std.')
             hmaxstd, = ax.plot(time*tu, running_max_std[buick,:], color='black', label='Std. running max')
             ax.legend(handles=[hstd,hmaxstd])
             ax.set_xlabel(r'Time')
-            ax.set_ylabel(r'SD(%s)'%(label))
             ax.set_ylim(ylim_runmaxstd)
 
             # Plot complementary CDF 
@@ -846,7 +852,8 @@ class AncestorGenerator(EnsembleAlgorithm):
             for i in range(len(idx_time)):
                 t = time[idx_time[i]]
                 color = plt.cm.rainbow(i/len(idx_time))
-                hist,bin_edges = np.histogram(running_max[buick,:,idx_time[i]], bins=10)
+                rm = running_max[buick,:,idx_time[i]]
+                hist,bin_edges = np.histogram(rm[np.isfinite(rm)], bins=10)
                 prob_exc = np.cumsum(hist[::-1])[::-1] / self.branches_per_buick
                 axes[0,0].axvline(t*tu, color=color)
                 h, = axes[0,1].plot(prob_exc,bin_edges[:-1],color=color,label=r'$t=%g$'%(t*tu))
@@ -931,6 +938,7 @@ class ITEAMS(EnsembleAlgorithm):
         pass
     def derive_parameters(self, config):
         self.autonomy = config['autonomy'] # True if this single family is isolated, False if part of a team.
+        self.buick = config['buick'] # Might be irrelevant; depends on whether a buick was used to initialize
         self.num_levels_max = config['num_levels_max']
         tu = self.ens.dynsys.dt_save
         self.time_horizon = int(round(config['time_horizon_phys']/tu))
