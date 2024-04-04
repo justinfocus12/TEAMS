@@ -179,6 +179,9 @@ def ange_single_workflow(i_param):
             "unit_symbol": r"kg m$^{-2}$",
             }),
         })
+
+    # Prune
+    config_analysis['observables'] = {key: val for (key,val) in config_analysis['observables'].items() if key == 'local_dayavg_rain'}
     
 
     obs_names = list(config_analysis['observables'].keys())
@@ -267,7 +270,7 @@ def run_ange(dirdict,filedict,config_gcm,config_algo):
 
 def ange_single_procedure(i_expt):
     tododict = dict({
-        'run':             1,
+        'run':             0,
         'analysis': dict({
             'observable_spaghetti':     1,
             'observable_distribution':  1,

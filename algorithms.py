@@ -723,13 +723,16 @@ class AncestorGenerator(EnsembleAlgorithm):
         self.branching_state.update(branching_state_update)
         return
     # ------------------ Plotting methods ----------------------
-    def plot_observable_spaghetti(self, obs_fun, mems2plot, outfile, ylabel='', title=''):
+    def plot_observable_spaghetti(self, obs_fun, mems2plot, outfile, time_horizon=None, ylabel='', title=''):
         tu = self.ens.dynsys.dt_save
         fig,ax = plt.subplots(figsize=(12,4))
         for mem in mems2plot:
             memobs = self.ens.compute_observables([obs_fun], mem)[0]
             init_time,fin_time = self.ens.get_member_timespan(mem)
             time = np.arange(init_time+1,fin_time+1)
+            if time_horizon is not None:
+                time = time[:time_horizon]
+                memobs = memobs[:time_horizon]
             ax.plot(time*tu, memobs)
         ax.set_xlabel(r'Time [days]')
         ax.set(ylabel=ylabel, title=title)
@@ -740,9 +743,9 @@ class AncestorGenerator(EnsembleAlgorithm):
         mems2plot = self.branching_state['generation_0']
         self.plot_observable_spaghetti(obs_fun, mems2plot, outfile, ylabel=ylabel, title=title)
         return
-    def plot_observable_spaghetti_branching(self, obs_fun, family, outfile, ylabel='', title=''):
+    def plot_observable_spaghetti_branching(self, obs_fun, family, outfile, time_horizon=None, ylabel='', title=''):
         mems2plot = tuple(self.ens.memgraph.successors(self.branching_state['generation_0'][family]))
-        self.plot_observable_spaghetti(obs_fun, mems2plot, outfile, ylabel=ylabel, title=title)
+        self.plot_observable_spaghetti(obs_fun, mems2plot, outfile, time_horizon=time_horizon, ylabel=ylabel, title=title)
         return
     def plot_score_distribution_branching(self, score_fun, buick, outfile, label=''):
         # Assume the score is the maximum of some scalar observable 

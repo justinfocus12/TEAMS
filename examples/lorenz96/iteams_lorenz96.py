@@ -149,7 +149,8 @@ def plot_observable_spaghetti(config_analysis, alg, dirdict):
         alg.plot_observable_spaghetti(obs_fun, outfile, title=title, is_score=is_score)
     return
 
-def plot_score_distribution(config_analysis, alg, dirdict):
+def plot_score_distribution(config_analysis, alg, dirdict, filedict):
+    # TODO overlay the angel distribution on top 
     # Three histograms: initial population, weighted, and unweighted
     scmax,sclev,logw,mult,tbr,tmx = (alg.branching_state[s] for s in 'scores_max score_levels log_weights multiplicities branch_times scores_max_timing'.split(' '))
     hist_init,bin_edges_init = np.histogram(scmax[:alg.population_size], bins=10, density=True)
@@ -206,7 +207,7 @@ def iteams_single_procedure(i_expt):
         plot_observable_spaghetti(config_analysis, alg, dirdict)
         # TODO have another ancestor-wise version, and another that shows family lines improving in parallel and dropping out
     if tododict['analysis']['score_distribution']:
-        plot_score_distribution(config_analysis, alg, dirdict)
+        plot_score_distribution(config_analysis, alg, dirdict, filedict)
     return
 
 if __name__ == "__main__":
