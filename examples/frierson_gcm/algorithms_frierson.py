@@ -148,6 +148,8 @@ class FriersonGCMITEAMS(algorithms.ITEAMS):
             total_weight += compval['weight']
         score /= total_weight
         return score
+    def merge_score_components(self, comps0, comps1, nsteps2prepend):
+        return xr.concat(comps0.isel(time=slice(None,nsteps2prepend)),comps1,dim='time')
     @staticmethod
     def label_from_config(config):
         abbrv_population,label_population = algorithms.ITEAMS.label_from_config(config)

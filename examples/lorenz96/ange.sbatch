@@ -10,4 +10,4 @@
 
 module load anaconda3/2022.05-x86_64
 source activate teamsenv
-python ange_lorenz96.py single $SLURM_ARRAY_TASK_ID 
+python -u ange_lorenz96.py single $SLURM_ARRAY_TASK_ID > progress_"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"

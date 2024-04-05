@@ -26,9 +26,9 @@ import utils; reload(utils)
 
 def ange_paramset(i_expt):
     # Random seed
-    seed_incs = [0,1,2,3,4,5,6]
+    seed_incs = [0]
     # Physical
-    F4s = [3,1,0.5,0.25]
+    F4s = [0.25,0.5,1.0,3.0]
     
     i_seed_inc,i_F4 = np.unravel_index(i_expt, (len(seed_incs),len(F4s),))
 
@@ -41,8 +41,8 @@ def ange_paramset(i_expt):
         'burnin_time_phys': 15, # should be about 100; start small for testing 
         'time_horizon_phys': 20,
         # mutable parameters below 
-        'num_buicks': 40,
-        'branches_per_buick': 50, 
+        'num_buicks': 256,
+        'branches_per_buick': 1, 
         })
     expt_label = r'$F_4=%g$, seed %d'%(F4s[i_F4],seed_incs[i_seed_inc])
     expt_abbrv = (r'F%g_seed%d'%(F4s[i_F4],seed_incs[i_seed_inc])).replace('.','p')
@@ -73,7 +73,7 @@ def ange_single_workflow(i_expt):
             }),
         })
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/"
-    date_str = "2024-04-02"
+    date_str = "2024-04-04"
     sub_date_str = "0"
     dirdict = dict()
     dirdict['expt'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_sde, param_abbrv_algo)
