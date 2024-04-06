@@ -41,7 +41,7 @@ def ange_paramset(i_expt):
         'burnin_time_phys': 15, # should be about 100; start small for testing 
         'time_horizon_phys': 20,
         # mutable parameters below 
-        'num_buicks': 256,
+        'num_buicks': 512,
         'branches_per_buick': 1, 
         })
     expt_label = r'$F_4=%g$, seed %d'%(F4s[i_F4],seed_incs[i_seed_inc])

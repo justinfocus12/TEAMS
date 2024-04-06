@@ -4,6 +4,8 @@ import numpy as np
 print(f'{i = }'); i += 1
 from numpy.random import default_rng
 print(f'{i = }'); i += 1
+import networkx as nx
+print(f'{i = }'); i += 1
 import xarray as xr
 print(f'{i = }'); i += 1
 from matplotlib import pyplot as plt, rcParams 
@@ -55,7 +57,7 @@ def teams_multiparams():
     # Random seed
     seed_incs = [0] #,1,2,3,4,5,6]
     # Physical
-    F4s = [0.25] #,0.5,1.0,3.0]
+    F4s = [0.25,0.5,1.0,3.0]
     # Algorithmic
     deltas_phys = [0.0,1.0,1.5]
     split_landmarks = ['gmx','lmx','thx']
@@ -136,8 +138,9 @@ def teams_single_workflow(i_expt):
 
 def plot_observable_spaghetti(config_analysis, alg, dirdict):
     tu = alg.ens.dynsys.dt_save
-    desc_per_anc = np.array([len(list(alg.ens.memgraph.successors(ancestor))) for ancestor in range(alg.population_size)])
+    desc_per_anc = np.array([len(list(nx.descendants(alg.ens.memgraph,ancestor))) for ancestor in range(alg.population_size)])
     order = np.argsort(desc_per_anc)[::-1]
+    print(f'{desc_per_anc[order] = }')
     for (obs_name,obs_props) in config_analysis['observables'].items():
         is_score = (obs_name == 'E0')
         obs_fun = lambda t,x: obs_props['fun'](t,x)
@@ -235,7 +238,7 @@ if __name__ == "__main__":
     else:
         procedure = 'single'
         seed_incs,F4s,deltas_phys,split_landmarks = teams_multiparams()
-        iseed_iF4_idelta_islm = [(0,0,i_delta,i_slm) for i_delta in [2,1,0] for i_slm in [1,0,2]]
+        iseed_iF4_idelta_islm = [(0,i_F4,i_delta,i_slm) for for i_F4 in range(4) i_delta in range(3) for i_slm in [0,1,2]]
         shp = (len(seed_incs),len(F4s),len(deltas_phys),len(split_landmarks))
         idx_expt = []
         for i_multiparam in iseed_iF4_idelta_islm:

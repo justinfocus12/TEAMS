@@ -250,35 +250,22 @@ class SDESystem(DynamicalSystem):
         ftimes = f.get_forcing_times()
         ftimes_bytype = [frc.get_forcing_times() for frc in f.frc_list]
         nfrc_bytype = [len(frc.get_forcing_times()) for frc in f.frc_list]
-        print(f'{nfrc_bytype = }')
-        print(f'{ftimes_bytype = }')
         nfrc = len(ftimes)
-        print(f'{ftimes = }')
         if nfrc == 0:
             seg_starts = [f.init_time]
             seg_ends = [f.fin_time]
-            print(f'case 0: {seg_starts = }, {seg_ends = }')
         elif ftimes[0] == f.init_time:
             seg_starts = ftimes
             seg_ends = ftimes[1:] + [f.fin_time]
-            print(f'case 1: {seg_starts = }, {seg_ends = }')
-            print(f'{f.fin_time = }')
         else:
             seg_starts = [f.init_time] + ftimes
             seg_ends = ftimes + [f.fin_time]
-            print(f'case 2: {seg_starts = }, {seg_ends = }')
         i_frc_bytype = np.zeros(len(f.frc_list), dtype=int) 
-        print(f'{ftimes = }')
-        print(f'{seg_starts = }')
-        print(f'{seg_ends = }')
         nseg = len(seg_starts)
         i_save = 0
         for i_seg in range(nseg):
-            print(f'{i_seg = }')
             for i_type,i_frc in enumerate(i_frc_bytype):
-                print(f'{i_type = }, {i_frc = }')
                 cond0 = (i_frc < nfrc_bytype[i_type]) 
-                print(f'{cond0 = }')
                 if cond0:
                     cond1 = (ftimes_bytype[i_type][i_frc] == seg_starts[i_seg])
                     print(f'{cond0 = }, {cond1 = }')
@@ -286,7 +273,6 @@ class SDESystem(DynamicalSystem):
                     if isinstance(f.frc_list[i_type], forcing.OccasionalVectorForcing):
                         init_cond_temp = self.apply_impulse(seg_starts[i_seg], init_cond_temp, f.frc_list[i_type].forces[i_frc])
                     elif isinstance(f.frc_list[i_type], forcing.OccasionalReseedForcing):
-                        print(f'Found an occasional reseed with seed {f.frc_list[i_type].seeds[i_frc]}')
                         rng = default_rng(f.frc_list[i_type].seeds[i_frc])
                     else:
                         raise Exception('The force needs to be either OccasionalVectorForcing or OccasionalReseedForcing')

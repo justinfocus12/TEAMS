@@ -1088,7 +1088,7 @@ class TEAMS(EnsembleAlgorithm):
             self.branching_state['multiplicities'][parent] += 1
 
 
-        # Raise level? TODO allow the next level to be set by an external meta-manager, in between calls to take_next_step 
+        # Raise level? 
         if len(self.branching_state['parent_queue']) == 0 and self.ens.get_nmem() >= self.population_size:
             self.raise_level_replenish_queue()
             # otherwise, the external caller will raise the level
@@ -1097,23 +1097,29 @@ class TEAMS(EnsembleAlgorithm):
         print(f'Raising level/replenishing queue')
         assert len(self.branching_state['parent_queue']) == 0
         scores_active = np.array([self.branching_state['scores_max'][ma] for ma in self.branching_state['members_active']])
+        # Keep track of reasons for extinction
+        terminate_by_extinction = False
+        terminate_by_level_limit = False
         if self.ens.get_nmem() >= self.population_size: # Past the startup phase
             order = np.argsort(scores_active)
             num_leq = np.cumsum([self.branching_state['multiplicities'][order[j]] for j in range(len(order))])
             next_level = scores_active[order[np.where(num_leq >= self.num2drop)[0][0]]]
             self.branching_state['score_levels'].append(next_level)
-            if (len(self.branching_state['score_levels']) >= self.num_levels_max) or (next_level >= scores_active[order[-1]]):
-                self.terminate = True
+            if next_level >= scores_active[order[-1]]:
+                terminate_by_extinction = True
+            if (len(self.branching_state['score_levels']) >= self.num_levels_max):
+                terminate_by_level_limit = True
                 # TODO if termination is only happening because of the arbitrary limit, still replenish the queue
             # Re-populate the parent queue
             self.branching_state['members_active'] = [ma for ma in self.branching_state['members_active'] if self.branching_state['scores_max'][ma] > next_level]
-        if not self.terminate:
+        if not terminate_by_extinction:
             parent_pool = self.rng.permutation(np.concatenate(tuple([parent]*self.branching_state['multiplicities'][parent] for parent in self.branching_state['members_active']))) # TODO consider weighting parents' occurrence in this pool by weight
             lenpp = len(parent_pool)
             deficit = self.population_size - len(self.branching_state['members_active'])
             for i in range(deficit):
                 self.branching_state['parent_queue'].append(parent_pool[i % lenpp])
             print(f'The replenished queue is {self.branching_state["parent_queue"] = }')
+        self.terminate = (terminate_by_extinction or terminate_by_level_limit)
         return
     # ----------------------- Plotting functions --------------------------------
     def plot_observable_spaghetti(self, obs_fun, ancestor, outfile, ylabel='', title='', is_score=False):
@@ -1122,7 +1128,7 @@ class TEAMS(EnsembleAlgorithm):
         tu = self.ens.dynsys.dt_save
         nmem = self.ens.get_nmem()
         N = self.population_size
-        descendants = list(self.ens.memgraph.successors(ancestor))
+        descendants = list(nx.descendants(self.ens.memgraph,ancestor))
         t0,_ = self.ens.get_member_timespan(ancestor)
         fig,axes = plt.subplots(ncols=2,figsize=(20,5),width_ratios=[3,1],sharey=is_score)
         ax = axes[0]
