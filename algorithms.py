@@ -1047,15 +1047,19 @@ class TEAMS(EnsembleAlgorithm):
                     new_score_components,
                     init_time_new-init_time_parent
                     )
+            t0 = init_time_parent
+        else:
+            t0 = init_time_new
 
         new_score_combined = self.score_combined(new_score_components)
+        print(f'{new_score_combined.shape = }')
         new_score_max = np.nanmax(new_score_combined[:self.time_horizon-1])
         self.branching_state['goals_at_birth'].append(self.branching_state['score_levels'][-1])
         self.branching_state['branch_times'].append(branch_time)
         self.branching_state['score_components_tdep'].append(new_score_components)
         self.branching_state['scores_tdep'].append(new_score_combined)
         self.branching_state['scores_max'].append(new_score_max)
-        self.branching_state['scores_max_timing'].append(1+init_time_new+np.nanargmax(new_score_combined)) 
+        self.branching_state['scores_max_timing'].append(1+t0+np.nanargmax(new_score_combined)) 
         success = (new_score_max > self.branching_state['score_levels'][-1])
         memact = self.branching_state['members_active']
         # Update the weights
@@ -1103,37 +1107,34 @@ class TEAMS(EnsembleAlgorithm):
             print(f'The replenished queue is {self.branching_state["parent_queue"] = }')
         return
     # ----------------------- Plotting functions --------------------------------
-    def plot_observable_spaghetti(self, obs_fun, outfile, ylabel='', title='', is_score=False):
+    def plot_observable_spaghetti(self, obs_fun, ancestor, outfile, ylabel='', title='', is_score=False):
         print(f'******************* \n \t {self.branching_state["branch_times"] = } \n *************')
         # Get all timespans
         tu = self.ens.dynsys.dt_save
-        nmem = self.ens.get_nmem()
-        N = self.population_size
-        obs = [self.ens.compute_observables([obs_fun], mem)[0] for mem in range(nmem)]
+        descendants = [ancestor] + list(self.ens.memgraph.successors(ancestor))
+        t0,_ = self.ens.get_member_timespan(ancestor)
+        obs = [self.ens.compute_observables([obs_fun], mem)[0] for mem in descendants]
         fig,axes = plt.subplots(ncols=2,figsize=(20,5),width_ratios=[3,1],sharey=is_score)
         ax = axes[0]
-        for mem in range(nmem):
+        for i_mem,mem in enumerate(descendants):
             tinit,tfin = self.ens.get_member_timespan(mem)
-            if mem < N:
+            if mem == ancestor:
                 kwargs = {'color': 'black', 'linestyle': '--', 'linewidth': 2, 'zorder': 0}
-                t0 = tinit
             else:
-                kwargs = {'color': plt.cm.rainbow((mem-N)/(nmem-N)), 'linestyle': '-', 'linewidth': 1, 'zorder': 1}
-                parent = next(self.ens.memgraph.predecessors(mem))
-                t0,_ = self.ens.get_member_timespan(parent)
-                obs[mem] = np.concatenate((obs[parent][:tinit-t0], obs[mem]))
-            h, = ax.plot((np.arange(t0+1,tfin+1)-t0)*tu, obs[mem], **kwargs)
+                kwargs = {'color': plt.cm.rainbow(i_mem/len(descendants)), 'linestyle': '-', 'linewidth': 1, 'zorder': 1}
+            print(f'{tinit = }, {tfin = }, {obs[i_mem].shape = }')
+            h, = ax.plot((np.arange(tinit+1,tfin+1)-t0)*tu, obs[i_mem], **kwargs)
             tbr = self.branching_state['branch_times'][mem]
             tmx = self.branching_state['scores_max_timing'][mem]
-            ax.plot((tbr-t0)*tu, obs[mem][tmx-(t0+1)], markerfacecolor="None", markeredgecolor=kwargs['color'], markeredgewidth=3, marker='o')
-            ax.plot((tmx-t0)*tu, obs[mem][tmx-(t0+1)], markerfacecolor="None", markeredgecolor=kwargs['color'], markeredgewidth=3, marker='x')
+            print(f'{tbr = }, {tmx = }')
+            ax.plot((tbr-t0)*tu, obs[i_mem][tbr-(tinit+1)], markerfacecolor="None", markeredgecolor=kwargs['color'], markeredgewidth=3, marker='o')
         ax.set_xlabel('time')
         ax.set_ylabel(ylabel)
         ax.set_title(title)
         ax = axes[1]
-        ax.scatter(np.zeros(N), self.branching_state['scores_max'][:N], c='black', marker='o')
-        ax.scatter(np.arange(nmem-N), self.branching_state['scores_max'][N:nmem], c=plt.cm.rainbow(np.arange(nmem-N)/(nmem-N)), marker='o')
-        ax.plot(np.arange(nmem-N), self.branching_state['goals_at_birth'][N:], color='gray', linestyle='--')
+        ax.scatter([0], self.branching_state['scores_max'][ancestor], c='black', marker='o')
+        ax.scatter(np.arange(len(descendants))+1, np.array(self.branching_state['scores_max'])[descendants], c=plt.cm.rainbow(np.arange(len(descendants))/(len(descendants))), marker='o')
+        ax.plot(np.arange(len(descendants)), np.array(self.branching_state['goals_at_birth'])[descendants], color='gray', linestyle='--')
         ax.set_xlabel('Generation')
         ax.set_ylabel('')
         #ax.set_xlim([time[0],time[-1]+1])

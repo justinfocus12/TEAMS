@@ -69,11 +69,11 @@ def teams_paramset(i_expt):
     config_sde = lorenz96.Lorenz96SDE.default_config()
     config_sde['frc']['white']['wavenumber_magnitudes'][0] = F4s[i_F4]
     config_algo = dict({
-        'num_levels_max': 20,
+        'num_levels_max': 32,
         'seed_min': 1000,
         'seed_max': 100000,
         'seed_inc_init': seed_incs[i_seed_inc], 
-        'population_size': 8,
+        'population_size': 32,
         'time_horizon_phys': 8,
         'buffer_time_phys': 0,
         'advance_split_time_phys': deltas_phys[i_delta],
@@ -139,10 +139,11 @@ def plot_observable_spaghetti(config_analysis, alg, dirdict):
     for (obs_name,obs_props) in config_analysis['observables'].items():
         is_score = (obs_name == 'E0')
         obs_fun = lambda t,x: obs_props['fun'](t,x)
-        outfile = join(dirdict['plots'], r'spaghetti_%s.png'%(obs_props['abbrv']))
-        landmark_label = {'lmx': 'Local max', 'gmx': 'Global max', 'thx': 'Threshold crossing'}[alg.split_landmark]
-        title = r'%s ($\delta=%g$ before %s)'%(obs_props['label'],alg.advance_split_time*tu,landmark_label)
-        alg.plot_observable_spaghetti(obs_fun, outfile, title=title, is_score=is_score)
+        for ancestor in range(4):
+            outfile = join(dirdict['plots'], r'spaghetti_%s_anc%d.png'%(obs_props['abbrv'],ancestor))
+            landmark_label = {'lmx': 'local max', 'gmx': 'global max', 'thx': 'threshold crossing'}[alg.split_landmark]
+            title = r'%s ($\delta=%g$ before %s)'%(obs_props['label'],alg.advance_split_time*tu,landmark_label)
+            alg.plot_observable_spaghetti(obs_fun, ancestor, outfile, title=title, is_score=is_score)
     return
 
 def plot_score_distribution(config_analysis, config_algo, alg, dirdict, filedict):
