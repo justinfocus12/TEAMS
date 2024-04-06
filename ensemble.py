@@ -58,10 +58,23 @@ class Ensemble(ABC):
         metadata = self.traj_metadata[mem]
         return self.dynsys.compute_observables(obs_funs, metadata, self.root_dir)
 
-    def compute_observables_along_lineage(self, obs_funs, mem_leaf):
+    def compute_observables_along_lineage(self, obs_funs, mem_leaf, merge_as_scalars=False):
         mems = sorted(nx.ancestors(self.memgraph, mem_leaf) | {mem_leaf})
-        obs_dict = self.compute_observables(obs_funs, mems)
-        return obs_dict # leave the explicit concatenation to later
+        obs = self.compute_observables(obs_funs, mems)
+        if not merge_as_scalars:
+            return obs # leave the explicit concatenation to later
+        t0,_ = self.get_member_timespan(mems[0])
+        _,tfin = self.ens.get_member_timespan(mem_leaf)
+        obs_merged = [np.nan*np.ones(tfin-t0) for fun in obs_funs]
+        for i_mem in range(len(mems)-1,-1,-1):
+            tinit,_ = self.get_member_timespan(mems[i_mem])
+            for i_fun in range(len(funs)):
+                obs_merged[i_fun][(tinit-t0):(tfin-t0)] = obs[i_mem][len(obs[i_mem])-1-(tfin-tinit):]
+        return obs_merged
+
+
+
+
 
     # --------------- Plotting methods ---------------
     def plot_observables(self, mems, ts, obsvals):

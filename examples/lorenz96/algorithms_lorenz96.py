@@ -181,8 +181,16 @@ class Lorenz96SDETEAMS(algorithms.SDETEAMS):
         score = np.mean(np.array([sccomps[i]*self.score_params['kweights'][i] for i in range(len(sccomps))]), axis=0)
         score[:self.advance_split_time] = np.nan
         return score
-    def merge_score_components(self, comps0, comps1, nsteps2prepend):
-        return [np.concatenate((c0[:nsteps2prepend], c1)) for (c0,c1) in zip(comps0,comps1)]
+    def merge_score_components(self, mem_leaf, score_components_leaf): #comps0, comps1, nsteps2prepend):
+        init_time,fin_time = self.ens.get_member_timespan(mem_leaf)
+        parent = next(self.ens.memgraph.predecessors(mem_leaf))
+        init_time_parent,fin_time_parent = self.ens.get_member_timespan(parent)
+        while init_time_parent > init_time:
+            parent = next(self.ens.memgraph.predecessors(parent))
+            init_time_parent,fin_time_parent = self.ens.get_member_timespan(parent)
+        nsteps2prepend = init_time - init_time_parent
+        score_components_parent = self.branching_state['score_components_tdep'][parent]
+        return [np.concatenate((c0[:nsteps2prepend], c1)) for (c0,c1) in zip(score_components_parent,score_components_leaf)]
     @staticmethod
     def label_from_config(config):
         abbrv_population,label_population = algorithms.TEAMS.label_from_config(config)

@@ -55,9 +55,9 @@ def teams_multiparams():
     # Random seed
     seed_incs = [0] #,1,2,3,4,5,6]
     # Physical
-    F4s = [1.0] #,0.5,1.0,3.0]
+    F4s = [0.25] #,0.5,1.0,3.0]
     # Algorithmic
-    deltas_phys = [0.5] #0.0,1.0,2.0]
+    deltas_phys = [0.0,1.0,1.5]
     split_landmarks = ['gmx','lmx','thx']
     return seed_incs,F4s,deltas_phys,split_landmarks
 
@@ -69,7 +69,7 @@ def teams_paramset(i_expt):
     config_sde = lorenz96.Lorenz96SDE.default_config()
     config_sde['frc']['white']['wavenumber_magnitudes'][0] = F4s[i_F4]
     config_algo = dict({
-        'num_levels_max': 32,
+        'num_levels_max': 128,
         'seed_min': 1000,
         'seed_max': 100000,
         'seed_inc_init': seed_incs[i_seed_inc], 
@@ -125,7 +125,7 @@ def teams_single_workflow(i_expt):
     print(f'After makedirs')
     filedict = dict()
     filedict['angel'] = join(
-            f'/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/2024-04-02/0/',
+            f'/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/2024-04-04/0/',
             param_abbrv_sde, 'AnGe_si0_Tbrn15_Thrz20', 'data',
             'alg.pickle') 
     filedict['alg'] = join(dirdict['data'], 'alg.pickle')
@@ -136,10 +136,12 @@ def teams_single_workflow(i_expt):
 
 def plot_observable_spaghetti(config_analysis, alg, dirdict):
     tu = alg.ens.dynsys.dt_save
+    desc_per_anc = np.array([len(list(alg.ens.memgraph.successors(ancestor))) for ancestor in range(alg.population_size)])
+    order = np.argsort(desc_per_anc)[::-1]
     for (obs_name,obs_props) in config_analysis['observables'].items():
         is_score = (obs_name == 'E0')
         obs_fun = lambda t,x: obs_props['fun'](t,x)
-        for ancestor in range(4):
+        for ancestor in order[:4]:
             outfile = join(dirdict['plots'], r'spaghetti_%s_anc%d.png'%(obs_props['abbrv'],ancestor))
             landmark_label = {'lmx': 'local max', 'gmx': 'global max', 'thx': 'threshold crossing'}[alg.split_landmark]
             title = r'%s ($\delta=%g$ before %s)'%(obs_props['label'],alg.advance_split_time*tu,landmark_label)
@@ -158,7 +160,7 @@ def plot_score_distribution(config_analysis, config_algo, alg, dirdict, filedict
     # Measure corresponding Buick distribution
     angel = pickle.load(open(filedict['angel'], 'rb'))
     mems_buick = []
-    for i in range(alg.population_size):
+    for i in range(angel.num_buicks):
         mems_buick.append(next(angel.ens.memgraph.successors(angel.branching_state['generation_0'][i])))
     score_fun = lambda t,x: alg.score_combined(alg.score_components(t,x))
     scbuick = np.array([angel.ens.compute_observables([score_fun], mem)[0] for mem in mems_buick])
@@ -188,6 +190,7 @@ def run_teams(dirdict,filedict,config_sde,config_algo):
     angel = pickle.load(open(filedict['angel'], 'rb'))
     if exists(filedict['alg']):
         alg = pickle.load(open(filedict['alg'], 'rb'))
+        alg.set_capacity(config_algo['num_levels_max'])
     else:
         sde = lorenz96.Lorenz96SDE(config_sde)
         ens = ensemble.Ensemble(sde, root_dir=root_dir)
@@ -232,7 +235,7 @@ if __name__ == "__main__":
     else:
         procedure = 'single'
         seed_incs,F4s,deltas_phys,split_landmarks = teams_multiparams()
-        iseed_iF4_idelta_islm = [(0,0,i_delta,i_slm) for i_delta in range(1) for i_slm in range(1)]
+        iseed_iF4_idelta_islm = [(0,0,i_delta,i_slm) for i_delta in [2,1,0] for i_slm in [1,0,2]]
         shp = (len(seed_incs),len(F4s),len(deltas_phys),len(split_landmarks))
         idx_expt = []
         for i_multiparam in iseed_iF4_idelta_islm:
