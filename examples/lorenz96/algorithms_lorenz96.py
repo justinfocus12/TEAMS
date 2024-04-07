@@ -188,9 +188,9 @@ class Lorenz96SDETEAMS(algorithms.SDETEAMS):
         while init_time_parent > init_time:
             parent = next(self.ens.memgraph.predecessors(parent))
             init_time_parent,fin_time_parent = self.ens.get_member_timespan(parent)
-        nsteps2prepend = init_time - init_time_parent
-        score_components_parent = self.branching_state['score_components_tdep'][parent]
-        return [np.concatenate((c0[:nsteps2prepend], c1)) for (c0,c1) in zip(score_components_parent,score_components_leaf)]
+        sccp = self.branching_state['score_components_tdep'][parent]
+        nsteps2prepend = len(sccp[0]) - len(score_components_leaf[0])
+        return [np.concatenate((c0[:nsteps2prepend], c1)) for (c0,c1) in zip(sccp,score_components_leaf)]
     @staticmethod
     def label_from_config(config):
         abbrv_population,label_population = algorithms.TEAMS.label_from_config(config)

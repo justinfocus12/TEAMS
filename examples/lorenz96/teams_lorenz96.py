@@ -238,7 +238,7 @@ if __name__ == "__main__":
     else:
         procedure = 'single'
         seed_incs,F4s,deltas_phys,split_landmarks = teams_multiparams()
-        iseed_iF4_idelta_islm = [(0,i_F4,i_delta,i_slm) for for i_F4 in range(4) i_delta in range(3) for i_slm in [0,1,2]]
+        iseed_iF4_idelta_islm = [(0,i_F4,i_delta,i_slm) for i_F4 in [0] for i_delta in [0] for i_slm in [2]]
         shp = (len(seed_incs),len(F4s),len(deltas_phys),len(split_landmarks))
         idx_expt = []
         for i_multiparam in iseed_iF4_idelta_islm:

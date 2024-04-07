@@ -1035,13 +1035,14 @@ class TEAMS(EnsembleAlgorithm):
                 landmark_ti = np.nanargmax(score_parent)
             else:
                 raise Exception(f'Unsupported choice of {self.split_landmark = }')
-            branch_ti = min(landmark_ti - self.advance_split_time, exceedance_tidx_parent[0])
+            branch_ti = min(landmark_ti + 1 - self.advance_split_time, exceedance_tidx_parent[0] + 1)
             branch_time = init_time_ancestor + branch_ti 
             print(f'{score_parent[landmark_ti] = }, {score_parent[branch_ti] = }')
             print(f'branch time: original {branch_time}', end=', ')
             branch_time = max(init_time_ancestor, min(fin_time_parent-1, branch_time))
             print(f'modified to {branch_time}')
             icandf = self.generate_icandf_from_parent(parent, branch_time)
+            print(f'{icandf["frc"].get_forcing_times() = }')
             memact = self.branching_state['members_active']
             log_active_weight_old = logsumexp([self.branching_state['log_weights'][ma] for ma in memact], b=[self.branching_state['multiplicities'][ma] for ma in memact])
 
@@ -1054,19 +1055,29 @@ class TEAMS(EnsembleAlgorithm):
         init_time_new,fin_time_new = self.ens.get_member_timespan(new_mem)
         # Concatenate with parent's score 
         if parent is not None:
+            print(f'{new_score_components[0].shape = }')
+            print(f'should be: {fin_time_parent - branch_time}')
             new_score_components = self.merge_score_components(new_mem, new_score_components)
+            print(f'After merging, {new_score_components[0].shape = }')
             t0 = init_time_ancestor
         else:
             t0 = init_time_new
 
         new_score_combined = self.score_combined(new_score_components)
-        print(f'{new_score_combined = }')
+        if parent is not None:
+            print(f'{np.abs(self.branching_state["scores_tdep"][parent] - new_score_combined) = }')
+            print(f'{branch_ti = }')
+            assert np.all(self.branching_state["scores_tdep"][parent][:branch_ti] == new_score_combined[:branch_ti]) 
         new_score_max = np.nanmax(new_score_combined[:self.time_horizon-1])
         self.branching_state['goals_at_birth'].append(self.branching_state['score_levels'][-1])
         self.branching_state['branch_times'].append(branch_time)
         self.branching_state['score_components_tdep'].append(new_score_components)
         self.branching_state['scores_tdep'].append(new_score_combined)
         self.branching_state['scores_max'].append(new_score_max)
+        # ------- DEBUG -------
+        if self.split_landmark == 'thx' and self.advance_split_time == 0:
+            assert new_score_max > self.branching_state['score_levels'][-1]
+        # -------------------
         self.branching_state['scores_max_timing'].append(1+t0+np.nanargmax(new_score_combined)) 
         success = (new_score_max > self.branching_state['score_levels'][-1])
         memact = self.branching_state['members_active']
