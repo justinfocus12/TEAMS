@@ -100,13 +100,18 @@ class FriersonGCMAncestorGenerator(algorithms.AncestorGenerator):
 class FriersonGCMTEAMS(algorithms.TEAMS):
     @classmethod
     def initialize_from_ancestorgenerator(cls, angel, config, ens):
-        parent = angel.branching_state['generation_0'][config['buick']]
-
-        init_time_parent,fin_time_parent = angel.ens.get_member_timespan(parent)
-        init_cond = relpath(
-                join(angel.ens.root_dir, angel.ens.traj_metadata[parent]['filename_restart']),
-                ens.root_dir)
-        return cls(fin_time_parent, init_cond, config, ens)
+        init_conds = []
+        init_times = []
+        assert angel.num_buicks >= config['population_size'] # TODO allow repetition
+        for b in range(config['population_size']):  
+            parent = angel.branching_state['generation_0'][b]
+            init_time_parent,fin_time_parent = angel.ens.get_member_timespan(parent)
+            init_cond = relpath(
+                    join(angel.ens.root_dir, angel.ens.traj_metadata[parent]['filename_restart']),
+                    ens.root_dir)
+            init_conds.append(init_cond)
+            init_times.append(fin_time_parent)
+        return cls(init_times, init_conds, config, ens)
     def derive_parameters(self, config):
         # Parameterize the score function in a simple way: the components will be area-averages of fields over specified regions. The combined score will be a linear combination.
         self.score_params = dict({
@@ -209,7 +214,6 @@ class FriersonGCMTEAMS(algorithms.TEAMS):
 class FriersonGCMITEAMS(algorithms.ITEAMS):
     @classmethod
     def initialize_from_ancestorgenerator(cls, angel, config, ens):
-        parent = angel.branching_state['generation_0'][config['buick']]
 
         init_time_parent,fin_time_parent = angel.ens.get_member_timespan(parent)
         init_cond = relpath(

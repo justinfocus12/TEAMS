@@ -54,7 +54,7 @@ import algorithms_frierson; reload(algorithms_frierson)
 def teams_multiparams():
     seed_incs = [0]
     sigmas = [0.01,0.1,0.3]
-    deltas_phys = [0.0,1.0,2.0,4.0]
+    deltas_phys = [0.0,2.0,4.0,8.0]
     split_landmarks = ['thx']
     return seed_incs,sigmas,deltas_phys,split_landmarks
 
@@ -69,24 +69,25 @@ def teams_paramset(i_expt):
     config_gcm['SPPT']['std_sppt'] = sigmas[i_sigma]
     config_gcm['SPPT']['L_sppt'] = 500.0 * 1000
     config_gcm['remove_temp'] = 1
-    print(f'{i_param = }')
     pprint.pprint(config_gcm)
 
-    i_seed_inc,i_param,i_buick = np.unravel_index(i_expt, (len(seed_incs), len(std_sppts), len(buicks)))
 
-    expt_label = r'SPPT, $\sigma=%g$'%(std_sppts[i_sigma])
-    expt_abbrv = r'SPPT_std%g'%(std_sppts[i_sigma])
+    expt_label = r'SPPT, $\sigma=%g$'%(sigmas[i_sigma])
+    expt_abbrv = r'SPPT_std%g'%(sigmas[i_sigma])
 
 
     config_algo = dict({
-        'num_levels_max': 24, # This parameter shouldn't affect the filenaming or anything like that 
+        'num_levels_max': 8, # This parameter shouldn't affect the filenaming or anything like that 
+        'num_members_max': 12,
+        'num_active_families_min': 2,
         'seed_min': 1000,
         'seed_max': 100000,
         'seed_inc_init': seed_incs[i_seed_inc],
-        'population_size': 12,
+        'population_size': 4,
         'time_horizon_phys': 20,
         'buffer_time_phys': 0,
         'advance_split_time_phys': deltas_phys[i_delta], # TODO put this into a parameter
+        'split_landmark': split_landmarks[i_slm],
         'num2drop': 1,
         'score_components': dict({
             'rainrate': dict({
@@ -107,7 +108,7 @@ def teams_single_workflow(i_expt):
     # Cluge; rely on knowing the menu of options from the Buick dealership and from the parameter sets 
     config_gcm,config_algo,expt_label,expt_abbrv = teams_paramset(i_expt)
     param_abbrv_gcm,param_label_gcm = frierson_gcm.FriersonGCM.label_from_config(config_gcm)
-    param_abbrv_algo,param_label_algo = algorithms_frierson.FriersonGCMITEAMS.label_from_config(config_algo)
+    param_abbrv_algo,param_label_algo = algorithms_frierson.FriersonGCMTEAMS.label_from_config(config_algo)
     config_analysis = dict()
     config_analysis['target_location'] = dict(lat=45, lon=180)
     # observables (scalar quantities)
@@ -187,24 +188,20 @@ def teams_single_workflow(i_expt):
     obs_names = list(observables.keys())
     # Set up directories
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
-    date_str = "2024-03-26"
+    date_str = "2024-04-04"
     sub_date_str = "0"
     dirdict = dict()
     dirdict['expt'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_gcm, param_abbrv_algo)
     dirdict['data'] = join(dirdict['expt'], 'data')
     dirdict['analysis'] = join(dirdict['expt'], 'analysis')
     dirdict['plots'] = join(dirdict['expt'], 'plots')
-    # TODO maybe do all the buick-linking here instead, and don't make the ITEAMS object worry about it 
-    dirdict['init_cond'] = join(
-            f'/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/2024-03-26/0/',
-            param_abbrv_gcm, 'AnGe_si0_Tbrn50_Thrz25', 'data')
     for dirname in ('data','analysis','plots'):
         makedirs(dirdict[dirname], exist_ok=True)
     filedict = dict()
     # Initial conditions
     filedict['angel'] = join(
-            f'/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/2024-03-26/0/',
-            param_abbrv_gcm, 'AnGe_si0_Tbrn50_Thrz25', 'data',
+            f'/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/2024-04-04/0/',
+            param_abbrv_gcm, 'AnGe_si0_Tbrn50_Thrz30', 'data',
             'alg.pickle') 
     # Algorithm manager
     filedict['alg'] = join(dirdict['data'], 'alg.pickle')
@@ -255,10 +252,11 @@ def run_teams(dirdict,filedict,config_gcm,config_algo):
     angel = pickle.load(open(filedict['angel'], 'rb'))
     if exists(filedict['alg']):
         alg = pickle.load(open(filedict['alg'], 'rb'))
+        alg.set_capacity(config_algo['num_levels_max'], config_algo['num_members_max'])
     else:
         gcm = frierson_gcm.FriersonGCM(config_gcm, recompile=recompile)
         ens = ensemble.Ensemble(gcm, root_dir=root_dir)
-        alg = algorithms_frierson.FriersonGCMITEAMS.initialize_from_ancestorgenerator(angel, config_algo, ens)
+        alg = algorithms_frierson.FriersonGCMTEAMS.initialize_from_ancestorgenerator(angel, config_algo, ens)
 
     alg.ens.dynsys.set_nproc(nproc)
     alg.ens.set_root_dir(root_dir)
@@ -281,10 +279,10 @@ def run_teams(dirdict,filedict,config_gcm,config_algo):
 def teams_single_procedure(i_expt):
 
     tododict = dict({
-        'run':             0,
+        'run':             1,
         'analysis': dict({
-            'observable_spaghetti':     1,
-            'score_distribution':       1,
+            'observable_spaghetti':     0,
+            'score_distribution':       0,
             }),
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = teams_single_workflow(i_expt)
@@ -305,12 +303,13 @@ if __name__ == "__main__":
         idx_expt = [int(arg) for arg in sys.argv[2:]]
     else:
         procedure = 'single'
-        idx_seed_param_buick = [(0,2,i) for i in range(8)]
-        shp = (12,21,8)
+        seed_incs,sigmas,deltas_phys,split_landmarks = teams_multiparams()
+        iseed_isigma_idelta_islm = [(0,2,2,0)]
+        shp = (len(seed_incs),len(sigmas),len(deltas_phys),len(split_landmarks))
         idx_expt = []
-        for (i_seed_inc,i_param,i_buick) in idx_seed_param_buick:
-            i_expt = np.ravel_multi_index((i_seed_inc,i_param,i_buick,), shp)
-            idx_expt.append(i_expt) #list(range(1,21))
+        for i_multiparam in iseed_isigma_idelta_islm:
+            i_expt = np.ravel_multi_index(i_multiparam,shp)
+            idx_expt.append(i_expt)
     print(f'Got into Main')
     if procedure == 'single':
         for i_expt in idx_expt:
