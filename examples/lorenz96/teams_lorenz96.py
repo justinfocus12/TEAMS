@@ -60,7 +60,7 @@ def teams_multiparams():
     F4s = [0.25,0.5,1.0,3.0]
     # Algorithmic
     deltas_phys = [0.0,1.0,1.5]
-    split_landmarks = ['gmx','lmx','thx']
+    split_landmarks = ['gmx','lmx','thx'][2:]
     return seed_incs,F4s,deltas_phys,split_landmarks
 
 def teams_paramset(i_expt):
@@ -71,12 +71,14 @@ def teams_paramset(i_expt):
     config_sde = lorenz96.Lorenz96SDE.default_config()
     config_sde['frc']['white']['wavenumber_magnitudes'][0] = F4s[i_F4]
     config_algo = dict({
-        'num_levels_max': 128,
+        'num_levels_max': 1024-128,
+        'num_members_max': 1024,
+        'num_active_families_min': 2,
         'seed_min': 1000,
         'seed_max': 100000,
         'seed_inc_init': seed_incs[i_seed_inc], 
-        'population_size': 32,
-        'time_horizon_phys': 8,
+        'population_size': 128,
+        'time_horizon_phys': 6 + deltas_phys[i_delta],
         'buffer_time_phys': 0,
         'advance_split_time_phys': deltas_phys[i_delta],
         'split_landmark': split_landmarks[i_slm],
@@ -193,7 +195,7 @@ def run_teams(dirdict,filedict,config_sde,config_algo):
     angel = pickle.load(open(filedict['angel'], 'rb'))
     if exists(filedict['alg']):
         alg = pickle.load(open(filedict['alg'], 'rb'))
-        alg.set_capacity(config_algo['num_levels_max'])
+        alg.set_capacity(config_algo['num_levels_max'], config_algo['num_members_max'])
     else:
         sde = lorenz96.Lorenz96SDE(config_sde)
         ens = ensemble.Ensemble(sde, root_dir=root_dir)

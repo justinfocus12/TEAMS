@@ -922,6 +922,8 @@ class TEAMS(EnsembleAlgorithm):
         pass
     def derive_parameters(self, config):
         self.num_levels_max = config['num_levels_max']
+        self.num_members_max = config['num_members_max']
+        self.num_active_families_min = config['num_active_families_min']
         tu = self.ens.dynsys.dt_save
         self.time_horizon = int(round(config['time_horizon_phys']/tu))
         self.buffer_time = int(round(config['buffer_time_phys']/tu)) # Time between the end of one interval and the beginning of the next, when generating the initial ensemble. Add this to the END of ancestral trajectories. 
@@ -931,12 +933,19 @@ class TEAMS(EnsembleAlgorithm):
         self.population_size = config['population_size']
         self.num2drop = config['num2drop']
         return
-    def set_capacity(self, num_levels_max):
-        # Raise the max-level ceiling
+    def set_capacity(self, num_levels_max, num_members_max):
         num_new_levels = num_levels_max - self.num_levels_max
-        scores_active = np.array([self.branching_state['scores_max'][ma] for ma in self.branching_state['members_active']])
-        if num_new_levels > 0 and len(scores_active) > 0:
+        num_new_members = num_members_max - self.ens.get_nmem()
+        num_active_members = len(self.branching_state['members_active'])
+        num_active_families = len(set((sorted(nx.ancestors(self.ens.memgraph, ma) | {ma}))[0] for ma in self.branching_state['members_active'])) 
+        if (
+                (num_new_levels > 0) and 
+                (num_new_members > 0) and 
+                (num_active_members > 0) and 
+                (num_active_families >= self.num_active_families_min)
+                ):
             self.num_levels_max = num_levels_max
+            self.num_members_max = num_members_max
             self.terminate = False
         return
     def set_init_conds(self, init_times, init_conds):
@@ -1066,7 +1075,7 @@ class TEAMS(EnsembleAlgorithm):
 
         new_score_combined = self.score_combined(new_score_components)
         if parent is not None:
-            print(f'{np.abs(self.branching_state["scores_tdep"][parent] - new_score_combined) = }')
+            #print(f'{np.abs(self.branching_state["scores_tdep"][parent] - new_score_combined) = }')
             print(f'{branch_ti = }')
             nnidx = np.where(np.isfinite(self.branching_state["scores_tdep"][parent][:branch_ti]))[0]
             if len(nnidx) > 0:
@@ -1110,28 +1119,39 @@ class TEAMS(EnsembleAlgorithm):
         assert len(self.branching_state['parent_queue']) == 0
         scores_active = np.array([self.branching_state['scores_max'][ma] for ma in self.branching_state['members_active']])
         # Keep track of reasons for extinction
-        terminate_by_extinction = False
-        terminate_by_level_limit = False
-        if self.ens.get_nmem() >= self.population_size: # Past the startup phase
+        termination_reasons = dict({
+            'extinction': False,
+            'level_limit': False,
+            'member_limit': False,
+            'ancestor_diversity': False,
+            })
+        nmem = self.ens.get_nmem()
+        families_active = set((sorted(nx.ancestors(self.ens.memgraph, ma) | {ma}))[0] for ma in self.branching_state['members_active'])
+        if nmem >= self.population_size: # Past the startup phase
             order = np.argsort(scores_active)
             num_leq = np.cumsum([self.branching_state['multiplicities'][order[j]] for j in range(len(order))])
             next_level = scores_active[order[np.where(num_leq >= self.num2drop)[0][0]]]
             self.branching_state['score_levels'].append(next_level)
+            # Check termination conditions
             if next_level >= scores_active[order[-1]]:
-                terminate_by_extinction = True
+                termination_reasons['extinction'] = True
             if (len(self.branching_state['score_levels']) >= self.num_levels_max):
-                terminate_by_level_limit = True
-                # TODO if termination is only happening because of the arbitrary limit, still replenish the queue
+                termination_reasons['level_limit'] = True
+            if nmem >= self.num_members_max:
+                termination_reasons['member_limit'] = True
+            if len(families_active) < self.num_active_families_min:
+                termination_reasons['ancestor_diversity'] = True
+
             # Re-populate the parent queue
             self.branching_state['members_active'] = [ma for ma in self.branching_state['members_active'] if self.branching_state['scores_max'][ma] > next_level]
-        if not terminate_by_extinction:
+        if not termination_reasons['extinction']:
             parent_pool = self.rng.permutation(np.concatenate(tuple([parent]*self.branching_state['multiplicities'][parent] for parent in self.branching_state['members_active']))) # TODO consider weighting parents' occurrence in this pool by weight
             lenpp = len(parent_pool)
             deficit = self.population_size - len(self.branching_state['members_active'])
             for i in range(deficit):
                 self.branching_state['parent_queue'].append(parent_pool[i % lenpp])
             print(f'The replenished queue is {self.branching_state["parent_queue"] = }')
-        self.terminate = (terminate_by_extinction or terminate_by_level_limit)
+        self.terminate = any(list(termination_reasons.values()))
         return
     # ----------------------- Plotting functions --------------------------------
     def plot_observable_spaghetti(self, obs_fun, ancestor, outfile, ylabel='', title='', is_score=False):
