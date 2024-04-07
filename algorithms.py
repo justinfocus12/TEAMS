@@ -932,6 +932,7 @@ class TEAMS(EnsembleAlgorithm):
         self.num2drop = config['num2drop']
         return
     def set_capacity(self, num_levels_max):
+        # Raise the max-level ceiling
         num_new_levels = num_levels_max - self.num_levels_max
         scores_active = np.array([self.branching_state['scores_max'][ma] for ma in self.branching_state['members_active']])
         if num_new_levels > 0 and len(scores_active) > 0:
@@ -1067,17 +1068,17 @@ class TEAMS(EnsembleAlgorithm):
         if parent is not None:
             print(f'{np.abs(self.branching_state["scores_tdep"][parent] - new_score_combined) = }')
             print(f'{branch_ti = }')
-            assert np.all(self.branching_state["scores_tdep"][parent][:branch_ti] == new_score_combined[:branch_ti]) 
+            nnidx = np.where(np.isfinite(self.branching_state["scores_tdep"][parent][:branch_ti]))[0]
+            if len(nnidx) > 0:
+                assert np.all(self.branching_state["scores_tdep"][parent][nnidx] == new_score_combined[nnidx]) 
         new_score_max = np.nanmax(new_score_combined[:self.time_horizon-1])
         self.branching_state['goals_at_birth'].append(self.branching_state['score_levels'][-1])
         self.branching_state['branch_times'].append(branch_time)
         self.branching_state['score_components_tdep'].append(new_score_components)
         self.branching_state['scores_tdep'].append(new_score_combined)
         self.branching_state['scores_max'].append(new_score_max)
-        # ------- DEBUG -------
         if self.split_landmark == 'thx' and self.advance_split_time == 0:
             assert new_score_max > self.branching_state['score_levels'][-1]
-        # -------------------
         self.branching_state['scores_max_timing'].append(1+t0+np.nanargmax(new_score_combined)) 
         success = (new_score_max > self.branching_state['score_levels'][-1])
         memact = self.branching_state['members_active']
