@@ -74,8 +74,8 @@ def teams_paramset(i_expt):
     pprint.pprint(config_gcm)
 
 
-    expt_label = r'SPPT, $\sigma=%g$'%(sigmas[i_sigma])
-    expt_abbrv = r'SPPT_std%g'%(sigmas[i_sigma])
+    expt_label = r'$\sigma=%g$, $\delta=%g$'%(sigmas[i_sigma],deltas_phys[i_delta])
+    expt_abbrv = (r'std%g_ast%g'%(sigmas[i_sigma],deltas_phys[i_delta])).replace('.','p')
 
 
     config_algo = dict({
@@ -211,11 +211,12 @@ def teams_single_workflow(i_expt):
 
     return config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict
 
-def plot_observable_spaghetti(config_analysis, alg, dirdict):
+def plot_observable_spaghetti(config_analysis, alg, dirdict, filedict):
     tu = alg.ens.dynsys.dt_save
     desc_per_anc = np.array([len(list(nx.descendants(alg.ens.memgraph,ancestor))) for ancestor in range(alg.population_size)])
     order = np.argsort(desc_per_anc)[::-1]
     print(f'{desc_per_anc[order] = }')
+    angel = pickle.load(open(filedict['angel'],'rb'))
     for (obs_name,obs_props) in config_analysis['observables'].items():
         is_score = (obs_name == 'local_dayavg_rain')
         if is_score:
@@ -224,13 +225,70 @@ def plot_observable_spaghetti(config_analysis, alg, dirdict):
                 outfile = join(dirdict['plots'], r'spaghetti_%s_anc%d.png'%(obs_props['abbrv'],ancestor))
                 landmark_label = {'lmx': 'local max', 'gmx': 'global max', 'thx': 'threshold crossing'}[alg.split_landmark]
                 title = r'%s ($\delta=%g$ before %s)'%(obs_props['label'],alg.advance_split_time*tu,landmark_label)
-                alg.plot_observable_spaghetti(obs_fun, ancestor, outfile, title=title, is_score=is_score)
+                fig,axes = alg.plot_observable_spaghetti(obs_fun, ancestor, outfile=None, title=title, is_score=is_score)
+                # Add a line for the Buick
+                mem_buick = next(angel.ens.memgraph.successors(angel.branching_state['generation_0'][ancestor]))
+                obs_buick = angel.ens.compute_observables([obs_fun], mem_buick)[0][:alg.time_horizon]
+                hbuick, = axes[0].plot((np.arange(len(obs_buick))+1)*tu, obs_buick, color='gray', linewidth=3, linestyle='--', zorder=-1, label='Buick')
+                if is_score: axes[1].axhline(np.nanmax(obs_buick), color='gray')
+                fig.savefig(outfile, **pltkwargs)
+                plt.close(fig)
+                print(f'{outfile = }')
     return
 
 def plot_score_spaghetti(config_analysis, alg, dirdict):
     pass
 
-def measure_score_distribution(config_analysis, alg, dirdict, filedict, overwrite_flag=False):
+def plot_scorrelations(config_analysis, alg, dirdict, filedict, expt_label):
+    # As a function of ancestor score (and also buick score), plot distribution of descendant scores (weighted and unweighted)
+    bs = alg.branching_state
+    scmax = np.array(bs['scores_max'])
+    order = np.argsort(scmax[:alg.population_size])[::-1]
+    score_fun = lambda ds: alg.score_combined(alg.score_components(ds['time'].to_numpy(),ds))
+    angel = pickle.load(open(filedict['angel'],'rb'))
+    scmax_buick = np.zeros(alg.population_size)
+    for i in range(alg.population_size):
+        if angel.branching_state['num_branches_generated'][i] > 0:
+            mem_buick = next(angel.ens.memgraph.successors(angel.branching_state['generation_0'][i]))
+            scmax_buick[i] = np.nanmax(angel.ens.compute_observables([score_fun], mem_buick)[0][:alg.time_horizon])
+    fig,axes = plt.subplots(nrows=2, figsize=(6,12))
+    ax = axes[0]
+    hanc, = ax.plot(np.arange(alg.population_size), scmax[order], color='black', marker='o', label='Ancestors', zorder=0)
+    desc_means = np.nan*np.ones(alg.population_size)
+    for i in range(alg.population_size):
+        ancestor = order[i]
+        desc = list(nx.descendants(alg.ens.memgraph, ancestor))
+        print(f'{desc = }')
+        if len(desc) > 0: desc_means[ancestor] = np.mean(scmax[desc])
+        ax.scatter(i*np.ones(len(desc)), scmax[desc], marker='.', color='red', s=8, zorder=2)
+        hbuick = ax.scatter([i], [scmax_buick[ancestor]], color='gray', marker='*', s=16, label='Buicks', zorder=1)
+        ax.plot([i,i], [scmax[ancestor], scmax_buick[ancestor]], color='gray')
+    nnidx = np.where(np.isfinite(desc_means[order]))[0]
+    hdescmean, = ax.plot(nnidx, desc_means[order][nnidx], color='red', label='Descendants')
+    ax.legend(handles=[hanc,hdescmean,hbuick])
+    ax.set_xlabel('Ancestor rank')
+    ax.set_ylabel('Score distribution')
+    ax.set_title(expt_label)
+
+    ax = axes[1]
+    # Calculate R^2
+    p_descmean = np.polyfit(scmax[:alg.population_size][order][nnidx], desc_means[order][nnidx], 1)
+    p_buick = np.polyfit(scmax[:alg.population_size], scmax_buick, 1)
+    print(f'{p_descmean = }')
+    print(f'{p_buick = }')
+    R2_descmean = 1 - np.nansum((desc_means - p_descmean[1] - p_descmean[0]*scmax[:alg.population_size])**2) / np.nansum((desc_means - np.nanmean(desc_means))**2) 
+    R2_buick = 1 - np.nansum((desc_means - p_buick[1] - p_buick[0]*scmax[:alg.population_size])**2) / np.nansum((scmax_buick - np.nanmean(scmax_buick))**2) 
+    hdesc = ax.scatter(scmax[:alg.population_size], desc_means, color='red', marker='.', label=r'$R^2=%.2f$'%(R2_descmean))
+    hbuick = ax.scatter(scmax[:alg.population_size], scmax_buick, color='gray', marker='*', label=r'$R^2=%.2f$'%(R2_buick))
+    ax.set_xlabel('Ancestor score')
+    ax.set_ylabel('Buick and descendant scores')
+    ax.legend(handles=[hdesc,hbuick])
+    fig.savefig(join(dirdict['plots'], 'scorrelation.png'), **pltkwargs)
+    plt.close(fig)
+    return
+
+
+def measure_score_distribution(config_analysis, alg, dirdict, filedict, expt_label, overwrite_flag=False):
     # Three histograms: initial population, weighted, and unweighted
     scmax,sclev,logw,mult,tbr,tmx = (alg.branching_state[s] for s in 'scores_max score_levels log_weights multiplicities branch_times scores_max_timing'.split(' '))
     hist_init,bin_edges_init = np.histogram(scmax[:alg.population_size], bins=10, density=True)
@@ -248,7 +306,7 @@ def measure_score_distribution(config_analysis, alg, dirdict, filedict, overwrit
                 mems_buick.append(next(angel.ens.memgraph.successors(angel.branching_state['generation_0'][i])))
         score_fun = lambda ds: alg.score_combined(alg.score_components(ds['time'].to_numpy(),ds))
         lonroll = lambda ds,dlon: ds.roll(lon=int(round(dlon/ds['lon'][:2].diff('lon').item())))
-        score_funs_rolled = [lambda ds: score_fun(lonroll(ds,dlon)) for dlon in [30,60,90,120,150,180,210,240,270,300,330]]
+        score_funs_rolled = [lambda ds: score_fun(lonroll(ds,dlon)) for dlon in [0,30,60,90,120,150,180,210,240,270,300,330]]
 
         scbuick = np.concatenate(tuple(
             angel.ens.compute_observables(score_funs_rolled, mem) 
@@ -270,7 +328,7 @@ def measure_score_distribution(config_analysis, alg, dirdict, filedict, overwrit
     hwted, = ax.plot(cbinfunc(bin_edges_wted), hist_wted, marker='.', color='red', label=r'Fin. weighted (%g)'%(np.sum(mult)))
     hbuick, = ax.plot(cbinfunc(bin_edges_buick), hist_buick, marker='.', color='gray', label=r'Buick (%g)'%(len(scmax_buick)))
     ax.set_yscale('log')
-    ax.set_title('Score distribution')
+    ax.set_title(expt_label)
     ax.set_ylabel(r'Freq.')
     ax = axes[1]
     pmf2ccdf = lambda hist: np.cumsum(hist[::-1])[::-1]
@@ -328,6 +386,7 @@ def teams_single_procedure(i_expt):
         'analysis': dict({
             'observable_spaghetti':     0,
             'score_distribution':       1,
+            'scorrelation':             1,
             }),
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = teams_single_workflow(i_expt)
@@ -335,10 +394,12 @@ def teams_single_procedure(i_expt):
         run_teams(dirdict,filedict,config_gcm,config_algo)
     alg = pickle.load(open(filedict['alg'], 'rb'))
     if tododict['analysis']['observable_spaghetti']:
-        plot_observable_spaghetti(config_analysis, alg, dirdict)
+        plot_observable_spaghetti(config_analysis, alg, dirdict, filedict)
         # TODO have another ancestor-wise version, and another that shows family lines improving in parallel and dropping out
     if tododict['analysis']['score_distribution']:
-        measure_score_distribution(config_analysis, alg, dirdict, filedict)
+        measure_score_distribution(config_analysis, alg, dirdict, filedict, expt_label, overwrite_flag=True)
+    if tododict['analysis']['scorrelation']:
+        plot_scorrelations(config_analysis, alg, dirdict, filedict, expt_label)
     return
 
 if __name__ == "__main__":
@@ -349,7 +410,11 @@ if __name__ == "__main__":
     else:
         procedure = 'single'
         seed_incs,sigmas,deltas_phys,split_landmarks = teams_multiparams()
-        iseed_isigma_idelta_islm = [(0,2,1,0)]
+        iseed_isigma_idelta_islm = [
+                (0,i_sigma,i_delta,0)
+                for i_sigma in range(3)
+                for i_delta in range(4)
+                ]
         shp = (len(seed_incs),len(sigmas),len(deltas_phys),len(split_landmarks))
         idx_expt = []
         for i_multiparam in iseed_isigma_idelta_islm:

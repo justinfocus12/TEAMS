@@ -1156,7 +1156,7 @@ class TEAMS(EnsembleAlgorithm):
         print(f'{termination_reasons = }')
         return
     # ----------------------- Plotting functions --------------------------------
-    def plot_observable_spaghetti(self, obs_fun, ancestor, outfile, ylabel='', title='', is_score=False):
+    def plot_observable_spaghetti(self, obs_fun, ancestor, outfile=None, ylabel='', title='', is_score=False):
         print(f'******************* \n \t {self.branching_state["branch_times"] = } \n *************')
         # Get all timespans
         tu = self.ens.dynsys.dt_save
@@ -1191,9 +1191,10 @@ class TEAMS(EnsembleAlgorithm):
         ax.set_xlabel('Generation')
         ax.set_ylabel('')
         #ax.set_xlim([time[0],time[-1]+1])
-        fig.savefig(outfile, **pltkwargs)
-        plt.close(fig)
-        return
+        if outfile is not None:
+            fig.savefig(outfile, **pltkwargs)
+            plt.close(fig)
+        return fig, axes
 
 # --------------- ITEAMS, where I stands for {initial condition-based, individual, whatever it stands for in Apple because the Apple doesn't fall far from the tree} ---------
 
