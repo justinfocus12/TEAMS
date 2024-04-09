@@ -1050,6 +1050,7 @@ class TEAMS(EnsembleAlgorithm):
             print(f'{score_parent[landmark_ti] = }, {score_parent[branch_ti] = }')
             print(f'branch time: original {branch_time}', end=', ')
             branch_time = max(init_time_ancestor, min(fin_time_parent-1, branch_time))
+            branch_ti = branch_time - init_time_ancestor 
             print(f'modified to {branch_time}')
             icandf = self.generate_icandf_from_parent(parent, branch_time)
             print(f'{icandf["frc"].get_forcing_times() = }')
@@ -1152,6 +1153,7 @@ class TEAMS(EnsembleAlgorithm):
                 self.branching_state['parent_queue'].append(parent_pool[i % lenpp])
             print(f'The replenished queue is {self.branching_state["parent_queue"] = }')
         self.terminate = any(list(termination_reasons.values()))
+        print(f'{termination_reasons = }')
         return
     # ----------------------- Plotting functions --------------------------------
     def plot_observable_spaghetti(self, obs_fun, ancestor, outfile, ylabel='', title='', is_score=False):

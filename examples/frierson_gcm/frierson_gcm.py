@@ -625,7 +625,7 @@ class FriersonGCM(DynamicalSystem):
         ds = xr.open_mfdataset(join(root_dir,metadata['filename_traj']), decode_times=False)
         obs = []
         for i_fun,fun in enumerate(obs_funs):
-            obs.append(fun(ds).compute())
+            obs.append(fun(ds)) #.compute())
         return obs
     def compute_stats_dns_rotsym(self, fxt, lon_roll_step_requested, time_block_size, bounds=None):
         # Given a physical input field f(x,y,t), augment it by rotations to compute return periods

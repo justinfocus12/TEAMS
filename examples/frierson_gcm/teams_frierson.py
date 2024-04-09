@@ -4,6 +4,8 @@ import numpy as np
 print(f'{i = }'); i += 1
 from numpy.random import default_rng
 print(f'{i = }'); i += 1
+import networkx as nx
+print(f'{i = }'); i += 1
 import xarray as xr
 print(f'{i = }'); i += 1
 from matplotlib import pyplot as plt, rcParams 
@@ -77,13 +79,13 @@ def teams_paramset(i_expt):
 
 
     config_algo = dict({
-        'num_levels_max': 8, # This parameter shouldn't affect the filenaming or anything like that 
-        'num_members_max': 12,
+        'num_levels_max': 512-64, # This parameter shouldn't affect the filenaming or anything like that 
+        'num_members_max': 512,
         'num_active_families_min': 2,
         'seed_min': 1000,
         'seed_max': 100000,
         'seed_inc_init': seed_incs[i_seed_inc],
-        'population_size': 4,
+        'population_size': 64,
         'time_horizon_phys': 20,
         'buffer_time_phys': 0,
         'advance_split_time_phys': deltas_phys[i_delta], # TODO put this into a parameter
@@ -211,34 +213,57 @@ def teams_single_workflow(i_expt):
 
 def plot_observable_spaghetti(config_analysis, alg, dirdict):
     tu = alg.ens.dynsys.dt_save
+    desc_per_anc = np.array([len(list(nx.descendants(alg.ens.memgraph,ancestor))) for ancestor in range(alg.population_size)])
+    order = np.argsort(desc_per_anc)[::-1]
+    print(f'{desc_per_anc[order] = }')
     for (obs_name,obs_props) in config_analysis['observables'].items():
         is_score = (obs_name == 'local_dayavg_rain')
         if is_score:
             obs_fun = lambda ds: obs_props['fun'](ds, **obs_props['kwargs'])
-            outfile = join(dirdict['plots'], r'spaghetti_%s.png'%(obs_props['abbrv']))
-            title = r'%s ($\delta=%g$)'%(obs_props['label'],alg.advance_split_time*tu)
-            alg.plot_observable_spaghetti(obs_fun, outfile, title=title, is_score=is_score)
+            for ancestor in order[:min(alg.population_size,12)]:
+                outfile = join(dirdict['plots'], r'spaghetti_%s_anc%d.png'%(obs_props['abbrv'],ancestor))
+                landmark_label = {'lmx': 'local max', 'gmx': 'global max', 'thx': 'threshold crossing'}[alg.split_landmark]
+                title = r'%s ($\delta=%g$ before %s)'%(obs_props['label'],alg.advance_split_time*tu,landmark_label)
+                alg.plot_observable_spaghetti(obs_fun, ancestor, outfile, title=title, is_score=is_score)
     return
 
 def plot_score_spaghetti(config_analysis, alg, dirdict):
     pass
 
-def plot_score_distribution(config_analysis, alg, dirdict):
+def plot_score_distribution(config_analysis, alg, dirdict, filedict):
     # Three histograms: initial population, weighted, and unweighted
     scmax,sclev,logw,mult,tbr,tmx = (alg.branching_state[s] for s in 'scores_max score_levels log_weights multiplicities branch_times scores_max_timing'.split(' '))
     hist_init,bin_edges_init = np.histogram(scmax[:alg.population_size], bins=10, density=True)
     hist_unif,bin_edges_unif = np.histogram(scmax, bins=10, density=True)
     hist_wted,bin_edges_wted = np.histogram(scmax, bins=10, weights=mult*np.exp(logw), density=True)
+    # Measure corresponding Buick distribution
+    angel = pickle.load(open(filedict['angel'], 'rb'))
+    mems_buick = []
+    for i in range(angel.num_buicks):
+        mems_buick.append(next(angel.ens.memgraph.successors(angel.branching_state['generation_0'][i])))
+    score_fun = lambda ds: alg.score_combined(alg.score_components(ds['time'].to_numpy(),ds))
+    lonroll = lambda ds,dlon: ds.roll(lon=int(round(dlon/ds['lon'][:2].diff('lon').item())))
+    score_funs_rolled = [lambda ds: score_fun(lonroll(ds,dlon)) for dlon in [30,60,90,120,150,180,210,240,270,300,330]]
+
+    scbuick = np.concatenate(tuple(
+        angel.ens.compute_observables(score_funs_rolled, mem) 
+        for mem in mems_buick)) # TODO augment with zonal symmetry
+    scmax_buick = np.nanmax(scbuick[:,:alg.time_horizon], axis=1)
+    hist_buick,bin_edges_buick = np.histogram(scmax_buick, bins=10, density=True)
+    print(f'{scbuick = }')
+
     fig,ax = plt.subplots()
     cbinfunc = lambda bin_edges: (bin_edges[1:] + bin_edges[:-1])/2
     hinit, = ax.plot(cbinfunc(bin_edges_init), hist_init, marker='.', color='black', linestyle='--', linewidth=3, label=r'Init (%g)'%(alg.population_size))
     hunif, = ax.plot(cbinfunc(bin_edges_unif), hist_unif, marker='.', color='dodgerblue', label=r'Fin. unweighted (%g)'%(alg.ens.get_nmem()))
     hwted, = ax.plot(cbinfunc(bin_edges_wted), hist_wted, marker='.', color='red', label=r'Fin. weighted (%g)'%(np.sum(mult)))
+    hbuick, = ax.plot(cbinfunc(bin_edges_buick), hist_buick, marker='.', color='gray', label=r'Buick (%g)'%(len(mems_buick)))
     ax.set_yscale('log')
-    ax.legend(handles=[hinit,hunif,hwted])
+    ax.legend(handles=[hinit,hunif,hwted,hbuick])
     ax.set_title('Score distribution')
     ax.set_ylabel(r'$S(X)$')
     fig.savefig(join(dirdict['plots'],'score_hist.png'), **pltkwargs)
+    print(f'{dirdict["plots"] = }')
     plt.close(fig)
     return
 
@@ -279,10 +304,10 @@ def run_teams(dirdict,filedict,config_gcm,config_algo):
 def teams_single_procedure(i_expt):
 
     tododict = dict({
-        'run':             1,
+        'run':             0,
         'analysis': dict({
             'observable_spaghetti':     0,
-            'score_distribution':       0,
+            'score_distribution':       1,
             }),
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = teams_single_workflow(i_expt)
@@ -293,7 +318,7 @@ def teams_single_procedure(i_expt):
         plot_observable_spaghetti(config_analysis, alg, dirdict)
         # TODO have another ancestor-wise version, and another that shows family lines improving in parallel and dropping out
     if tododict['analysis']['score_distribution']:
-        plot_score_distribution(config_analysis, alg, dirdict)
+        plot_score_distribution(config_analysis, alg, dirdict, filedict)
     return
 
 if __name__ == "__main__":

@@ -171,7 +171,6 @@ class FriersonGCMTEAMS(algorithms.TEAMS):
             comp_labels.append(comp_label)
         abbrv_score = '_'.join(comp_labels) 
         abbrv = '_'.join([
-            'TEAMS',
             abbrv_population,
             abbrv_score,
             ])

@@ -87,7 +87,7 @@ def ange_paramset(i_param):
         'burnin_time_phys': 50, # should be about 100; start small for testing 
         'time_horizon_phys': 30,
         # mutable parameters below 
-        'num_buicks': 256,
+        'num_buicks': 512,
         'branches_per_buick': 1, 
         })
     return config_gcm,config_algo,expt_label,expt_abbrv
