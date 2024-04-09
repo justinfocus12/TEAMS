@@ -230,38 +230,58 @@ def plot_observable_spaghetti(config_analysis, alg, dirdict):
 def plot_score_spaghetti(config_analysis, alg, dirdict):
     pass
 
-def plot_score_distribution(config_analysis, alg, dirdict, filedict):
+def measure_score_distribution(config_analysis, alg, dirdict, filedict, overwrite_flag=False):
     # Three histograms: initial population, weighted, and unweighted
     scmax,sclev,logw,mult,tbr,tmx = (alg.branching_state[s] for s in 'scores_max score_levels log_weights multiplicities branch_times scores_max_timing'.split(' '))
     hist_init,bin_edges_init = np.histogram(scmax[:alg.population_size], bins=10, density=True)
     hist_unif,bin_edges_unif = np.histogram(scmax, bins=10, density=True)
     hist_wted,bin_edges_wted = np.histogram(scmax, bins=10, weights=mult*np.exp(logw), density=True)
     # Measure corresponding Buick distribution
-    angel = pickle.load(open(filedict['angel'], 'rb'))
-    mems_buick = []
-    for i in range(angel.num_buicks):
-        mems_buick.append(next(angel.ens.memgraph.successors(angel.branching_state['generation_0'][i])))
-    score_fun = lambda ds: alg.score_combined(alg.score_components(ds['time'].to_numpy(),ds))
-    lonroll = lambda ds,dlon: ds.roll(lon=int(round(dlon/ds['lon'][:2].diff('lon').item())))
-    score_funs_rolled = [lambda ds: score_fun(lonroll(ds,dlon)) for dlon in [30,60,90,120,150,180,210,240,270,300,330]]
+    scmax_buick_file = join(dirdict['analysis'],'scmax_buick.npz')
+    if (not exists(scmax_buick_file)) or overwrite_flag:
+        print(f'{filedict["angel"] = }')
+        angel = pickle.load(open(filedict['angel'], 'rb'))
+        print(f'{angel.branching_state = }')
+        mems_buick = []
+        for i in range(angel.branching_state['num_buicks_generated']-1):
+            if angel.branching_state['num_branches_generated'][i] > 0:
+                mems_buick.append(next(angel.ens.memgraph.successors(angel.branching_state['generation_0'][i])))
+        score_fun = lambda ds: alg.score_combined(alg.score_components(ds['time'].to_numpy(),ds))
+        lonroll = lambda ds,dlon: ds.roll(lon=int(round(dlon/ds['lon'][:2].diff('lon').item())))
+        score_funs_rolled = [lambda ds: score_fun(lonroll(ds,dlon)) for dlon in [30,60,90,120,150,180,210,240,270,300,330]]
 
-    scbuick = np.concatenate(tuple(
-        angel.ens.compute_observables(score_funs_rolled, mem) 
-        for mem in mems_buick)) # TODO augment with zonal symmetry
-    scmax_buick = np.nanmax(scbuick[:,:alg.time_horizon], axis=1)
+        scbuick = np.concatenate(tuple(
+            angel.ens.compute_observables(score_funs_rolled, mem) 
+            for mem in mems_buick), axis=0) # TODO augment with zonal symmetry
+        print(f'{scbuick = }')
+        print(f'{scbuick.shape = }')
+        print(f'{len(mems_buick) = }')
+        scmax_buick = np.nanmax(scbuick[:,:alg.time_horizon], axis=1)
+        np.savez(scmax_buick_file, scmax_buick=scmax_buick)
+    else:
+        scmax_buick = np.load(scmax_buick_file)['scmax_buick']
     hist_buick,bin_edges_buick = np.histogram(scmax_buick, bins=10, density=True)
-    print(f'{scbuick = }')
-
-    fig,ax = plt.subplots()
     cbinfunc = lambda bin_edges: (bin_edges[1:] + bin_edges[:-1])/2
+
+    fig,axes = plt.subplots(nrows=2,figsize=(6,8))
+    ax = axes[0]
     hinit, = ax.plot(cbinfunc(bin_edges_init), hist_init, marker='.', color='black', linestyle='--', linewidth=3, label=r'Init (%g)'%(alg.population_size))
     hunif, = ax.plot(cbinfunc(bin_edges_unif), hist_unif, marker='.', color='dodgerblue', label=r'Fin. unweighted (%g)'%(alg.ens.get_nmem()))
     hwted, = ax.plot(cbinfunc(bin_edges_wted), hist_wted, marker='.', color='red', label=r'Fin. weighted (%g)'%(np.sum(mult)))
-    hbuick, = ax.plot(cbinfunc(bin_edges_buick), hist_buick, marker='.', color='gray', label=r'Buick (%g)'%(len(mems_buick)))
+    hbuick, = ax.plot(cbinfunc(bin_edges_buick), hist_buick, marker='.', color='gray', label=r'Buick (%g)'%(len(scmax_buick)))
     ax.set_yscale('log')
-    ax.legend(handles=[hinit,hunif,hwted,hbuick])
     ax.set_title('Score distribution')
-    ax.set_ylabel(r'$S(X)$')
+    ax.set_ylabel(r'Freq.')
+    ax = axes[1]
+    pmf2ccdf = lambda hist: np.cumsum(hist[::-1])[::-1]
+    hinit, = ax.plot(bin_edges_init[:-1], pmf2ccdf(hist_init), marker='.', color='black', linestyle='--', linewidth=3, label=r'Init (%g)'%(alg.population_size))
+    hunif, = ax.plot(bin_edges_unif[:-1], pmf2ccdf(hist_unif), marker='.', color='dodgerblue', label=r'Fin. unweighted (%g)'%(alg.ens.get_nmem()))
+    hwted, = ax.plot(bin_edges_wted[:-1], pmf2ccdf(hist_wted), marker='.', color='red', label=r'Fin. weighted (%g)'%(np.sum(mult)))
+    hbuick, = ax.plot(bin_edges_buick[:-1], pmf2ccdf(hist_buick), marker='.', color='gray', label=r'Buick (%g)'%(len(scmax_buick)))
+    ax.set_yscale('log')
+    ax.set_ylabel(r'Exc. Prob.')
+    ax.set_xlabel(r'$S(X)$')
+    ax.legend(handles=[hinit,hunif,hwted,hbuick],bbox_to_anchor=(0,-0.2),loc='upper left')
     fig.savefig(join(dirdict['plots'],'score_hist.png'), **pltkwargs)
     print(f'{dirdict["plots"] = }')
     plt.close(fig)
@@ -318,7 +338,7 @@ def teams_single_procedure(i_expt):
         plot_observable_spaghetti(config_analysis, alg, dirdict)
         # TODO have another ancestor-wise version, and another that shows family lines improving in parallel and dropping out
     if tododict['analysis']['score_distribution']:
-        plot_score_distribution(config_analysis, alg, dirdict, filedict)
+        measure_score_distribution(config_analysis, alg, dirdict, filedict)
     return
 
 if __name__ == "__main__":
@@ -329,7 +349,7 @@ if __name__ == "__main__":
     else:
         procedure = 'single'
         seed_incs,sigmas,deltas_phys,split_landmarks = teams_multiparams()
-        iseed_isigma_idelta_islm = [(0,2,2,0)]
+        iseed_isigma_idelta_islm = [(0,2,1,0)]
         shp = (len(seed_incs),len(sigmas),len(deltas_phys),len(split_landmarks))
         idx_expt = []
         for i_multiparam in iseed_isigma_idelta_islm:
