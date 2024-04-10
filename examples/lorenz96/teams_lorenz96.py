@@ -59,8 +59,8 @@ def teams_multiparams():
     # Physical
     F4s = [0.25,0.5,1.0,3.0]
     # Algorithmic
-    deltas_phys = [0.0,1.0,1.5]
-    split_landmarks = ['gmx','lmx','thx'][2:]
+    deltas_phys = [0.0,1.0,1.5,2.0]
+    split_landmarks = ['gmx','lmx','thx']
     return seed_incs,F4s,deltas_phys,split_landmarks
 
 def teams_paramset(i_expt):
@@ -71,13 +71,14 @@ def teams_paramset(i_expt):
     config_sde = lorenz96.Lorenz96SDE.default_config()
     config_sde['frc']['white']['wavenumber_magnitudes'][0] = F4s[i_F4]
     config_algo = dict({
-        'num_levels_max': 1024-128,
-        'num_members_max': 1024,
+        'num_levels_max': 50-12,
+        'num_members_max': 50,
         'num_active_families_min': 2,
+        'buick_choices': [1],
         'seed_min': 1000,
         'seed_max': 100000,
         'seed_inc_init': seed_incs[i_seed_inc], 
-        'population_size': 128,
+        'population_size': 25,
         'time_horizon_phys': 6 + deltas_phys[i_delta],
         'buffer_time_phys': 0,
         'advance_split_time_phys': deltas_phys[i_delta],
@@ -117,7 +118,7 @@ def teams_single_workflow(i_expt):
         })
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/"
     date_str = "2024-04-04"
-    sub_date_str = "0"
+    sub_date_str = "few_big_buicks"
     dirdict = dict()
     dirdict['expt'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_sde, param_abbrv_algo)
     dirdict['data'] = join(dirdict['expt'], 'data')
@@ -129,7 +130,7 @@ def teams_single_workflow(i_expt):
     print(f'After makedirs')
     filedict = dict()
     filedict['angel'] = join(
-            f'/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/2024-04-04/0/',
+            f'/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/2024-04-04/few_big_buicks/',
             param_abbrv_sde, 'AnGe_si0_Tbrn15_Thrz20', 'data',
             'alg.pickle') 
     filedict['alg'] = join(dirdict['data'], 'alg.pickle')
@@ -138,11 +139,12 @@ def teams_single_workflow(i_expt):
     print(f'Finished setting up workflow')
     return config_sde,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict
 
-def plot_observable_spaghetti(config_analysis, alg, dirdict):
+def plot_observable_spaghetti(config_analysis, config_algo, alg, dirdict, filedict):
     tu = alg.ens.dynsys.dt_save
     desc_per_anc = np.array([len(list(nx.descendants(alg.ens.memgraph,ancestor))) for ancestor in range(alg.population_size)])
     order = np.argsort(desc_per_anc)[::-1]
     print(f'{desc_per_anc[order] = }')
+    angel = pickle.load(open(filedict['angel'],'rb'))
     for (obs_name,obs_props) in config_analysis['observables'].items():
         is_score = (obs_name == 'E0')
         obs_fun = lambda t,x: obs_props['fun'](t,x)
@@ -150,7 +152,16 @@ def plot_observable_spaghetti(config_analysis, alg, dirdict):
             outfile = join(dirdict['plots'], r'spaghetti_%s_anc%d.png'%(obs_props['abbrv'],ancestor))
             landmark_label = {'lmx': 'local max', 'gmx': 'global max', 'thx': 'threshold crossing'}[alg.split_landmark]
             title = r'%s ($\delta=%g$ before %s)'%(obs_props['label'],alg.advance_split_time*tu,landmark_label)
-            alg.plot_observable_spaghetti(obs_fun, ancestor, outfile, title=title, is_score=is_score)
+            fig,axes = alg.plot_observable_spaghetti(obs_fun, ancestor, title=title, is_score=is_score, outfile=None)
+            # Add a line for the Buick descendants
+            buicks = algorithms_lorenz96.Lorenz96SDETEAMS.choose_buicks_for_initialization(config_algo, angel)
+            mems_buick = np.concatenate(tuple(list(angel.ens.memgraph.successors(angel.branching_state['generation_0'][buick])) for buick in buicks))
+            for mem in mems_buick:
+                obs_buick = angel.ens.compute_observables([obs_fun], mem)[0][:alg.time_horizon]
+                hbuick, = axes[0].plot((np.arange(len(obs_buick))+1)*tu, obs_buick, color='gray', linewidth=1, alpha=0.5, linestyle='-', zorder=-1, label='BUICK')
+            if is_score: axes[1].axhline(np.nanmax(obs_buick), color='gray')
+            fig.savefig(outfile, **pltkwargs)
+            plt.close(fig)
     return
 
 def plot_score_distribution(config_analysis, config_algo, alg, dirdict, filedict):
@@ -165,8 +176,12 @@ def plot_score_distribution(config_analysis, config_algo, alg, dirdict, filedict
     # Measure corresponding Buick distribution
     angel = pickle.load(open(filedict['angel'], 'rb'))
     mems_buick = []
-    for i in range(angel.num_buicks):
-        mems_buick.append(next(angel.ens.memgraph.successors(angel.branching_state['generation_0'][i])))
+    if 'buick_choices' in config_algo.keys():
+        for b in config_algo['buick_choices']:
+            mems_buick += list(angel.ens.memgraph.successors(angel.branching_state['generation_0'][b]))
+    else:
+        for i in range(angel.num_buicks):
+            mems_buick.append(next(angel.ens.memgraph.successors(angel.branching_state['generation_0'][i])))
     score_fun = lambda t,x: alg.score_combined(alg.score_components(t,x))
     scbuick = np.array([angel.ens.compute_observables([score_fun], mem)[0] for mem in mems_buick])
     scmax_buick = np.nanmax(scbuick[:,:alg.time_horizon], axis=1)
@@ -226,7 +241,7 @@ def teams_single_procedure(i_expt):
         run_teams(dirdict,filedict,config_sde,config_algo)
     alg = pickle.load(open(filedict['alg'], 'rb'))
     if tododict['analysis']['observable_spaghetti']:
-        plot_observable_spaghetti(config_analysis, alg, dirdict)
+        plot_observable_spaghetti(config_analysis, config_algo, alg, dirdict, filedict)
         # TODO have another ancestor-wise version, and another that shows family lines improving in parallel and dropping out
     if tododict['analysis']['score_distribution']:
         plot_score_distribution(config_analysis, config_algo, alg, dirdict, filedict)
@@ -240,7 +255,12 @@ if __name__ == "__main__":
     else:
         procedure = 'single'
         seed_incs,F4s,deltas_phys,split_landmarks = teams_multiparams()
-        iseed_iF4_idelta_islm = [(0,i_F4,i_delta,i_slm) for i_F4 in [0] for i_delta in [0] for i_slm in [2]]
+        iseed_iF4_idelta_islm = [
+                (0,i_F4,i_delta,i_slm) 
+                for i_F4 in [0] 
+                for i_delta in [3] 
+                for i_slm in [2]
+                ]
         shp = (len(seed_incs),len(F4s),len(deltas_phys),len(split_landmarks))
         idx_expt = []
         for i_multiparam in iseed_iF4_idelta_islm:

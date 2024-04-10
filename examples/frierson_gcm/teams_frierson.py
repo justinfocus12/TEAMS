@@ -385,8 +385,9 @@ def teams_single_procedure(i_expt):
         'run':             0,
         'analysis': dict({
             'observable_spaghetti':     0,
-            'score_distribution':       1,
-            'scorrelation':             1,
+            'score_distribution':       0,
+            'scorrelation':             0,
+            'fields_2d':                1,
             }),
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = teams_single_workflow(i_expt)

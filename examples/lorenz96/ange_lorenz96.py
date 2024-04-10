@@ -41,8 +41,8 @@ def ange_paramset(i_expt):
         'burnin_time_phys': 15, # should be about 100; start small for testing 
         'time_horizon_phys': 20,
         # mutable parameters below 
-        'num_buicks': 4096,
-        'branches_per_buick': 1, 
+        'num_buicks': 20,
+        'branches_per_buick': 100, 
         })
     expt_label = r'$F_4=%g$, seed %d'%(F4s[i_F4],seed_incs[i_seed_inc])
     expt_abbrv = (r'F%g_seed%d'%(F4s[i_F4],seed_incs[i_seed_inc])).replace('.','p')
@@ -74,7 +74,7 @@ def ange_single_workflow(i_expt):
         })
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/"
     date_str = "2024-04-04"
-    sub_date_str = "0"
+    sub_date_str = "few_big_buicks"
     dirdict = dict()
     dirdict['expt'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_sde, param_abbrv_algo)
     dirdict['data'] = join(dirdict['expt'], 'data')
@@ -118,7 +118,7 @@ def plot_observable_spaghetti(config_analysis, alg, dirdict):
         obs_fun = obs_props['fun']
         outfile = join(dirdict['plots'], r'spaghetti_burnin_%s.png'%(obs_props['abbrv']))
         alg.plot_observable_spaghetti_burnin(obs_fun, outfile, title=obs_props['label'], ylabel=r'')
-        for family in range(alg.num_buicks):
+        for family in range(min(8,alg.num_buicks)):
             outfile = join(dirdict['plots'], r'spaghetti_branching_%s_fam%d.png'%(obs_props['abbrv'],family))
             alg.plot_observable_spaghetti_branching(obs_fun, family, outfile, title=obs_props['label'], ylabel='')
     return
@@ -128,7 +128,7 @@ def plot_observable_distribution(config_analysis, alg, dirdict):
     for (obs_name,obs_props) in config_analysis['observables'].items():
         print(f'{obs_props = }')
         score_fun = obs_props['fun']
-        for buick in range(alg.branching_state['num_buicks_generated']):
+        for buick in range(min(8,alg.branching_state['num_buicks_generated'])):
             print(f'Starting {buick = }')
             outfile = join(dirdict['plots'], r'score_distn_%s_buick%d.png'%(obs_props['abbrv'],buick))
             alg.plot_score_distribution_branching(score_fun, buick, outfile, label=obs_props['label'])
@@ -145,10 +145,10 @@ def measure_running_max(config_analysis, alg, dirdict):
 def ange_single_procedure(i_expt):
     print(f'Got into ange_single_procedure')
     tododict = dict({
-        'run':             1,
+        'run':             0,
         'analysis': dict({
-            'observable_spaghetti':     1,
-            'observable_distribution':  1,
+            'observable_spaghetti':     0,
+            'observable_distribution':  0,
             'observable_running_max':   1,
             }),
         })
@@ -158,7 +158,7 @@ def ange_single_procedure(i_expt):
         run_ange(dirdict,filedict,config_gcm,config_algo)
     alg = pickle.load(open(filedict['alg'], 'rb'))
     if tododict['analysis']['observable_spaghetti']:
-        plot_observable_spaghetti(config_analysis, alg, dirdict)
+        plot_observable_spaghetti(config_analysis, alg, dirdict, filedict)
     if tododict['analysis']['observable_distribution']:
         plot_observable_distribution(config_analysis, alg, dirdict)
     if tododict['analysis']['observable_running_max']:
@@ -172,7 +172,7 @@ if __name__ == "__main__":
         idx_expt = [int(arg) for arg in sys.argv[2:]]
     else:
         procedure = 'single'
-        idx_expt = [3] #list(range(1,21))
+        idx_expt = [0] #list(range(1,21))
     print(f'{procedure = }, {idx_expt = }')
     if procedure == 'single':
         for i_expt in idx_expt:

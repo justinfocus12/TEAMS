@@ -786,8 +786,8 @@ class AncestorGenerator(EnsembleAlgorithm):
         # ... or maybe rely less on GEV as a parameter, and focus on mean, variance, skew etc.
         # Basically this is another way to quantify the mixing time. A test of whether mixing time w.r.t. different observables is very different
         pass
-    def measure_running_max(self, obs_fun, runmax_file, figfile_prefix, label='', abbrv='', precomputed=False):
-        buicks = np.array([i for i in range(min(12,self.branching_state['num_buicks_generated'])) if self.branching_state['num_branches_generated'][i] == self.branches_per_buick])
+    def measure_running_max(self, obs_fun, runmax_file, figfile_prefix, label='', abbrv='', precomputed=False, num2plot=12):
+        buicks = np.array([i for i in range(min(num2plot,self.branching_state['num_buicks_generated'])) if self.branching_state['num_branches_generated'][i] == self.branches_per_buick])
         print(f'{len(buicks) = }, {self.branches_per_buick = }')
         tu = self.ens.dynsys.dt_save
         time = self.uic_time + np.arange(self.burnin_time+1, self.burnin_time+self.time_horizon+1)
@@ -861,6 +861,7 @@ class AncestorGenerator(EnsembleAlgorithm):
                 h, = axes[0,1].plot(prob_exc,bin_edges[:-1],color=color,label=r'$t=%g$'%(t*tu))
                 handles.append(h)
             ax = axes[0,1]
+            ax.set_xscale('log')
             ax.set_xlabel('Exc. Prob.')
             ax.set_ylim(ylim_runmax)
             ax.xaxis.set_tick_params(which='both',labelbottom=True)
@@ -1408,12 +1409,21 @@ class ITEAMS(EnsembleAlgorithm):
         return
 
 class SDETEAMS(TEAMS):
+    @staticmethod
+    def choose_buicks_for_initialization(config, angel):
+        if 'buick_choices' in config.keys():
+            buick_choices = config['buick_choices']
+        else:
+            assert angel.num_buicks >= config['population_size'] # TODO allow repetition
+            rng_buick_choice = default_rng(seed=config['seed_min'] + config['seed_inc_init'])
+            buick_choices = rng_buick_choice.choice(np.arange(angel.num_buicks, dtype=int), size=config['population_size'], replace=False)
+        return buick_choices
     @classmethod
     def initialize_from_ancestorgenerator(cls, angel, config, ens):
         init_conds = []
         init_times = []
-        assert angel.num_buicks >= config['population_size'] # TODO allow repetition
-        for b in range(config['population_size']):  
+        buick_choices = cls.choose_buicks_for_initialization(config, angel)
+        for b in buick_choices:  
             parent = angel.branching_state['generation_0'][b]
             init_time_parent,fin_time_parent = angel.ens.get_member_timespan(parent)
             mdp = angel.ens.traj_metadata[parent]
