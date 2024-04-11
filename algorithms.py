@@ -828,6 +828,7 @@ class AncestorGenerator(EnsembleAlgorithm):
             np.savez(runmax_file, **runmax_stats)
         # Plot 
         nbuicks,nbranches,ntimes = running_max.shape
+        idx_time = np.unique(np.power(2, np.linspace(np.log2(1),np.log2(ntimes-1),9)).astype(int))
         ylim_runmax = [np.nanmin(running_max),np.nanmax(running_max)]
         ylim_runmaxstd = [0,np.nanmax(running_max_std)]
         for buick in range(nbuicks):
@@ -849,7 +850,6 @@ class AncestorGenerator(EnsembleAlgorithm):
             ax.set_ylim(ylim_runmaxstd)
 
             # Plot complementary CDF 
-            idx_time = np.unique(np.power(2, np.linspace(np.log2(1),np.log2(ntimes-1),8)).astype(int))
             handles = []
             for i in range(len(idx_time)):
                 t = time[idx_time[i]]
@@ -866,12 +866,30 @@ class AncestorGenerator(EnsembleAlgorithm):
             ax.set_ylim(ylim_runmax)
             ax.xaxis.set_tick_params(which='both',labelbottom=True)
             axes[1,1].axis('off')
-            #axes[1,1].legend(handles=handles)
-
-
-
             fig.savefig(r'%s_buick%d.png'%(figfile_prefix,buick), **pltkwargs)
             plt.close(fig)
+        # Plot aggregated CDFs across BUICKs
+        nrows = int(np.ceil(np.sqrt(len(idx_time))))
+        fig,axes = plt.subplots(ncols=nrows, nrows=nrows, figsize=(6*nrows,6*nrows), gridspec_kw={'hspace': 0.2}, sharex=True)
+        for i in range(len(idx_time)):
+            ax = axes.flat[i]
+            t = idx_time[i]
+            color = plt.cm.rainbow(i/len(idx_time))
+            for buick in range(nbuicks):
+                rm = running_max[buick,:,idx_time[i]]
+                hist,bin_edges = np.histogram(rm[np.isfinite(rm)], bins=20)
+                prob_exc = np.cumsum(hist[::-1])[::-1] / self.branches_per_buick
+                hsingle, = ax.plot(prob_exc,bin_edges[:-1],color=color,label=r'Single BUICK')
+            rm = running_max[:,:,idx_time[i]]
+            hist,bin_edges = np.histogram(rm[np.isfinite(rm)], bins=20)
+            prob_exc = np.cumsum(hist[::-1])[::-1] / (nbuicks * self.branches_per_buick)
+            hagg, = ax.plot(prob_exc,bin_edges[:-1],color='black',linestyle='--',linewidth=3,label=r'Aggregated BUICKs')
+            ax.set_xscale('log')
+            ax.set_title(r'$t=%g$'%(t*tu))
+            ax.set_xlabel(r'Prob. Exc.')
+            ax.set_ylabel(r'Running max')
+        fig.savefig(r'%s_allbuicks.png'%(figfile_prefix), **pltkwargs)
+        plt.close(fig)
         return
 
 class SDEAncestorGenerator(AncestorGenerator):
@@ -931,6 +949,7 @@ class TEAMS(EnsembleAlgorithm):
         self.advance_split_time = int(round(config['advance_split_time_phys']/tu))
         print(f'{self.advance_split_time = }')
         self.split_landmark = config['split_landmark'] # either 'max' or 'thx'
+        self.inherit_perts_after_split = config['inherit_perts_after_split']
         self.population_size = config['population_size']
         self.num2drop = config['num2drop']
         return
@@ -956,13 +975,14 @@ class TEAMS(EnsembleAlgorithm):
     @staticmethod
     def label_from_config(config):
         abbrv = (
-                r'TEAMS_N%d_T%g_ast%gb4%s_drop%d_si%d'%(
+                r'TEAMS_N%d_T%g_ast%gb4%s_drop%d_si%d_ipas%d'%(
                     config['population_size'],
                     config['time_horizon_phys'],
                     config['advance_split_time_phys'],
                     config['split_landmark'],
                     config['num2drop'],
                     config['seed_inc_init'],
+                    int(config['inherit_perts_after_split']),
                     )
                 ).replace('.','p')
         split_landmark_display = {'lmx': 'loc. max', 'gmx': 'glob. max', 'thx': 'lev. cross.'}[config['split_landmark']]
@@ -1423,6 +1443,7 @@ class SDETEAMS(TEAMS):
         init_conds = []
         init_times = []
         buick_choices = cls.choose_buicks_for_initialization(config, angel)
+        self.buick_choices = buick_choices
         for b in buick_choices:  
             parent = angel.branching_state['generation_0'][b]
             init_time_parent,fin_time_parent = angel.ens.get_member_timespan(parent)
@@ -1432,21 +1453,53 @@ class SDETEAMS(TEAMS):
             init_times.append(fin_time_parent)
         return cls(init_times, init_conds, config, ens)
     def generate_icandf_from_parent(self, requested_parent, branch_time):
+        # Set a new seed for the branching time 
+        new_seed = self.rng.integers(low=self.seed_min,high=self.seed_max)
+        init_rngstate = default_rng(seed=new_seed).bit_generator.state 
+        reseed_times = [branch_time] 
+        seeds = [new_seed]
         parent = requested_parent
-        init_time,fin_time = self.ens.get_member_timespan(parent)
-        # Trace backward on the family tree until the init time is no later than the branch time 
-        while init_time > branch_time:
-            parent = next(self.ens.memgraph.predecessors(parent))
+        reseed_times_uplim = np.inf # Upper limit on where to inherit new seeds
+        searching_back = True
+        while searching_back: #init_time > branch_time:
             init_time,fin_time = self.ens.get_member_timespan(parent)
+            if self.inherit_perts_after_split:
+                # Extract the relevant forcing sequence from the parent
+                mdp = self.ens.traj_metadata[parent]
+                parent_seed_frcs = [frc for frc in mdp['icandf']['frc'].frc_list if isinstance(frc,forcing.OccasionalReseedForcing)]
+                assert len(parent_seed_frcs) == 1
+                frc = parent_seed_frcs[0]
+                # Inherit an appropriate subsequence
+                idx_seeds_to_inherit = [
+                        i for i in range(len(frc.reseed_times)) 
+                        if (
+                            (branch_time < frc.reseed_times[i] < reseed_times_uplim)
+                            and
+                            (frc.reseed_times[i] not in reseed_times) # more direct ancestors get priority for implanting their seeds into the new child 
+                            )
+                        ]
+                if len(idx_seeds_to_inherit) > 0:
+                    ft = frc.get_forcing_times()
+                    reseed_times += [ft[i] for i in idx_seeds_to_inherit] 
+                    seeds += [frc.seeds[i] for i in idx_seeds_to_inherit]
+                    reseed_times_uplim = frc.reseed_times[idx_seeds_to_inherit[0]]
+            searching_back = (init_time > branch_time)
+            if searching_back:
+                parent = next(self.ens.memgraph.predecessors(parent))
         mdp = self.ens.traj_metadata[parent]
         if branch_time == init_time:
             init_cond = mdp['icandf']['init_cond']
         else:
             parent_t,parent_x = self.ens.dynsys.load_trajectory(mdp, self.ens.root_dir, tspan=[branch_time]*2)
             init_cond = parent_x[0]
-        seed = self.rng.integers(low=self.seed_min,high=self.seed_max)
-        init_rngstate = default_rng(seed=seed).bit_generator.state 
-        frc_reseed = forcing.OccasionalReseedForcing(branch_time, fin_time, [branch_time], [seed])
+        print(f'{reseed_times = }, \n{seeds = }')
+        if len(reseed_times) > 1:
+            print(f'MULTIPLE RESEEDS!!')
+            if not self.inherit_perts_after_split:
+                raise Exception('Without ipas, supposed to have only one seed')
+        order = np.argsort(reseed_times)
+        frc_reseed = forcing.OccasionalReseedForcing(branch_time, fin_time, [reseed_times[order[i]] for i in range(len(reseed_times))], [seeds[order[i]] for i in range(len(reseed_times))])
+        # TODO share more of the following forcings with the child
         frc_vector = forcing.OccasionalVectorForcing(branch_time, fin_time, [], [])
         icandf = dict({
             'init_cond': init_cond,

@@ -42,7 +42,7 @@ def ange_paramset(i_expt):
         'time_horizon_phys': 20,
         # mutable parameters below 
         'num_buicks': 20,
-        'branches_per_buick': 100, 
+        'branches_per_buick': 300, 
         })
     expt_label = r'$F_4=%g$, seed %d'%(F4s[i_F4],seed_incs[i_seed_inc])
     expt_abbrv = (r'F%g_seed%d'%(F4s[i_F4],seed_incs[i_seed_inc])).replace('.','p')
@@ -158,7 +158,7 @@ def ange_single_procedure(i_expt):
         run_ange(dirdict,filedict,config_gcm,config_algo)
     alg = pickle.load(open(filedict['alg'], 'rb'))
     if tododict['analysis']['observable_spaghetti']:
-        plot_observable_spaghetti(config_analysis, alg, dirdict, filedict)
+        plot_observable_spaghetti(config_analysis, alg, dirdict)
     if tododict['analysis']['observable_distribution']:
         plot_observable_distribution(config_analysis, alg, dirdict)
     if tododict['analysis']['observable_running_max']:

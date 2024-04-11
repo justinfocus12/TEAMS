@@ -98,11 +98,22 @@ class FriersonGCMAncestorGenerator(algorithms.AncestorGenerator):
         return icandf
 
 class FriersonGCMTEAMS(algorithms.TEAMS):
+    @staticmethod
+    def choose_buicks_for_initialization(config, angel):
+        if 'buick_choices' in config.keys():
+            buick_choices = config['buick_choices']
+        else:
+            assert angel.num_buicks >= config['population_size'] # TODO allow repetition
+            rng_buick_choice = default_rng(seed=config['seed_min'] + config['seed_inc_init'])
+            buick_choices = rng_buick_choice.choice(np.arange(angel.num_buicks, dtype=int), size=config['population_size'], replace=False)
+        return buick_choices
     @classmethod
     def initialize_from_ancestorgenerator(cls, angel, config, ens):
         init_conds = []
         init_times = []
         assert angel.num_buicks >= config['population_size'] # TODO allow repetition
+        buick_choices = cls.choose_buicks_for_initialization(config, angel)
+        self.buick_choices = buick_choices
         for b in range(config['population_size']):  
             parent = angel.branching_state['generation_0'][b]
             init_time_parent,fin_time_parent = angel.ens.get_member_timespan(parent)
@@ -151,6 +162,7 @@ class FriersonGCMTEAMS(algorithms.TEAMS):
             score += compval['weight']*conv
             total_weight += compval['weight']
         score /= total_weight
+        score[:self.advance_split_time] = np.nan
         return score
     def merge_score_components(self, mem_leaf, score_components_leaf):
         # The child always starts from the same restart as the ancestor, so no merging necessary

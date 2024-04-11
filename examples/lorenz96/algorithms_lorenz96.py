@@ -147,7 +147,7 @@ class Lorenz96SDEITEAMS(algorithms.SDEITEAMS):
         return scores
     def score_combined(self, sccomps):
         score = np.mean(np.array([sccomps[i]*self.score_params['kweights'][i] for i in range(len(sccomps))]), axis=0)
-        score[:self.advance_split_time] = np.nan
+        #score[:self.advance_split_time] = np.nan
         return score
     @staticmethod
     def label_from_config(config):
@@ -179,7 +179,7 @@ class Lorenz96SDETEAMS(algorithms.SDETEAMS):
         return scores
     def score_combined(self, sccomps):
         score = np.mean(np.array([sccomps[i]*self.score_params['kweights'][i] for i in range(len(sccomps))]), axis=0)
-        score[:self.advance_split_time] = np.nan
+        #score[:self.advance_split_time] = np.nan
         return score
     def merge_score_components(self, mem_leaf, score_components_leaf): #comps0, comps1, nsteps2prepend):
         init_time,fin_time = self.ens.get_member_timespan(mem_leaf)
@@ -201,7 +201,11 @@ class Lorenz96SDETEAMS(algorithms.SDETEAMS):
                 for i in range(len(config['score']['ks']))
             ])
         abbrv_t = r'tavg%g'%(config['score']['tavg_phys'])
-        abbrv = r'%s_%s_%s'%(abbrv_population,abbrv_k,abbrv_t)
+        if 'buick_choices' in config.keys():
+            abbrv_buick = r'buicks%d-%d'%(config['buick_choices'][0],config['buick_choices'][-1])
+        else:
+            abbrv_buick = r'buicksNA'
+        abbrv = r'%s_%s_%s_%s'%(abbrv_population,abbrv_k,abbrv_t,abbrv_buick)
         abbrv = abbrv.replace('.','p')
         return abbrv,label_population
 
