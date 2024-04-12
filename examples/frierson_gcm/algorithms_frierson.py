@@ -113,7 +113,7 @@ class FriersonGCMTEAMS(algorithms.TEAMS):
         init_times = []
         assert angel.num_buicks >= config['population_size'] # TODO allow repetition
         buick_choices = cls.choose_buicks_for_initialization(config, angel)
-        self.buick_choices = buick_choices
+        #self.buick_choices = buick_choices
         for b in range(config['population_size']):  
             parent = angel.branching_state['generation_0'][b]
             init_time_parent,fin_time_parent = angel.ens.get_member_timespan(parent)

@@ -54,9 +54,9 @@ print(f'{i = }'); i += 1
 import algorithms_frierson; reload(algorithms_frierson)
 
 def teams_multiparams():
-    seed_incs = [0]
-    sigmas = [0.01,0.1,0.3]
-    deltas_phys = [0.0,2.0,4.0,8.0]
+    seed_incs = list(range(8))
+    sigmas = [0.3]
+    deltas_phys = [6.0,8.0,10.0]
     split_landmarks = ['thx']
     return seed_incs,sigmas,deltas_phys,split_landmarks
 
@@ -86,10 +86,11 @@ def teams_paramset(i_expt):
         'seed_max': 100000,
         'seed_inc_init': seed_incs[i_seed_inc],
         'population_size': 64,
-        'time_horizon_phys': 20,
+        'time_horizon_phys': 20 + deltas_phys[i_delta],
         'buffer_time_phys': 0,
         'advance_split_time_phys': deltas_phys[i_delta], # TODO put this into a parameter
         'split_landmark': split_landmarks[i_slm],
+        'inherit_perts_after_split': False,
         'num2drop': 1,
         'score_components': dict({
             'rainrate': dict({
@@ -382,11 +383,11 @@ def run_teams(dirdict,filedict,config_gcm,config_algo):
 def teams_single_procedure(i_expt):
 
     tododict = dict({
-        'run':             0,
+        'run':             1,
         'analysis': dict({
-            'observable_spaghetti':     0,
-            'score_distribution':       0,
-            'scorrelation':             0,
+            'observable_spaghetti':     1,
+            'score_distribution':       1,
+            'scorrelation':             1,
             'fields_2d':                1,
             }),
         })
@@ -412,9 +413,10 @@ if __name__ == "__main__":
         procedure = 'single'
         seed_incs,sigmas,deltas_phys,split_landmarks = teams_multiparams()
         iseed_isigma_idelta_islm = [
-                (0,i_sigma,i_delta,0)
-                for i_sigma in range(3)
-                for i_delta in range(4)
+                (i_seed,i_sigma,i_delta,0)
+                for i_seed in range(8)
+                for i_sigma in range(1)
+                for i_delta in range(3)
                 ]
         shp = (len(seed_incs),len(sigmas),len(deltas_phys),len(split_landmarks))
         idx_expt = []

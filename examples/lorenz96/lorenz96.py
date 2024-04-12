@@ -26,7 +26,7 @@ class Lorenz96ODE(ODESystem): # TODO make a superclass Lorenz96, and a sibling s
     @staticmethod
     def default_config():
         config = dict({'K': 40, 'F': 6.0, 'dt_step': 0.001, 'dt_save': 0.05,})
-        config['t_burnin_phys'] = int(10/config['dt_save'])
+        config['t_burnin_phys'] = 10.0
         config['frc'] = dict({
             'type': 'impulsive',
             'impulsive': dict({

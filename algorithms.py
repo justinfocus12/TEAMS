@@ -1443,7 +1443,6 @@ class SDETEAMS(TEAMS):
         init_conds = []
         init_times = []
         buick_choices = cls.choose_buicks_for_initialization(config, angel)
-        self.buick_choices = buick_choices
         for b in buick_choices:  
             parent = angel.branching_state['generation_0'][b]
             init_time_parent,fin_time_parent = angel.ens.get_member_timespan(parent)
