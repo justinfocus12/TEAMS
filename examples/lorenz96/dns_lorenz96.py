@@ -21,24 +21,44 @@ import forcing
 from algorithms_lorenz96 import Lorenz96ODEDirectNumericalSimulation as L96ODEDNS, Lorenz96SDEDirectNumericalSimulation as L96SDEDNS
 import utils
 
-def dns_paramset(i_param):
+def dns_multiparams():
+    seed_incs = [0]
+    F4s = [0.0,0.25,0.5,1.0,3.0]
+    return seed_incs,F4s
+
+def dns_paramset(i_expt):
     # Organize the array of parameters as well as the output files 
-    F4s = [3.0,1.0,0.5,0.25,0.0]
-    seed_incs = [0,0,0,0,0] # In theory we could make an unraveled array of (F4,seed)
+    multiparams = dns_multiparams()
+    idx_multiparam = np.unravel_index(i_expt, tuple(len(mp) for mp in multiparams))
+    print(f'{idx_multiparam = }')
+    seed_inc,F4 = (multiparams[i][i_param] for (i,i_param) in enumerate(idx_multiparam))
+    print(f'{seed_inc = }')
+    print(f'{F4 = }')
     # Minimal labels to differentiate them 
-    expt_labels = [r'$F_4=%g$'%(F4) for F4 in F4s]
-    expt_abbrvs = [(r'F4eq%g'%(F4)).replace('.','p') for F4 in F4s]
+    expt_label = r'$F_4=%g$, seed %d'%(F4,seed_inc)
+    expt_abbrv = (r'F%g'%(F4)).replace('.','p') 
     config_dynsys = Lorenz96SDE.default_config()
-    config_dynsys['frc']['white']['wavenumber_magnitudes'][0] = F4s[i_param]
+    config_dynsys['frc']['white']['wavenumber_magnitudes'][0] = F4
 
     config_algo = dict({
         'seed_min': 1000,
         'seed_max': 100000,
-        'seed_inc_init': seed_incs[i_param], # add to seed_min
-        'max_member_duration_phys': 50.0,
-        'num_chunks_max': 100,
+        'seed_inc_init': seed_inc,
+        'max_member_duration_phys': 100.0,
+        'num_chunks_max': 1000,
         })
 
+
+    return config_dynsys,config_algo,expt_label,expt_abbrv
+
+def dns_single_workflow(i_expt):
+    config_dynsys,config_algo,expt_label,expt_abbrv = dns_paramset(i_expt)
+    # Organize output directories
+    scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/"
+    date_str = "2024-04-12"
+    sub_date_str = "0"
+    param_abbrv_dynsys,param_label_dynsys = Lorenz96SDE.label_from_config(config_dynsys)
+    param_abbrv_algo,param_label_algo = L96SDEDNS.label_from_config(config_algo)
     config_analysis = dict({
         # return statistics analysis
         'return_stats': dict({
@@ -48,17 +68,6 @@ def dns_paramset(i_param):
             })
         # Other possible parameters: method used for fitting GEV, threshold for GPD, ...
         })
-
-    return config_dynsys,config_algo,config_analysis,expt_labels[i_param],expt_abbrvs[i_param]
-
-def dns_workflow(i_param):
-    config_dynsys,config_algo,config_analysis,expt_label,expt_abbrv = dns_paramset(i_param)
-    # Organize output directories
-    scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/"
-    date_str = "2024-03-19"
-    sub_date_str = "0"
-    param_abbrv_dynsys,param_label_dynsys = Lorenz96SDE.label_from_config(config_dynsys)
-    param_abbrv_algo,param_label_algo = L96SDEDNS.label_from_config(config_algo)
 
     dirdict = dict()
     dirdict['expt'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_dynsys, param_abbrv_algo)
@@ -70,28 +79,12 @@ def dns_workflow(i_param):
 
     # List the quantities of interest
     obsprop = Lorenz96ODE.observable_props()
-    obs_names = ['x0','E0','E'] # Maybe we can do multivariate stuff on the second
+    obs_names = ['x0','x0sq','E0','E'] # Maybe we can do multivariate stuff on the second
 
     filedict = dict()
     # Algorithm manager
     filedict['alg'] = join(dirdict['data'], 'alg.pickle')
     # Basic analysis
-    filedict['basic_vis'] = dict()
-    filedict['basic_vis']['dns_segment'] = join(dirdict['plots'], 'dns_segment_plot.png')
-    # Return period analysis of scalar observables
-    filedict['return_stats'] = dict()
-    for obs_name in obs_names:
-        filedict['return_stats'][obs_name] = dict({
-            'analysis': join(dirdict['analysis'], r'return_stats_%s.npz'%(obsprop[obs_name]['abbrv'])),
-            'plots': join(dirdict['plots'], r'return_stats_%s_plot.png'%(obsprop[obs_name]['abbrv'])),
-            })
-    # Autocorrelation analysis 
-    filedict['autocorrelation'] = dict()
-    for obs_name in obs_names:
-        filedict['autocorrelation'][obs_name] = dict({
-            'analysis': join(dirdict['analysis'], r'autocorrelation_%s.npz'%(obsprop[obs_name]['abbrv'])),
-            'plot': join(dirdict['plots'], r'autocorrelation_%s.png'%(obsprop[obs_name]['abbrv'])),
-            })
     return config_dynsys,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict
 
 def meta_dns_workflow(idx_param):
@@ -139,17 +132,12 @@ def run_dns(dirdict,filedict,config_dynsys,config_algo):
     if exists(filedict['alg']):
         alg = pickle.load(open(filedict['alg'],'rb'))
         alg.ens.set_root_dir(root_dir)
+        alg.set_capacity(config_algo['num_chunks_max'], config_algo['max_member_duration_phys'])
     else:
         sde = Lorenz96SDE(config_dynsys)
         ens = Ensemble(sde,root_dir=root_dir)
         alg = L96SDEDNS(config_algo, ens)
     nmem = alg.ens.get_nmem()
-    alg.ens.set_root_dir(root_dir)
-    alg.set_simulation_capacity(config_algo['num_chunks_max'], config_algo['max_member_duration_phys'])
-    num_new_chunks = alg.num_chunks_max - nmem
-    print(f'{num_new_chunks = }')
-    if num_new_chunks > 0:
-        alg.terminate = False
     while not (alg.terminate):
         mem = alg.ens.get_nmem()
         print(f'----------- Starting member {mem} ----------------')
@@ -187,22 +175,22 @@ def plot_dns(tododict,dirdict,filedict):
             L96SDEDNS.plot_return_stats(filedict['return_stats'][obs_name]['analysis'], filedict['return_stats'][obs_name]['plots'], obsprop[obs_name])
     return
 
-def dns_procedure(i_param):
+def dns_procedure(i_expt):
     tododict = dict({
         'run':                   1,
         'analysis': dict({
-            'return_stats': 1,
-            'autocorrelation': 1,
+            'return_stats':    0,
+            'autocorrelation': 0,
             }),
         'plots': dict({
-            'return_stats':  1,
-            'autocorrelation': 1,
-            'basic_vis':   1,
+            'return_stats':    0,
+            'autocorrelation': 0,
+            'basic_vis':       0,
             }),
         })
 
     # Quantities of interest for statistics. These should be registered as observables under the system.
-    config_dynsys,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = dns_workflow(i_param)
+    config_dynsys,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = dns_single_workflow(i_expt)
 
     if tododict['run']:
         run_dns(dirdict,filedict,config_dynsys,config_algo)
@@ -215,9 +203,9 @@ def dns_procedure(i_param):
 
 if __name__ == "__main__":
     procedure = sys.argv[1]
-    idx_param = [int(v) for v in sys.argv[2:]]
+    idx_expt = [int(v) for v in sys.argv[2:]]
     if procedure == 'single':
-        for i_param in idx_param:
-            dns_procedure(i_param)
+        for i_expt in idx_expt:
+            dns_procedure(i_expt)
     elif procedure == 'meta':
         meta_dns_procedure(idx_param)

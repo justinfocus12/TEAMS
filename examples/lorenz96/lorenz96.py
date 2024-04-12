@@ -25,7 +25,7 @@ class Lorenz96ODE(ODESystem): # TODO make a superclass Lorenz96, and a sibling s
         super().__init__(config)
     @staticmethod
     def default_config():
-        config = dict({'K': 40, 'F': 6.0, 'dt_step': 0.001, 'dt_save': 0.05,})
+        config = dict({'K': 40, 'F': 6.0, 'dt_step': 0.001, 'dt_save': 0.01,})
         config['t_burnin_phys'] = 10.0
         config['frc'] = dict({
             'type': 'impulsive',
@@ -149,6 +149,8 @@ class Lorenz96ODE(ODESystem): # TODO make a superclass Lorenz96, and a sibling s
         return obslib
     def x0(self, t, x):
         return x[:,0]
+    def x0sq(self, t, x):
+        return x[:,0]**2
     def E0(self, t, x):
         return x[:,0]**2/2
     def E(self, t, x):
