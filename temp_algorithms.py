@@ -1459,10 +1459,20 @@ class SDETEAMS(TEAMS):
         init_conds = []
         init_times = []
         rng = default_rng(seed=config['seed_min'] + config['seed_inc_init'])
-        uic = ens.dynsys.default_init
+        tu = ens.dynsys.dt_save
         for i in range(config['population_size']):
-            pass
-        return
+            frc_reseed = forcing.OccasionalReseedForcing(0, self.burnin_time, [0], [rng.integers(low=config['seed_min'],high=config['seed_max'])])
+            frc_vector = forcing.OccasionalVectorForcing(0, self.burnin_time, [], [])
+            icandf = dict({
+                'init_cond': self.ens.dynsys.generate_default_init_cond(0),
+                'init_rngstate': init_rngstate,
+                'frc': forcing.SuperposedForcing([frc_vector,frc_reseed]),
+                })
+            obs_fun = lambda t,x: x
+            saveinfo = {'filename': f'spinup_{i}.nc'}
+            init_conds.append(x[-1,:])
+            init_times.append([self.burnin_time])
+        return cls(init_times, init_conds, config, ens)
 
     def generate_icandf_from_parent(self, requested_parent, branch_time):
         # Set a new seed for the branching time 
