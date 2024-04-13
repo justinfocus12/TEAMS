@@ -55,7 +55,7 @@ print(f'{i = }'); i += 1
 
 def teams_multiparams():
     # Random seed
-    seed_incs = list(range(16)) #,1,2,3,4,5,6]
+    seed_incs = list(range(4)) #,1,2,3,4,5,6]
     # Physical
     F4s = [0.25,0.5,1.0,3.0]
     # Algorithmic
@@ -78,9 +78,10 @@ def teams_paramset(i_expt):
         'seed_max': 100000,
         'seed_inc_init': seed_inc, 
         'population_size': 128,
-        'time_horizon_phys': 6 + delta_phys,
+        'time_horizon_phys': 8, #6 + delta_phys,
         'buffer_time_phys': 0,
         'advance_split_time_phys': delta_phys,
+        'advance_split_time_max_phys': 2.0,
         'split_landmark': 'thx',
         'inherit_perts_after_split': False,
         'num2drop': 1,
@@ -118,7 +119,7 @@ def teams_single_workflow(i_expt):
         })
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/"
     date_str = "2024-04-12"
-    sub_date_str = "DEBUG_RIGHT"
+    sub_date_str = "0"
     dirdict = dict()
     dirdict['expt'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_sde, param_abbrv_algo)
     dirdict['data'] = join(dirdict['expt'], 'data')
@@ -178,7 +179,7 @@ def measure_score_distribution(config_analysis, config_algo, alg, dirdict, filed
                 ]
         score_dns = alg.score_combined(sccomp_dns)[alg.ens.dynsys.t_burnin:]
         print(f'{score_dns.shape = }')
-        scmax_dns = utils.compute_block_maxima(score_dns, alg.time_horizon-alg.advance_split_time-(alg.score_params['tavg']-1))
+        scmax_dns = utils.compute_block_maxima(score_dns, alg.time_horizon-alg.advance_split_time_max-(alg.score_params['tavg']-1))
         print(f'{np.min(scmax_dns) = }, {np.max(scmax_dns) = }, {scmax_dns.shape = }')
         np.savez(scmax_dns_file, scmax_dns=scmax_dns)
     else:
@@ -239,7 +240,7 @@ def teams_single_procedure(i_expt):
     tododict = dict({
         'run':             1,
         'analysis': dict({
-            'observable_spaghetti':     0,
+            'observable_spaghetti':     1,
             'score_distribution':       1,
             }),
         })

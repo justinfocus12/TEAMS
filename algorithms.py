@@ -950,6 +950,7 @@ class TEAMS(EnsembleAlgorithm):
         self.time_horizon = int(round(config['time_horizon_phys']/tu))
         self.buffer_time = int(round(config['buffer_time_phys']/tu)) # Time between the end of one interval and the beginning of the next, when generating the initial ensemble. Add this to the END of ancestral trajectories. 
         self.advance_split_time = int(round(config['advance_split_time_phys']/tu))
+        self.advance_split_time_max = int(round(config['advance_split_time_max_phys']/tu)) # Determines how many 'nan's to put at the start of each trajectory, in order to compare different deltas fairly 
         print(f'{self.advance_split_time = }')
         self.split_landmark = config['split_landmark'] # either 'max' or 'thx'
         self.inherit_perts_after_split = config['inherit_perts_after_split']
@@ -1099,6 +1100,7 @@ class TEAMS(EnsembleAlgorithm):
             t0 = init_time_new
 
         new_score_combined = self.score_combined(new_score_components)
+        new_score_combined[:self.advance_split_time_max] = np.nan
         if parent is not None:
             #print(f'{np.abs(self.branching_state["scores_tdep"][parent] - new_score_combined) = }')
             print(f'{branch_ti = }')
