@@ -292,9 +292,9 @@ def plot_scorrelations(config_analysis, alg, dirdict, filedict, expt_label):
 def measure_score_distribution(config_analysis, config_algo, alg, dirdict, filedict, expt_label, overwrite_flag=False):
     # Three histograms: initial population, weighted, and unweighted
     scmax,sclev,logw,mult,tbr,tmx = (alg.branching_state[s] for s in 'scores_max score_levels log_weights multiplicities branch_times scores_max_timing'.split(' '))
-    hist_init,bin_edges_init = np.histogram(scmax[:alg.population_size], bins=10, density=True)
-    hist_unif,bin_edges_unif = np.histogram(scmax, bins=10, density=True)
-    hist_wted,bin_edges_wted = np.histogram(scmax, bins=10, weights=mult*np.exp(logw), density=True)
+    hist_init,bin_edges_init = np.histogram(scmax[:alg.population_size], bins=15, density=True)
+    hist_unif,bin_edges_unif = np.histogram(scmax, bins=15, density=True)
+    hist_wted,bin_edges_wted = np.histogram(scmax, bins=15, weights=mult*np.exp(logw), density=True)
     # Measure corresponding Buick distribution
     scmax_buick_file = join(dirdict['analysis'],'scmax_buick.npz')
     if (not exists(scmax_buick_file)) or overwrite_flag:
@@ -319,7 +319,7 @@ def measure_score_distribution(config_analysis, config_algo, alg, dirdict, filed
         np.savez(scmax_buick_file, scmax_buick=scmax_buick)
     else:
         scmax_buick = np.load(scmax_buick_file)['scmax_buick']
-    hist_buick,bin_edges_buick = np.histogram(scmax_buick, bins=10, density=True)
+    hist_buick,bin_edges_buick = np.histogram(scmax_buick, bins=15, density=True)
     cbinfunc = lambda bin_edges: (bin_edges[1:] + bin_edges[:-1])/2
 
     fig,axes = plt.subplots(nrows=2,figsize=(6,8))
@@ -332,11 +332,11 @@ def measure_score_distribution(config_analysis, config_algo, alg, dirdict, filed
     ax.set_title(expt_label)
     ax.set_ylabel(r'Freq.')
     ax = axes[1]
-    pmf2ccdf = lambda hist: np.cumsum(hist[::-1])[::-1]
-    hinit, = ax.plot(bin_edges_init[:-1], pmf2ccdf(hist_init), marker='.', color='black', linestyle='--', linewidth=3, label=r'Init (%g)'%(alg.population_size))
-    hunif, = ax.plot(bin_edges_unif[:-1], pmf2ccdf(hist_unif), marker='.', color='dodgerblue', label=r'Fin. unweighted (%g)'%(alg.ens.get_nmem()))
-    hwted, = ax.plot(bin_edges_wted[:-1], pmf2ccdf(hist_wted), marker='.', color='red', label=r'Fin. weighted (%g)'%(np.sum(mult)))
-    hbuick, = ax.plot(bin_edges_buick[:-1], pmf2ccdf(hist_buick), marker='.', color='gray', label=r'Buick (%g)'%(len(scmax_buick)))
+    pmf2ccdf = lambda hist,bin_edges: np.cumsum((hist*np.diff(bin_edges))[::-1])[::-1]
+    hinit, = ax.plot(bin_edges_init[:-1], pmf2ccdf(hist_init,bin_edges_init), marker='.', color='black', linestyle='--', linewidth=3, label=r'Init (%g)'%(alg.population_size))
+    hunif, = ax.plot(bin_edges_unif[:-1], pmf2ccdf(hist_unif,bin_edges_unif), marker='.', color='dodgerblue', label=r'Fin. unweighted (%g)'%(alg.ens.get_nmem()))
+    hwted, = ax.plot(bin_edges_wted[:-1], pmf2ccdf(hist_wted,bin_edges_wted), marker='.', color='red', label=r'Fin. weighted (%g)'%(np.sum(mult)))
+    hbuick, = ax.plot(bin_edges_buick[:-1], pmf2ccdf(hist_buick,bin_edges_buick), marker='.', color='gray', label=r'Buick (%g)'%(len(scmax_buick)))
     ax.set_yscale('log')
     ax.set_ylabel(r'Exc. Prob.')
     ax.set_xlabel(r'$S(X)$')
@@ -383,11 +383,11 @@ def run_teams(dirdict,filedict,config_gcm,config_algo):
 def teams_single_procedure(i_expt):
 
     tododict = dict({
-        'run':             1,
+        'run':             0,
         'analysis': dict({
-            'observable_spaghetti':     1,
+            'observable_spaghetti':     0,
             'score_distribution':       1,
-            'scorrelation':             1,
+            'scorrelation':             0,
             'fields_2d':                1,
             }),
         })

@@ -55,36 +55,33 @@ print(f'{i = }'); i += 1
 
 def teams_multiparams():
     # Random seed
-    seed_incs = [0] #,1,2,3,4,5,6]
-    # Buicks
-    buicks = list(range(10))
+    seed_incs = list(range(16)) #,1,2,3,4,5,6]
     # Physical
-    F4s = [0.25,0.5,1.0,3.0][:1]
+    F4s = [0.25,0.5,1.0,3.0]
     # Algorithmic
-    deltas_phys = [0.0,1.0,1.5,2.0]
-    split_landmarks = ['gmx','lmx','thx'][:1]
-    return seed_incs,buicks,F4s,deltas_phys,split_landmarks
+    deltas_phys = list(np.linspace(0.0,2.0,11))
+    return seed_incs,F4s,deltas_phys
 
 def teams_paramset(i_expt):
-    seed_incs,buicks,F4s,deltas_phys,split_landmarks = teams_multiparams()
-    
-    i_seed_inc,i_buick,i_F4,i_delta,i_slm = np.unravel_index(i_expt, (len(seed_incs),len(buicks),len(F4s),len(deltas_phys),len(split_landmarks)))
+    multiparams = teams_multiparams()
+    idx_multiparam = np.unravel_index(i_expt, tuple(len(mp) for mp in multiparams))
+    seed_inc,F4,delta_phys = (multiparams[i][i_param] for (i,i_param) in enumerate(idx_multiparam))
 
     config_sde = lorenz96.Lorenz96SDE.default_config()
-    config_sde['frc']['white']['wavenumber_magnitudes'][0] = F4s[i_F4]
+    config_sde['frc']['white']['wavenumber_magnitudes'][0] = F4
     config_algo = dict({
-        'num_levels_max': 50,
-        'num_members_max': 100,
+        'num_levels_max': 1024,
+        'num_members_max': 1024,
         'num_active_families_min': 2,
-        'buick_choices': [buicks[i_buick]],
+        #'buick_choices': [buicks[i_buick]],
         'seed_min': 1000,
         'seed_max': 100000,
-        'seed_inc_init': seed_incs[i_seed_inc], 
-        'population_size': 12,
-        'time_horizon_phys': 8, #+ deltas_phys[i_delta],
+        'seed_inc_init': seed_inc, 
+        'population_size': 128,
+        'time_horizon_phys': 6 + delta_phys,
         'buffer_time_phys': 0,
-        'advance_split_time_phys': deltas_phys[i_delta],
-        'split_landmark': split_landmarks[i_slm],
+        'advance_split_time_phys': delta_phys,
+        'split_landmark': 'thx',
         'inherit_perts_after_split': False,
         'num2drop': 1,
         'score': dict({
@@ -93,8 +90,8 @@ def teams_paramset(i_expt):
             'tavg_phys': 0.0,
             }),
         })
-    expt_label = r'$F_4=%g$, seed %d, buick %d'%(F4s[i_F4],seed_incs[i_seed_inc],buicks[i_buick])
-    expt_abbrv = (r'F%g_seed%d_buick%d'%(F4s[i_F4],seed_incs[i_seed_inc],buicks[i_buick])).replace('.','p')
+    expt_label = r'$F_4=%g$, seed %d'%(F4,seed_inc)
+    expt_abbrv = (r'F%g_seed%d'%(F4,seed_inc)).replace('.','p')
     return config_sde,config_algo,expt_label,expt_abbrv
 
 def teams_single_workflow(i_expt):
@@ -120,8 +117,8 @@ def teams_single_workflow(i_expt):
             }),
         })
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/"
-    date_str = "2024-04-04"
-    sub_date_str = "few_big_buicks"
+    date_str = "2024-04-12"
+    sub_date_str = "DEBUG_RIGHT"
     dirdict = dict()
     dirdict['expt'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_sde, param_abbrv_algo)
     dirdict['data'] = join(dirdict['expt'], 'data')
@@ -132,12 +129,9 @@ def teams_single_workflow(i_expt):
         makedirs(dirdict[dirname], exist_ok=True)
     print(f'After makedirs')
     filedict = dict()
-    filedict['angel'] = join(
-            f'/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/2024-04-04/few_big_buicks/',
-            param_abbrv_sde, 'AnGe_si0_Tbrn15_Thrz20', 'data',
-            'alg.pickle') 
     filedict['alg'] = join(dirdict['data'], 'alg.pickle')
     filedict['alg_backup'] = join(dirdict['data'], 'alg_backup.pickle')
+    filedict['dns'] = join(scratch_dir,'2024-04-12/0',param_abbrv_sde,'DNS_si0','data','alg.pickle')
 
     print(f'Finished setting up workflow')
     return config_sde,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict
@@ -147,22 +141,13 @@ def plot_observable_spaghetti(config_analysis, config_algo, alg, dirdict, filedi
     desc_per_anc = np.array([len(list(nx.descendants(alg.ens.memgraph,ancestor))) for ancestor in range(alg.population_size)])
     order = np.argsort(desc_per_anc)[::-1]
     print(f'{desc_per_anc[order] = }')
-    angel = pickle.load(open(filedict['angel'],'rb'))
     for (obs_name,obs_props) in config_analysis['observables'].items():
         is_score = (obs_name == 'E0')
         obs_fun = lambda t,x: obs_props['fun'](t,x)
         for ancestor in order[:4]:
             outfile = join(dirdict['plots'], r'spaghetti_%s_anc%d.png'%(obs_props['abbrv'],ancestor))
-            landmark_label = {'lmx': 'local max', 'gmx': 'global max', 'thx': 'threshold crossing'}[alg.split_landmark]
-            title = r'%s ($\delta=%g$ before %s)'%(obs_props['label'],alg.advance_split_time*tu,landmark_label)
+            title = r'%s ($\delta=%g$)'%(obs_props['label'],alg.advance_split_time*tu)
             fig,axes = alg.plot_observable_spaghetti(obs_fun, ancestor, title=title, is_score=is_score, outfile=None)
-            # Add a line for the Buick descendants
-            buicks = algorithms_lorenz96.Lorenz96SDETEAMS.choose_buicks_for_initialization(config_algo, angel)
-            mems_buick = np.concatenate(tuple(list(angel.ens.memgraph.successors(angel.branching_state['generation_0'][buick])) for buick in buicks))
-            for mem in mems_buick:
-                obs_buick = angel.ens.compute_observables([obs_fun], mem)[0][:alg.time_horizon]
-                hbuick, = axes[0].plot((np.arange(len(obs_buick))+1)*tu, obs_buick, color='gray', linewidth=1, alpha=0.25, linestyle='-', zorder=-1, label='BUICK')
-            #if is_score: axes[1].axhline(np.nanmax(obs_buick), color='gray')
             fig.savefig(outfile, **pltkwargs)
             plt.close(fig)
     return
@@ -175,37 +160,39 @@ def measure_score_distribution(config_analysis, config_algo, alg, dirdict, filed
     hist_init,bin_edges_init = np.histogram(scmax[:alg.population_size], bins=15, density=True)
     hist_unif,bin_edges_unif = np.histogram(scmax, bins=15, density=True)
     hist_wted,bin_edges_wted = np.histogram(scmax, bins=15, weights=mult*np.exp(logw), density=True)
-    scmax_buick_file = join(dirdict['analysis'],'scmax_buick.npz')
-    if (not exists(scmax_buick_file)) or overwrite_flag:
-        print(f'About to read in Buick')
-        # Measure corresponding Buick distribution
-        angel = pickle.load(open(filedict['angel'], 'rb'))
-        mems_buick = []
-        if 'buick_choices' in config_algo.keys():
-            for b in config_algo['buick_choices']:
-                mems_buick += list(angel.ens.memgraph.successors(angel.branching_state['generation_0'][b]))
-        else:
-            for i in range(angel.num_buicks):
-                mems_buick.append(next(angel.ens.memgraph.successors(angel.branching_state['generation_0'][i])))
-        score_fun = lambda t,x: alg.score_combined(alg.score_components(t,x))
-        score_funs_rolled = [(lambda t,x: score_fun(t,np.roll(x,shift,axis=1))) for shift in range(0,1,1)]
-        scbuick = np.concatenate(tuple(
-            angel.ens.compute_observables(score_funs_rolled, mem)
-            for mem in mems_buick), axis=0)
-        #scbuick = np.array([angel.ens.compute_observables([score_fun], mem)[0] for mem in mems_buick])
-        scmax_buick = np.nanmax(scbuick[:,:alg.time_horizon], axis=1)
-        np.savez(scmax_buick_file, scmax_buick=scmax_buick)
+
+    # Calculate DNS statistics
+    scmax_dns_file = join(dirdict['analysis'], 'scmax_dns.npz')
+    if (not exists(scmax_dns_file)) or overwrite_flag:
+        dns = pickle.load(open(filedict['dns'], 'rb'))
+        sccomp_dns = []
+        for mem in range(dns.ens.get_nmem()):
+            sccomp_dns.append(
+                    dns.ens.compute_observables([alg.score_components],mem)[0])
+        ncomp = len(sccomp_dns[0])
+        sccomp_dns = [
+                np.concatenate([
+                    sccomp_dns[mem][i] for mem in range(dns.ens.get_nmem())
+                    ])
+                for i in range(ncomp)
+                ]
+        score_dns = alg.score_combined(sccomp_dns)[alg.ens.dynsys.t_burnin:]
+        print(f'{score_dns.shape = }')
+        scmax_dns = utils.compute_block_maxima(score_dns, alg.time_horizon-alg.advance_split_time-(alg.score_params['tavg']-1))
+        print(f'{np.min(scmax_dns) = }, {np.max(scmax_dns) = }, {scmax_dns.shape = }')
+        np.savez(scmax_dns_file, scmax_dns=scmax_dns)
     else:
-        scmax_buick = np.load(scmax_buick_file)['scmax_buick']
-    hist_buick,bin_edges_buick = np.histogram(scmax_buick, bins=15, density=True)
+        scmax_dns = np.load(scmax_dns_file)['scmax_dns']
+    hist_dns,bin_edges_dns = np.histogram(scmax_dns, bins=15, density=True)
+
     cbinfunc = lambda bin_edges: (bin_edges[1:] + bin_edges[:-1])/2
 
     fig,axes = plt.subplots(nrows=2,figsize=(6,8))
     ax = axes[0]
-    hinit, = ax.plot(cbinfunc(bin_edges_init), hist_init, marker='.', color='black', linestyle='--', linewidth=3, label=r'Init (%g)'%(alg.population_size))
-    hunif, = ax.plot(cbinfunc(bin_edges_unif), hist_unif, marker='.', color='dodgerblue', label=r'Fin. unweighted (%g)'%(alg.ens.get_nmem()))
-    hwted, = ax.plot(cbinfunc(bin_edges_wted), hist_wted, marker='.', color='red', label=r'Fin. weighted (%g)'%(np.sum(mult)))
-    hbuick, = ax.plot(cbinfunc(bin_edges_buick), hist_buick, marker='.', color='gray', label=r'Buick (%g)'%(len(scmax_buick)))
+    hinit, = ax.plot(cbinfunc(bin_edges_init), hist_init, marker='.', color='dodgerblue', linestyle='-', linewidth=1, label=r'Init (%d)'%(alg.population_size))
+    hunif, = ax.plot(cbinfunc(bin_edges_unif), hist_unif, marker='.', color='red', linestyle='--', label=r'Fin. unweighted (%d)'%(alg.ens.get_nmem()))
+    hwted, = ax.plot(cbinfunc(bin_edges_wted), hist_wted, marker='.', color='red', label=r'Fin. weighted (%d)'%(np.sum(mult)))
+    hdns, = ax.plot(cbinfunc(bin_edges_dns), hist_dns, marker='.', color='black', label=r'DNS (%d)'%(len(scmax_dns)))
     #ax.set_yscale('log')
     ax.set_title('Score distribution')
     ax.set_xlabel(r'$S(X)$')
@@ -213,14 +200,14 @@ def measure_score_distribution(config_analysis, config_algo, alg, dirdict, filed
     ax.set_yscale('log')
     ax = axes[1]
     pmf2ccdf = lambda hist,bin_edges: np.cumsum((hist*np.diff(bin_edges))[::-1])[::-1]
-    hinit, = ax.plot(bin_edges_init[:-1], pmf2ccdf(hist_init,bin_edges_init), marker='.', color='black', linestyle='--', linewidth=3, label=r'Init (%g)'%(alg.population_size))
-    hunif, = ax.plot(bin_edges_unif[:-1], pmf2ccdf(hist_unif,bin_edges_unif), marker='.', color='dodgerblue', label=r'Fin. unweighted (%g)'%(alg.ens.get_nmem()))
-    hwted, = ax.plot(bin_edges_wted[:-1], pmf2ccdf(hist_wted,bin_edges_wted), marker='.', color='red', label=r'Fin. weighted (%g)'%(np.sum(mult)))
-    hbuick, = ax.plot(bin_edges_buick[:-1], pmf2ccdf(hist_buick,bin_edges_buick), marker='.', color='gray', label=r'Buick (%g)'%(len(scmax_buick)))
+    hinit, = ax.plot(bin_edges_init[:-1], pmf2ccdf(hist_init,bin_edges_init), marker='.', color='dodgerblue', linestyle='-', linewidth=1, label=r'Init (%d)'%(alg.population_size))
+    hunif, = ax.plot(bin_edges_unif[:-1], pmf2ccdf(hist_unif,bin_edges_unif), marker='.', color='red', linestyle='--', label=r'Fin. unweighted (%d)'%(alg.ens.get_nmem()))
+    hwted, = ax.plot(bin_edges_wted[:-1], pmf2ccdf(hist_wted,bin_edges_wted), marker='.', color='red', label=r'Fin. weighted (%d)'%(np.sum(mult)))
+    hdns, = ax.plot(bin_edges_dns[:-1], pmf2ccdf(hist_dns,bin_edges_dns), marker='.', color='black', label=r'DNS (%g)'%(len(scmax_dns)))
     ax.set_yscale('log')
     ax.set_ylabel(r'Exc. Prob.')
     ax.set_xlabel(r'$S(X)$')
-    ax.legend(handles=[hinit,hunif,hwted,hbuick],bbox_to_anchor=(0,-0.2),loc='upper left')
+    ax.legend(handles=[hinit,hunif,hwted,hdns],bbox_to_anchor=(0,-0.2),loc='upper left')
     fig.savefig(join(dirdict['plots'],'score_hist.png'), **pltkwargs)
     plt.close(fig)
     print(f'{dirdict["plots"] = }')
@@ -228,14 +215,13 @@ def measure_score_distribution(config_analysis, config_algo, alg, dirdict, filed
 
 def run_teams(dirdict,filedict,config_sde,config_algo):
     root_dir = dirdict['data']
-    angel = pickle.load(open(filedict['angel'], 'rb'))
     if exists(filedict['alg']):
         alg = pickle.load(open(filedict['alg'], 'rb'))
         alg.set_capacity(config_algo['num_levels_max'], config_algo['num_members_max'])
     else:
         sde = lorenz96.Lorenz96SDE(config_sde)
         ens = ensemble.Ensemble(sde, root_dir=root_dir)
-        alg = algorithms_lorenz96.Lorenz96SDETEAMS.initialize_from_ancestorgenerator(angel, config_algo, ens)
+        alg = algorithms_lorenz96.Lorenz96SDETEAMS.initialize_from_coldstart(config_algo, ens)
 
     alg.ens.set_root_dir(root_dir)
     while not alg.terminate:
@@ -253,7 +239,7 @@ def teams_single_procedure(i_expt):
     tododict = dict({
         'run':             1,
         'analysis': dict({
-            'observable_spaghetti':     1,
+            'observable_spaghetti':     0,
             'score_distribution':       1,
             }),
         })
@@ -275,19 +261,16 @@ if __name__ == "__main__":
         idx_expt = [int(arg) for arg in sys.argv[2:]]
     else:
         procedure = 'single'
-        seed_incs,buicks,F4s,deltas_phys,split_landmarks = teams_multiparams()
-        iseed_ibuick_iF4_idelta_islm = [
-                (0,i_buick,i_F4,i_delta,i_slm) 
-                for i_buick in range(len(buicks))
-                for i_F4 in range(1) 
-                for i_delta in range(3,4) 
-                for i_slm in [0]
+        multiparams = teams_multiparams()
+        idx_multiparam = [
+                (i_seed,i_F4,i_delta) 
+                for i_seed in  range(0,1)
+                for i_F4 in range(3,4) 
+                for i_delta in range(1,2) 
                 ]
-        shp = (len(seed_incs),len(buicks),len(F4s),len(deltas_phys),len(split_landmarks))
         idx_expt = []
-        for i_multiparam in iseed_ibuick_iF4_idelta_islm:
-            print(f'{i_multiparam = }, {shp = }')
-            i_expt = np.ravel_multi_index(i_multiparam,shp)
+        for i_multiparam in idx_multiparam:
+            i_expt = np.ravel_multi_index(i_multiparam,tuple(len(mp) for mp in multiparams))
             idx_expt.append(i_expt) #list(range(1,21))
     if procedure == 'single':
         for i_expt in idx_expt:

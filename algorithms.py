@@ -1120,11 +1120,10 @@ class TEAMS(EnsembleAlgorithm):
         if parent is None:
             self.branching_state['log_weights'].append(0.0)
         else:
-            if success:
-                logZ = np.log1p(np.exp(self.branching_state['log_weights'][parent] - log_active_weight_old))
-                print(f'{logZ = }')
-                for ma in self.branching_state['members_active']:
-                    self.branching_state['log_weights'][ma] -= logZ
+            logZ = np.log1p(np.exp(self.branching_state['log_weights'][parent] - log_active_weight_old))
+            print(f'{logZ = }')
+            for ma in self.branching_state['members_active']:
+                self.branching_state['log_weights'][ma] -= logZ
             self.branching_state['log_weights'].append(self.branching_state['log_weights'][parent])
         if success:
             self.branching_state['members_active'].append(new_mem)
@@ -1459,10 +1458,21 @@ class SDETEAMS(TEAMS):
         init_conds = []
         init_times = []
         rng = default_rng(seed=config['seed_min'] + config['seed_inc_init'])
-        uic = ens.dynsys.default_init
+        tu = ens.dynsys.dt_save
         for i in range(config['population_size']):
-            pass
-        return
+            frc_reseed = forcing.OccasionalReseedForcing(0, ens.dynsys.t_burnin, [0], [rng.integers(low=config['seed_min'],high=config['seed_max'])])
+            frc_vector = forcing.OccasionalVectorForcing(0, ens.dynsys.t_burnin, [], [])
+            icandf = dict({
+                'init_cond': ens.dynsys.generate_default_init_cond(0),
+                'init_rngstate': rng.bit_generator.state,
+                'frc': forcing.SuperposedForcing([frc_vector,frc_reseed]),
+                })
+            obs_fun = lambda t,x: x
+            saveinfo = {'filename': f'spinup_{i}.nc'}
+            metadata,x = ens.dynsys.run_trajectory(icandf, obs_fun, saveinfo, ens.root_dir)
+            init_conds.append(x[-1,:])
+            init_times.append(ens.dynsys.t_burnin)
+        return cls(init_times, init_conds, config, ens)
 
     def generate_icandf_from_parent(self, requested_parent, branch_time):
         # Set a new seed for the branching time 

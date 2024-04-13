@@ -143,7 +143,7 @@ class Lorenz96SDEITEAMS(algorithms.SDEITEAMS):
         super().derive_parameters(config)
         return
     def score_components(self, t, x):
-        scores = list((x[:,self.score_params['ks2avg']]**2).T/2)
+        scores = list((x[:,self.score_params['ks2avg']]**2/2).T)
         return scores
     def score_combined(self, sccomps):
         score = np.mean(np.array([sccomps[i]*self.score_params['kweights'][i] for i in range(len(sccomps))]), axis=0)
