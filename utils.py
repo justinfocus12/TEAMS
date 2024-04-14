@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.special import logsumexp
-from scipy.stats import genextreme as spgex
+from scipy.stats import genextreme as spgex, beta as spbeta
 
 def find_true_in_dict(d):
     # Thanks Bing Chat
@@ -41,6 +41,17 @@ def compute_logsf_empirical(x,logw=None):
     xord,logword = x[order],logw[order]
     logsf_emp = np.logaddexp.accumulate(logword[::-1])[::-1] - logZ # log of sf(x) = p(X >= x)
     return xord,logsf_emp
+
+def clopper_pearson_confidence_interval(nsucc, ntot, alpha):
+    lower = spbeta.ppf(alpha/2, nsucc, ntot-nsucc+1)
+    upper = spbeta.ppf(1-alpha/2, nsucc+1, ntot-nsucc)
+    return lower,upper
+
+def pmf2ccdf(hist,bin_edges): 
+    N = np.sum(hist)
+    ccdf = np.cumsum(hist[::-1])[::-1] / N
+    ccdf = np.where(ccdf>0, ccdf, np.nan)
+    return ccdf
 
 def compute_block_maxima(x,T):
     # T should be an integer, and x is a timeseries
