@@ -54,7 +54,7 @@ def pmf2ccdf(hist,bin_edges,alpha,N_errbars=None):
     ccdf = np.cumsum(hist[::-1])[::-1] 
     ccdf_norm = np.where(ccdf>0, ccdf, np.nan) / N
     # Also return clopper-pearson confidence intervals
-    lower,upper = clopper_pearson_confidence_interval((ccdf*N_errbars/N), ((N-ccdf)*N_errbars/N), alpha)
+    lower,upper = clopper_pearson_confidence_interval(ccdf*N_errbars/N, N_errbars, alpha)
     return ccdf_norm,lower,upper
 
 def compute_ccdf_errbars_bootstrap(x,bin_edges,boot_size,n_boot=1000,seed=91830):

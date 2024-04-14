@@ -68,7 +68,7 @@ class DirectNumericalSimulation(EnsembleAlgorithm):
         self.init_cond = init_cond
         return
     def set_capacity(self, num_chunks_max, max_member_duration_phys):
-        num_new_chunks = num_chunks_max - self.get_nmem()
+        num_new_chunks = num_chunks_max - self.ens.get_nmem()
         if num_new_chunks > 0:
             self.terminate = False
         self.max_member_duration = int(max_member_duration_phys/self.ens.dynsys.dt_save)

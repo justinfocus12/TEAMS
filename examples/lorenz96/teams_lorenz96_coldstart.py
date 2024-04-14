@@ -57,7 +57,7 @@ print(f'{i = }'); i += 1
 
 def teams_multiparams():
     # Random seed
-    seed_incs = list(range(4)) #,1,2,3,4,5,6]
+    seed_incs = list(range(64)) #,1,2,3,4,5,6]
     # Physical
     F4s = [0.25,0.5,1.0,3.0]
     # Algorithmic
@@ -96,6 +96,7 @@ def teams_paramset(i_expt):
     expt_label = r'$F_4=%g$, seed %d'%(F4,seed_inc)
     expt_abbrv = (r'F%g_seed%d'%(F4,seed_inc)).replace('.','p')
     return config_sde,config_algo,expt_label,expt_abbrv
+
 
 def teams_single_workflow(i_expt):
     config_sde,config_algo,expt_label,expt_abbrv = teams_paramset(i_expt)
@@ -156,7 +157,7 @@ def plot_observable_spaghetti(config_analysis, config_algo, alg, dirdict, filedi
     return
 
 
-def measure_score_distribution(config_algo, algs, dirdict, filedict, overwrite_flag=False):
+def measure_score_distribution(config_algo, algs, dirdict, filedict, figfile_suffix, overwrite_flag=False):
     print(f'Plotting score distribution')
     # TODO overlay the angel distribution on top 
     # Three histograms: initial population, weighted, and unweighted
@@ -222,26 +223,26 @@ def measure_score_distribution(config_algo, algs, dirdict, filedict, overwrite_f
     fig,axes = plt.subplots(ncols=2, figsize=(12,4))
     # Individual curves on the left
     ax = axes[0]
-    # DNS
-    ccdf_dns = utils.pmf2ccdf(hist_dns,bin_edges,alpha,N_errbars=np.mean(Ns_fin))
+    # DNS, with equal-cost errorbars to compare to single DNS runs
+    ccdf_dns = utils.pmf2ccdf(hist_dns,bin_edges,alpha,N_errbars=int(N_dns * cost_teams_fin/cost_dns * 1/len(algs)))
     hdns, = ax.plot(bin_edges[:-1], ccdf_dns[0], marker='.', color='black', label=r'DNS (cost %.1E)'%(cost_dns))
     ax.fill_between(bin_edges[:-1], ccdf_dns[1], ccdf_dns[2], fc='gray', ec='none', zorder=-1, alpha=0.5)
     for i_alg,alg in enumerate(algs):
         # Initialization
         ccdf_init = utils.pmf2ccdf(hists_init[i_alg],bin_edges,alpha)
-        hinit, = ax.plot(bin_edges[:-1],ccdf_init[0],marker='.',color='dodgerblue',linestyle='-',linewidth=1,label=r'%s init. (cost %.1E)'%(teams_abbrv,cost_teams_init/len(algs)))
+        hinit, = ax.plot(bin_edges[:-1],ccdf_init[0],color='dodgerblue',linestyle='-',linewidth=1,label=r'%s init. (cost %.1E)'%(teams_abbrv,cost_teams_init/len(algs)))
         # Final (weighted)
         ccdf_fin_wted = utils.pmf2ccdf(hists_fin_wted[i_alg],bin_edges,alpha)
-        hfin_wted, = ax.plot(bin_edges[:-1],ccdf_fin_wted[0],marker='.',color='red',linestyle='-',linewidth=1,label=r'%s (cost %.1E)'%(teams_abbrv,cost_teams_fin))
+        hfin_wted, = ax.plot(bin_edges[:-1],ccdf_fin_wted[0],color='red',linestyle='-',linewidth=1,label=r'%s (cost %.1E)'%(teams_abbrv,cost_teams_fin))
         # Final (unweighted)
         ccdf_fin_unif = utils.pmf2ccdf(hists_fin_unif[i_alg],bin_edges,alpha)
-        hfin_unif, = ax.plot(bin_edges[:-1],ccdf_fin_unif[0],marker='.',color='red',linestyle='dotted',linewidth=1,label=r'%s (unweighted)'%(teams_abbrv))
+        hfin_unif, = ax.plot(bin_edges[:-1],ccdf_fin_unif[0],color='red',linestyle='dotted',linewidth=1,label=r'%s (unweighted)'%(teams_abbrv))
     ax.legend(handles=[hinit,hfin_wted,hfin_unif,hdns],bbox_to_anchor=(0,-0.2),loc='upper left')
     # Aggregated curves on the right
     ax = axes[1]
     # DNS
-    ccdf_dns = utils.pmf2ccdf(hist_dns,bin_edges,alpha,N_errbars=N_fin)
-    hdns, = ax.plot(bin_edges[:-1], ccdf_dns[0], marker='.', color='black', label=r'DNS (cost %.1E)'%(cost_dns))
+    ccdf_dns = utils.pmf2ccdf(hist_dns,bin_edges,alpha,N_errbars=int(N_dns * cost_teams_fin/cost_dns))
+    hdns, = ax.plot(bin_edges[:-1], ccdf_dns[0], color='black', label=r'DNS (cost %.1E)'%(cost_dns))
     ax.fill_between(bin_edges[:-1], ccdf_dns[1], ccdf_dns[2], fc='gray', ec='none', zorder=-1, alpha=0.5)
     # Initialization
     ccdf_init = utils.pmf2ccdf(hist_init,bin_edges,alpha)
@@ -252,7 +253,7 @@ def measure_score_distribution(config_algo, algs, dirdict, filedict, overwrite_f
     hfin_wted, = ax.plot(bin_edges[:-1], ccdf_fin_wted[0], marker='.', color='red', label=r'%s (cost %.1E)'%(teams_abbrv,cost_teams_fin))
     # Final TEAMS (unweighted)
     ccdf_fin_unif = utils.pmf2ccdf(hist_fin_unif,bin_edges,alpha)
-    hfin_unif, = ax.plot(bin_edges[:-1], ccdf_fin_unif[0], marker='.', color='red', linestyle='dotted', label=r'%s unweighted'%(teams_abbrv))
+    hfin_unif, = ax.plot(bin_edges[:-1], ccdf_fin_unif[0], color='red', linestyle='dotted', label=r'%s unweighted'%(teams_abbrv))
     ax.legend(handles=[hinit,hfin_wted,hfin_unif,hdns],bbox_to_anchor=(0,-0.2),loc='upper left')
     for ax in axes:
         ax.set_yscale('log')
@@ -260,7 +261,7 @@ def measure_score_distribution(config_algo, algs, dirdict, filedict, overwrite_f
         ax.set_ylabel(r'Exc. Prob.')
         ax.set_xlabel(r'$S(X)$')
         ax.legend(handles=[hinit,hfin_wted,hfin_unif,hdns],bbox_to_anchor=(0,-0.2),loc='upper left')
-    fig.savefig(join(dirdict['plots'],'score_hist.png'), **pltkwargs)
+    fig.savefig(join(dirdict['plots'],r'score_hist_%s.png'%(figfile_suffix)), **pltkwargs)
     plt.close(fig)
     return
 
@@ -305,10 +306,17 @@ def teams_single_procedure(i_expt):
         measure_score_distribution(config_algo, [alg], dirdict, filedict, overwrite_flag=False)
     return
 
-def teams_meta_procedure(idx_expt): # Just different seeds for now
+def teams_meta_procedure_1param_multiseed(i_F4,i_delta,idx_seed): # Just different seeds for now
     tododict = dict({
         'score_distribution': 1,
         })
+    # Figure out which flat indices corresond to this set of seeds
+    multiparams = teams_multiparams()
+    idx_multiparam = [(i_seed,i_F4,i_delta) for i_seed in idx_seed]
+    idx_expt = []
+    for i_multiparam in idx_multiparam:
+        i_expt = np.ravel_multi_index(i_multiparam,tuple(len(mp) for mp in multiparams))
+        idx_expt.append(i_expt) #list(range(1,21))
     workflows = tuple(teams_single_workflow(i_expt) for i_expt in idx_expt)
     configs_sde,configs_algo,configs_analysis,expt_labels,expt_abbrvs,dirdicts,filedicts = tuple(
             tuple(workflows[i][j] for i in range(len(workflows)))
@@ -337,7 +345,8 @@ def teams_meta_procedure(idx_expt): # Just different seeds for now
         algs.append(pickle.load(open(filedicts[i_alg]['alg'],'rb')))
     # Do meta-analysis
     if tododict['score_distribution']:
-        measure_score_distribution(config_algo, algs, dirdict, filedict, overwrite_flag=False)
+        figfile_suffix = (r'meta_F%g_ast%g'%(multiparams[1][i_F4],multiparams[2][i_delta])).replace('.','p')
+        measure_score_distribution(config_algo, algs, dirdict, filedict, figfile_suffix, overwrite_flag=False)
 
     return
 
@@ -345,25 +354,29 @@ if __name__ == "__main__":
     print(f'Got into Main')
     if len(sys.argv) > 1:
         procedure = sys.argv[1]
-        idx_expt = [int(arg) for arg in sys.argv[2:]]
     else:
+        # This little section is for ad-hoc testing
         procedure = 'meta'
         multiparams = teams_multiparams()
         idx_multiparam = [
                 (i_seed,i_F4,i_delta) 
                 for i_seed in range(0,4)
                 for i_F4 in range(0,1) 
-                for i_delta in range(9,10) 
+                for i_delta in range(0,1) 
                 ]
         idx_expt = []
         for i_multiparam in idx_multiparam:
             i_expt = np.ravel_multi_index(i_multiparam,tuple(len(mp) for mp in multiparams))
             idx_expt.append(i_expt) #list(range(1,21))
     if procedure == 'single':
+        idx_expt = [int(arg) for arg in sys.argv[2:]]
         for i_expt in idx_expt:
             teams_single_procedure(i_expt)
     elif procedure == 'meta':
-        teams_meta_procedure(idx_expt)
+        i_F4 = 0
+        i_delta = 7
+        idx_seed = list(range(12))
+        teams_meta_procedure_1param_multiseed(i_F4,i_delta,idx_seed)
 
 
 

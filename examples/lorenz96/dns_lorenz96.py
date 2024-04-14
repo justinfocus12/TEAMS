@@ -40,12 +40,13 @@ def dns_paramset(i_expt):
     config_dynsys = Lorenz96SDE.default_config()
     config_dynsys['frc']['white']['wavenumber_magnitudes'][0] = F4
 
+
     config_algo = dict({
         'seed_min': 1000,
         'seed_max': 100000,
         'seed_inc_init': seed_inc,
-        'max_member_duration_phys': 100.0,
-        'num_chunks_max': 1000,
+        'max_member_duration_phys': 1000.0,
+        'num_chunks_max': 1400,
         })
 
 
