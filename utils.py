@@ -47,11 +47,29 @@ def clopper_pearson_confidence_interval(nsucc, ntot, alpha):
     upper = spbeta.ppf(1-alpha/2, nsucc+1, ntot-nsucc)
     return lower,upper
 
-def pmf2ccdf(hist,bin_edges): 
+def pmf2ccdf(hist,bin_edges,alpha,N_errbars=None): 
     N = np.sum(hist)
-    ccdf = np.cumsum(hist[::-1])[::-1] / N
-    ccdf = np.where(ccdf>0, ccdf, np.nan)
-    return ccdf
+    if N_errbars is None:
+        N_errbars = N
+    ccdf = np.cumsum(hist[::-1])[::-1] 
+    ccdf_norm = np.where(ccdf>0, ccdf, np.nan) / N
+    # Also return clopper-pearson confidence intervals
+    lower,upper = clopper_pearson_confidence_interval((ccdf*N_errbars/N), ((N-ccdf)*N_errbars/N), alpha)
+    return ccdf_norm,lower,upper
+
+def compute_ccdf_errbars_bootstrap(x,bin_edges,boot_size,n_boot=1000,seed=91830):
+    hist,_ = np.histogram(x,bins=bin_edges)
+    N = np.sum(hist)
+    assert n_boot < N
+    ccdf = pmf2ccdf(hist,bin_edges)
+    ccdf_boot = np.zeros((n_boot,len(bin_edges)-1))
+    rng = default_rng(seed=seed)
+    x_resamp = rng.choice(np.arange(N),replace=True,size=(n_boot,boot_size))
+    for i_boot in range(n_boot):
+        hist_boot,_ = np.histogram(x[i_boot,:],bins=bin_edges)
+        ccdf_boot[i_boot],_ = pmf2ccdf(hist_boot,bin_edges)
+    return ccdf,ccdf_boot
+
 
 def compute_block_maxima(x,T):
     # T should be an integer, and x is a timeseries

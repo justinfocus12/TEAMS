@@ -155,11 +155,11 @@ def plot_observable_spaghetti(config_analysis, config_algo, alg, dirdict, filedi
             plt.close(fig)
     return
 
-def measure_score_distribution(config_analysis, config_algo, alg, dirdict, filedict, expt_label, overwrite_flag=False):
+
+def measure_score_distribution(config_algo, algs, dirdict, filedict, overwrite_flag=False):
     print(f'Plotting score distribution')
     # TODO overlay the angel distribution on top 
     # Three histograms: initial population, weighted, and unweighted
-    scmax,sclev,logw,mult,tbr,tmx = (alg.branching_state[s] for s in 'scores_max score_levels log_weights multiplicities branch_times scores_max_timing'.split(' '))
 
     # Calculate DNS statistics
     scmax_dns_file = join(dirdict['analysis'], 'scmax_dns.npz')
@@ -168,7 +168,7 @@ def measure_score_distribution(config_analysis, config_algo, alg, dirdict, filed
         sccomp_dns = []
         for mem in range(dns.ens.get_nmem()):
             sccomp_dns.append(
-                    dns.ens.compute_observables([alg.score_components],mem)[0])
+                    dns.ens.compute_observables([algs[0].score_components],mem)[0])
         ncomp = len(sccomp_dns[0])
         sccomp_dns = [
                 np.concatenate([
@@ -176,49 +176,92 @@ def measure_score_distribution(config_analysis, config_algo, alg, dirdict, filed
                     ])
                 for i in range(ncomp)
                 ]
-        score_dns = alg.score_combined(sccomp_dns)[alg.ens.dynsys.t_burnin:]
+        score_dns = algs[0].score_combined(sccomp_dns)[algs[0].ens.dynsys.t_burnin:]
         print(f'{score_dns.shape = }')
-        scmax_dns = utils.compute_block_maxima(score_dns, alg.time_horizon-max(alg.advance_split_time_max, (alg.score_params['tavg']-1)))
+        scmax_dns = utils.compute_block_maxima(score_dns, algs[0].time_horizon-max(algs[0].advance_split_time_max, (algs[0].score_params['tavg']-1)))
         print(f'{np.min(scmax_dns) = }, {np.max(scmax_dns) = }, {scmax_dns.shape = }')
         np.savez(scmax_dns_file, scmax_dns=scmax_dns)
     else:
         scmax_dns = np.load(scmax_dns_file)['scmax_dns']
-    # Choose a standard set of bins
-    bin_edges = np.linspace(min(np.min(scmax_dns),np.min(scmax))-1e-10, max(np.max(scmax_dns),np.max(scmax))+1e-10, 16)
-    hist_dns,_ = np.histogram(scmax_dns, bins=bin_edges, density=False)
     N_dns = len(scmax_dns)
-    hist_init,_ = np.histogram(scmax[:alg.population_size], bins=bin_edges, density=False)
-    N_init = alg.population_size
-    hist_unif,_ = np.histogram(scmax, bins=bin_edges, density=False)
-    N_unif = alg.ens.get_nmem()
-    hist_wted,_ = np.histogram(scmax, bins=bin_edges, weights=mult*np.exp(logw), density=False)
-    N_wted = np.exp(logsumexp(logw, b=mult))
-    print(f'{N_wted = }')
+
+    # Iterate through alg objects first to collect scores and define bin edges
+    sclim = [np.min(scmax_dns),np.max(scmax_dns)]
+    scmaxs,logws,mults = ([] for i in range(3))
+    Ns_init,Ns_fin = (np.zeros(len(algs),dtype=int) for i in range(2))
+    for i_alg,alg in enumerate(algs):
+        scmax,logw,mult = (alg.branching_state[s] for s in 'scores_max,log_weights,multiplicities'.split(','))
+        scmaxs.append(scmax)
+        logws.append(logw)
+        mults.append(mult)
+        Ns_init[i_alg] = alg.population_size
+        Ns_fin[i_alg] = alg.ens.get_nmem()
+        assert int(round(np.exp(logsumexp(logw,b=mult)))) == Ns_init[i_alg]
+        sclim[0],sclim[1] = min(sclim[0],np.min(scmax)),max(sclim[1],np.max(scmax))
+    bin_edges = np.linspace(sclim[0]-1e-10,sclim[1]+1e-10,16)
+    hist_dns,_ = np.histogram(scmax_dns, bins=bin_edges, density=False)
+    # Now put the scores from separate runs into thi scommon set of bins
+    hists_init,hists_fin_unif,hists_fin_wted = (np.zeros((len(algs),len(bin_edges)-1)) for i in range(3))
+    for i_alg,alg in enumerate(algs):
+        hists_init[i_alg],_ = np.histogram(scmaxs[i_alg][:alg.population_size], bins=bin_edges, density=False)
+        hists_fin_unif[i_alg],_ = np.histogram(scmaxs[i_alg], bins=bin_edges, density=False)
+        hists_fin_wted[i_alg],_ = np.histogram(scmaxs[i_alg], bins=bin_edges, weights=mults[i_alg]*np.exp(logws[i_alg]), density=False)
+    hist_init = np.sum(hists_init, axis=0)
+    hist_fin_unif = np.sum(hists_fin_unif, axis=0)
+    hist_fin_wted = np.sum(hists_fin_wted, axis=0)
     # Tally costs
-    cost_init = N_init * (alg.time_horizon - alg.advance_split_time_max + alg.advance_split_time)
-    cost_wted = N_unif * (alg.time_horizon - alg.advance_split_time_max + alg.advance_split_time)
-    cost_dns = N_dns * (alg.time_horizon - alg.advance_split_time_max)
+    N_init = np.sum(Ns_init)
+    N_fin = np.sum(Ns_fin)
+    cost_teams_init = N_init * (config_algo['time_horizon_phys'] - config_algo['advance_split_time_max_phys'] + config_algo['advance_split_time_phys'])
+    cost_teams_fin = N_fin/N_init * cost_teams_init
+    cost_dns = N_dns * (config_algo['time_horizon_phys'] - config_algo['advance_split_time_max_phys'])
+
+    # Plot 
     teams_abbrv = 'TEAMS' if alg.advance_split_time>0 else 'AMS'
-
-
-    alpha = 0.05
-    ccdf_init = utils.pmf2ccdf(hist_init,bin_edges)
-    ci_init = utils.clopper_pearson_confidence_interval(ccdf_init,N_init-ccdf_init,alpha)
-    ccdf_wted = utils.pmf2ccdf(hist_wted,bin_edges)
-    ccdf_unif = utils.pmf2ccdf(hist_unif,bin_edges)
-    ccdf_dns = utils.pmf2ccdf(hist_dns,bin_edges)
-    fig,ax = plt.subplots(figsize=(6,4))
-    hinit, = ax.plot(bin_edges[:-1], ccdf_init, marker='.', color='dodgerblue', linestyle='-', linewidth=1, label=r'%s init. (cost %.1E)'%(teams_abbrv,cost_init))
-    hwted, = ax.plot(bin_edges[:-1], ccdf_wted, marker='.', color='red', label=r'%s (cost %.1E)'%(teams_abbrv,cost_wted))
-    hunif, = ax.plot(bin_edges[:-1], ccdf_unif, marker='.', color='red', linestyle='--', label=r'%s unweighted'%(teams_abbrv))
-    hdns, = ax.plot(bin_edges[:-1], ccdf_dns, marker='.', color='black', label=r'DNS (cost %.1E)'%(cost_dns))
-    ax.set_yscale('log')
-    ax.set_ylabel(r'Exc. Prob.')
-    ax.set_xlabel(r'$S(X)$')
-    ax.legend(handles=[hinit,hwted,hunif,hdns],bbox_to_anchor=(0,-0.2),loc='upper left')
+    alpha = 0.05 # confidence level
+    fig,axes = plt.subplots(ncols=2, figsize=(12,4))
+    # Individual curves on the left
+    ax = axes[0]
+    # DNS
+    ccdf_dns = utils.pmf2ccdf(hist_dns,bin_edges,alpha,N_errbars=np.mean(Ns_fin))
+    hdns, = ax.plot(bin_edges[:-1], ccdf_dns[0], marker='.', color='black', label=r'DNS (cost %.1E)'%(cost_dns))
+    ax.fill_between(bin_edges[:-1], ccdf_dns[1], ccdf_dns[2], fc='gray', ec='none', zorder=-1, alpha=0.5)
+    for i_alg,alg in enumerate(algs):
+        # Initialization
+        ccdf_init = utils.pmf2ccdf(hists_init[i_alg],bin_edges,alpha)
+        hinit, = ax.plot(bin_edges[:-1],ccdf_init[0],marker='.',color='dodgerblue',linestyle='-',linewidth=1,label=r'%s init. (cost %.1E)'%(teams_abbrv,cost_teams_init/len(algs)))
+        # Final (weighted)
+        ccdf_fin_wted = utils.pmf2ccdf(hists_fin_wted[i_alg],bin_edges,alpha)
+        hfin_wted, = ax.plot(bin_edges[:-1],ccdf_fin_wted[0],marker='.',color='red',linestyle='-',linewidth=1,label=r'%s (cost %.1E)'%(teams_abbrv,cost_teams_fin))
+        # Final (unweighted)
+        ccdf_fin_unif = utils.pmf2ccdf(hists_fin_unif[i_alg],bin_edges,alpha)
+        hfin_unif, = ax.plot(bin_edges[:-1],ccdf_fin_unif[0],marker='.',color='red',linestyle='dotted',linewidth=1,label=r'%s (unweighted)'%(teams_abbrv))
+    ax.legend(handles=[hinit,hfin_wted,hfin_unif,hdns],bbox_to_anchor=(0,-0.2),loc='upper left')
+    # Aggregated curves on the right
+    ax = axes[1]
+    # DNS
+    ccdf_dns = utils.pmf2ccdf(hist_dns,bin_edges,alpha,N_errbars=N_fin)
+    hdns, = ax.plot(bin_edges[:-1], ccdf_dns[0], marker='.', color='black', label=r'DNS (cost %.1E)'%(cost_dns))
+    ax.fill_between(bin_edges[:-1], ccdf_dns[1], ccdf_dns[2], fc='gray', ec='none', zorder=-1, alpha=0.5)
+    # Initialization
+    ccdf_init = utils.pmf2ccdf(hist_init,bin_edges,alpha)
+    hinit, = ax.plot(bin_edges[:-1], ccdf_init[0], marker='.', color='dodgerblue', label=r'%s init (cost %.1E)'%(teams_abbrv, cost_teams_init))
+    ax.fill_between(bin_edges[:-1],ccdf_init[1],ccdf_init[2],fc='dodgerblue',ec='none',zorder=-1,alpha=0.5)
+    # Final TEAMS (weighted)
+    ccdf_fin_wted = utils.pmf2ccdf(hist_fin_wted,bin_edges,alpha)
+    hfin_wted, = ax.plot(bin_edges[:-1], ccdf_fin_wted[0], marker='.', color='red', label=r'%s (cost %.1E)'%(teams_abbrv,cost_teams_fin))
+    # Final TEAMS (unweighted)
+    ccdf_fin_unif = utils.pmf2ccdf(hist_fin_unif,bin_edges,alpha)
+    hfin_unif, = ax.plot(bin_edges[:-1], ccdf_fin_unif[0], marker='.', color='red', linestyle='dotted', label=r'%s unweighted'%(teams_abbrv))
+    ax.legend(handles=[hinit,hfin_wted,hfin_unif,hdns],bbox_to_anchor=(0,-0.2),loc='upper left')
+    for ax in axes:
+        ax.set_yscale('log')
+        ax.set_ylim([1/(2*N_dns), 1.1])
+        ax.set_ylabel(r'Exc. Prob.')
+        ax.set_xlabel(r'$S(X)$')
+        ax.legend(handles=[hinit,hfin_wted,hfin_unif,hdns],bbox_to_anchor=(0,-0.2),loc='upper left')
     fig.savefig(join(dirdict['plots'],'score_hist.png'), **pltkwargs)
     plt.close(fig)
-    print(f'{dirdict["plots"] = }')
     return
 
 def run_teams(dirdict,filedict,config_sde,config_algo):
@@ -259,7 +302,43 @@ def teams_single_procedure(i_expt):
         plot_observable_spaghetti(config_analysis, config_algo, alg, dirdict, filedict)
         # TODO have another ancestor-wise version, and another that shows family lines improving in parallel and dropping out
     if tododict['analysis']['score_distribution']:
-        measure_score_distribution(config_analysis, config_algo, alg, dirdict, filedict, expt_label, overwrite_flag=False)
+        measure_score_distribution(config_algo, [alg], dirdict, filedict, overwrite_flag=False)
+    return
+
+def teams_meta_procedure(idx_expt): # Just different seeds for now
+    tododict = dict({
+        'score_distribution': 1,
+        })
+    workflows = tuple(teams_single_workflow(i_expt) for i_expt in idx_expt)
+    configs_sde,configs_algo,configs_analysis,expt_labels,expt_abbrvs,dirdicts,filedicts = tuple(
+            tuple(workflows[i][j] for i in range(len(workflows)))
+            for j in range(len(workflows[0])))
+    config_sde = configs_sde[0]
+    config_algo = configs_algo[0]
+    config_analysis = configs_analysis[0]
+    param_abbrv_sde,param_label_sde = lorenz96.Lorenz96SDE.label_from_config(config_sde)
+    param_abbrv_algo,param_label_algo = algorithms_lorenz96.Lorenz96SDETEAMS.label_from_config(config_algo)
+    # Set up a meta-dirdict 
+    scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/"
+    date_str = "2024-04-12"
+    sub_date_str = "0"
+    dirdict = dict()
+    dirdict['meta'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_sde, 'meta')
+    dirdict['data'] = join(dirdict['meta'], 'data')
+    dirdict['analysis'] = join(dirdict['meta'], 'analysis')
+    dirdict['plots'] = join(dirdict['meta'], 'plots')
+    for dirname in ('data','analysis','plots'):
+        makedirs(dirdict[dirname], exist_ok=True)
+    filedict = dict({'dns': filedicts[0]['dns']})
+    
+    # Load all the algs
+    algs = []
+    for i_alg in range(len(workflows)):
+        algs.append(pickle.load(open(filedicts[i_alg]['alg'],'rb')))
+    # Do meta-analysis
+    if tododict['score_distribution']:
+        measure_score_distribution(config_algo, algs, dirdict, filedict, overwrite_flag=False)
+
     return
 
 if __name__ == "__main__":
@@ -268,11 +347,11 @@ if __name__ == "__main__":
         procedure = sys.argv[1]
         idx_expt = [int(arg) for arg in sys.argv[2:]]
     else:
-        procedure = 'single'
+        procedure = 'meta'
         multiparams = teams_multiparams()
         idx_multiparam = [
                 (i_seed,i_F4,i_delta) 
-                for i_seed in range(0,1)
+                for i_seed in range(0,4)
                 for i_F4 in range(0,1) 
                 for i_delta in range(9,10) 
                 ]
