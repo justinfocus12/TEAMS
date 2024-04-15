@@ -47,12 +47,14 @@ def clopper_pearson_confidence_interval(nsucc, ntot, alpha):
     upper = spbeta.ppf(1-alpha/2, nsucc+1, ntot-nsucc)
     return lower,upper
 
-def pmf2ccdf(hist,bin_edges,alpha,N_errbars=None): 
+def pmf2ccdf(hist,bin_edges,return_errbars=False,alpha=None,N_errbars=None): 
     N = np.sum(hist)
-    if N_errbars is None:
-        N_errbars = N
     ccdf = np.cumsum(hist[::-1])[::-1] 
     ccdf_norm = np.where(ccdf>0, ccdf, np.nan) / N
+    if not return_errbars:
+        return ccdf_norm
+    if N_errbars is None:
+        N_errbars = N
     # Also return clopper-pearson confidence intervals
     lower,upper = clopper_pearson_confidence_interval(ccdf*N_errbars/N, N_errbars, alpha)
     return ccdf_norm,lower,upper

@@ -56,7 +56,7 @@ import algorithms_frierson; reload(algorithms_frierson)
 def teams_multiparams():
     seed_incs = list(range(8))
     sigmas = [0.3]
-    deltas_phys = [6.0,8.0,10.0]
+    deltas_phys = [0.0,6.0,8.0,10.0]
     split_landmarks = ['thx']
     return seed_incs,sigmas,deltas_phys,split_landmarks
 
@@ -80,15 +80,16 @@ def teams_paramset(i_expt):
 
     config_algo = dict({
         'num_levels_max': 512-64, # This parameter shouldn't affect the filenaming or anything like that 
-        'num_members_max': 512,
+        'num_members_max': 256,
         'num_active_families_min': 2,
         'seed_min': 1000,
         'seed_max': 100000,
         'seed_inc_init': seed_incs[i_seed_inc],
         'population_size': 64,
-        'time_horizon_phys': 20 + deltas_phys[i_delta],
+        'time_horizon_phys': 30, #+ deltas_phys[i_delta],
         'buffer_time_phys': 0,
         'advance_split_time_phys': deltas_phys[i_delta], # TODO put this into a parameter
+        'advance_split_time_max_phys': 10, # TODO put this into a parameter
         'split_landmark': split_landmarks[i_slm],
         'inherit_perts_after_split': False,
         'num2drop': 1,
@@ -192,7 +193,7 @@ def teams_single_workflow(i_expt):
     # Set up directories
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
     date_str = "2024-04-04"
-    sub_date_str = "0"
+    sub_date_str = "1"
     dirdict = dict()
     dirdict['expt'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_gcm, param_abbrv_algo)
     dirdict['data'] = join(dirdict['expt'], 'data')
@@ -383,9 +384,9 @@ def run_teams(dirdict,filedict,config_gcm,config_algo):
 def teams_single_procedure(i_expt):
 
     tododict = dict({
-        'run':             0,
+        'run':             1,
         'analysis': dict({
-            'observable_spaghetti':     0,
+            'observable_spaghetti':     1,
             'score_distribution':       1,
             'scorrelation':             0,
             'fields_2d':                1,
