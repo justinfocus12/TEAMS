@@ -30,10 +30,7 @@ def dns_paramset(i_expt):
     # Organize the array of parameters as well as the output files 
     multiparams = dns_multiparams()
     idx_multiparam = np.unravel_index(i_expt, tuple(len(mp) for mp in multiparams))
-    print(f'{idx_multiparam = }')
     seed_inc,F4 = (multiparams[i][i_param] for (i,i_param) in enumerate(idx_multiparam))
-    print(f'{seed_inc = }')
-    print(f'{F4 = }')
     # Minimal labels to differentiate them 
     expt_label = r'$F_4=%g$, seed %d'%(F4,seed_inc)
     expt_abbrv = (r'F%g'%(F4)).replace('.','p') 
@@ -176,7 +173,7 @@ def plot_dns(tododict,dirdict,filedict):
             L96SDEDNS.plot_return_stats(filedict['return_stats'][obs_name]['analysis'], filedict['return_stats'][obs_name]['plots'], obsprop[obs_name])
     return
 
-def dns_procedure(i_expt):
+def dns_single_procedure(i_expt):
     tododict = dict({
         'run':                   1,
         'analysis': dict({
@@ -207,6 +204,6 @@ if __name__ == "__main__":
     idx_expt = [int(v) for v in sys.argv[2:]]
     if procedure == 'single':
         for i_expt in idx_expt:
-            dns_procedure(i_expt)
+            dns_single_procedure(i_expt)
     elif procedure == 'meta':
         meta_dns_procedure(idx_param)

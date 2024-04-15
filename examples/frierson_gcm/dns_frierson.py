@@ -56,41 +56,45 @@ def print_comp_proc(compproc):
     print("\n")
     return 
 
-def dns_paramset(i_param):
+def dns_multiparams():
+    seed_incs = [0]
+    sigmas = [0.0,0.01,0.1,0.3,0.5]
+    taus = [tau_hrs * 3600 for tau_hrs in [6,24,96]]
+    Ls = [L_km * 1000 for L_km in [500,2000]]
+    return seed_incs,sigmas,taus,Ls
+
+def dns_paramset(i_expt):
     base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
     config_gcm = frierson_gcm.FriersonGCM.default_config(base_dir_absolute,base_dir_absolute)
+    
+    multiparams = dns_multiparams()
+    idx_multiparam = np.unravel_index(i_expt, tuple(len(mp) for mp in multiparams))
+    seed_inc,std_sppt,tau_sppt,L_sppt = (multiparams[i][i_param] for (i,i_param) in enumerate(idx_multiparam))
 
-    # Parameters to loop over
-    pert_types = ['IMP']        + ['SPPT']*20
-    std_sppts = [0.5]           + [0.5,0.3,0.1,0.05,0.01]*4
-    tau_sppts = [6.0*3600]      + [6.0*3600]*5   + [6.0*3600]*5    + [24.0*3600]*5     + [96.0*3600]*5 
-    L_sppts = [500.0*1000]      + [500.0*1000]*5 + [2000.0*1000]*5 + [500.0*1000]*5    + [500.0*1000]*5
-    outputs_per_days = [4]*21
-    seed_incs = [0]*21
+    expt_label = r'SPPT, $\sigma=%g$, $\tau=%g$ h, $L=%g$ km'%(std_sppt,tau_sppt/3600,L_sppt/1000)
+    expt_abbrv = r'SPPT_std%g_tau%gh_L%gkm'%(std_sppt,tau_sppt/3600,L_sppt/1000)
 
-    if pert_types[i_param] == 'IMP':
-        expt_label = 'Impulsive'
-        expt_abbrv = 'IMP'
-    else:
-        expt_label = r'SPPT, $\sigma=%g$, $\tau=%g$ h, $L=%g$ km'%(std_sppts[i_param],tau_sppts[i_param]/3600,L_sppts[i_param]/1000)
-        expt_abbrv = r'SPPT_std%g_tau%gh_L%gkm'%(std_sppts[i_param],tau_sppts[i_param]/3600,L_sppts[i_param]/1000)
-
-    config_gcm['outputs_per_day'] = outputs_per_days[i_param]
-    config_gcm['pert_type'] = pert_types[i_param]
-    if config_gcm['pert_type'] == 'SPPT':
-        config_gcm['SPPT']['tau_sppt'] = tau_sppts[i_param]
-        config_gcm['SPPT']['std_sppt'] = std_sppts[i_param]
-        config_gcm['SPPT']['L_sppt'] = L_sppts[i_param]
+    config_gcm['outputs_per_day'] = 4
+    config_gcm['pert_type'] = 'SPPT'
+    config_gcm['SPPT']['tau_sppt'] = tau_sppt
+    config_gcm['SPPT']['std_sppt'] = std_sppt
+    config_gcm['SPPT']['L_sppt'] = L_sppt
     config_gcm['remove_temp'] = 1
-    print(f'{i_param = }')
     pprint.pprint(config_gcm)
     config_algo = dict({
         'seed_min': 1000,
         'seed_max': 100000,
-        'seed_inc_init': seed_incs[i_param], # add to seed_min
+        'seed_inc_init': seed_inc, # will be added to seed_min
         'max_member_duration_phys': 100.0,
-        'num_chunks_max': 21,
+        'num_chunks_max': 70,
         })
+
+    return config_gcm,config_algo,expt_label,expt_abbrv
+
+def dns_single_workflow(i_expt):
+    config_gcm,config_algo,expt_label,expt_abbrv = dns_paramset(i_expt)
+    param_abbrv_gcm,param_label_gcm = frierson_gcm.FriersonGCM.label_from_config(config_gcm)
+    param_abbrv_algo,param_label_algo = algorithms_frierson.FriersonGCMDirectNumericalSimulation.label_from_config(config_algo)
     config_analysis = dict()
     config_analysis['spinup_phys'] = 700 # at what time to start computing statistics
     config_analysis['time_block_size_phys'] = 30 # size of block for method of block maxima
@@ -245,8 +249,20 @@ def dns_paramset(i_param):
             'label': r'Column water vapor $(\phi,\lambda)=(45\pm10,180\pm30)$',
             }),
         })
-
-    return config_gcm,config_algo,config_analysis,expt_label,expt_abbrv
+    scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
+    date_str = "2024-04-04"
+    sub_date_str = "0"
+    dirdict = dict()
+    dirdict['expt'] = join(scratch_dir,date_str,sub_date_str,param_abbrv_gcm,param_abbrv_algo)
+    for subdir in ['data','analysis','plots']:
+        dirdict[subdir] = join(dirdict['expt'],subdir)
+        makedirs(dirdict[subdir], exist_ok=True)
+    print(f'About to generate default config')
+    filedict = dict({
+        'alg': join(dirdict['data'],'alg.pickle'),
+        'alg_backup': join(dirdict['data'],'alg_backup.pickle')
+        })
+    return config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict
 
 
 def run_dns(dirdict,filedict,config_gcm,config_algo):
@@ -257,18 +273,14 @@ def run_dns(dirdict,filedict,config_gcm,config_algo):
 
     if exists(filedict['alg']):
         alg = pickle.load(open(filedict['alg'], 'rb'))
+        alg.ens.set_root_dir(root_dir)
+        alg.set_capacity(config_algo['num_chunks_max'], config_algo['max_member_duration_phys'])
     else:
         gcm = frierson_gcm.FriersonGCM(config_gcm, recompile=recompile)
         ens = Ensemble(gcm, root_dir=root_dir)
         alg = algorithms_frierson.FriersonGCMDirectNumericalSimulation(config_algo, ens)
     alg.ens.dynsys.set_nproc(nproc)
-    alg.ens.set_root_dir(root_dir)
-    alg.set_simulation_capacity(config_algo['num_chunks_max'], config_algo['max_member_duration_phys'])
     nmem = alg.ens.get_nmem()
-    num_new_chunks = alg.num_chunks_max - nmem
-    print(f'{num_new_chunks = }')
-    if num_new_chunks > 0:
-        alg.terminate = False
     while not (alg.terminate):
         mem = alg.ens.get_nmem()
         print(f'----------- Starting member {mem} ----------------')
@@ -568,25 +580,6 @@ def compute_extreme_stats(config_analysis, alg, dirdict):
                     plt.close(fig)
     return
 
-def dns_single_workflow(i_param):
-    config_gcm,config_algo,config_analysis,expt_label,expt_abbrv = dns_paramset(i_param)
-    param_abbrv_gcm,param_label_gcm = frierson_gcm.FriersonGCM.label_from_config(config_gcm)
-    param_abbrv_algo,param_label_algo = algorithms_frierson.FriersonGCMDirectNumericalSimulation.label_from_config(config_algo)
-    scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
-    date_str = "2024-03-26"
-    sub_date_str = "0"
-    dirdict = dict()
-    dirdict['expt'] = join(scratch_dir,date_str,sub_date_str,param_abbrv_gcm,param_abbrv_algo)
-    for subdir in ['data','analysis','plots']:
-        dirdict[subdir] = join(dirdict['expt'],subdir)
-        makedirs(dirdict[subdir], exist_ok=True)
-    print(f'About to generate default config')
-    filedict = dict({
-        'alg': join(dirdict['data'],'alg.pickle'),
-        'alg_backup': join(dirdict['data'],'alg_backup.pickle')
-        })
-    return config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict
-
 def dns_meta_workflow(idx_param):
     num_expt = len(idx_param)
     workflow_tuple = tuple(dns_single_workflow(i_param) for i_param in idx_param)
@@ -610,27 +603,27 @@ def dns_meta_workflow(idx_param):
 
 
 
-def dns_meta_procedure(idx_param):
+def dns_meta_procedure(idx_expt):
     tododict = dict({
         'compare_basic_stats':            0,
         'compare_extreme_stats':          1,
         })
-    workflows,config_meta_analysis,meta_dirdict = dns_meta_workflow(idx_param)
+    workflows,config_meta_analysis,meta_dirdict = dns_meta_workflow(idx_expt)
     if tododict['compare_basic_stats']:
         compare_basic_stats(workflows,config_meta_analysis,meta_dirdict)
     if tododict['compare_extreme_stats']:
         compare_extreme_stats(workflows,config_meta_analysis,meta_dirdict)
     return
 
-def dns_single_procedure(i_param):
+def dns_single_procedure(i_expt):
     tododict = dict({
-        'run':                            0,
+        'run':                            1,
         'plot_snapshots':                 1,
         'plot_timeseries':                1,
         'compute_basic_stats':            1,
         'compute_extreme_stats':          1,
         })
-    config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = dns_single_workflow(i_param)
+    config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = dns_single_workflow(i_expt)
 
     if tododict['run']:
         run_dns(dirdict,filedict,config_gcm,config_algo)
@@ -649,14 +642,14 @@ def dns_single_procedure(i_param):
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         procedure = sys.argv[1]
-        idx_param = [int(arg) for arg in sys.argv[2:]]
+        idx_expt = [int(arg) for arg in sys.argv[2:]]
     else:
         procedure = 'meta'
-        idx_param = list(range(1,21))
+        idx_expt = list(range(1,21))
     print(f'Got into Main')
     if procedure == 'single':
-        for i_param in idx_param:
-            dns_single_procedure(i_param)
+        for i_expt in idx_expt:
+            dns_single_procedure(i_expt)
     elif procedure == 'meta':
-        dns_meta_procedure(idx_param)
+        dns_meta_procedure(idx_expt)
 

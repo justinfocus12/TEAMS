@@ -157,14 +157,14 @@ def plot_observable_spaghetti(config_analysis, config_algo, alg, dirdict, filedi
     return
 
 
-def measure_score_distribution(config_algo, algs, dirdict, filedict, figfile_suffix, alpha=0.5, overwrite_flag=False):
+def measure_score_distribution(config_algo, algs, dirdict, filedict, figfile_suffix, alpha=0.5, overwrite_dns=False):
     print(f'Plotting score distribution')
     # TODO overlay the angel distribution on top 
     # Three histograms: initial population, weighted, and unweighted
 
-    # Calculate DNS statistics
+    # ---------------------- Calculate DNS max scores ------------------------
     scmax_dns_file = join(dirdict['analysis'], 'scmax_dns.npz')
-    if (not exists(scmax_dns_file)) or overwrite_flag:
+    if (not exists(scmax_dns_file)) or overwrite_dns:
         dns = pickle.load(open(filedict['dns'], 'rb'))
         sccomp_dns = []
         for mem in range(dns.ens.get_nmem()):
@@ -186,7 +186,8 @@ def measure_score_distribution(config_algo, algs, dirdict, filedict, figfile_suf
         scmax_dns = np.load(scmax_dns_file)['scmax_dns']
     N_dns = len(scmax_dns)
 
-    # Iterate through alg objects first to collect scores and define bin edges
+    # ---------------- Calculate TEAMS statistics -------------------
+    #Iterate through alg objects first to collect scores and define bin edges
     sclim = [np.min(scmax_dns),np.max(scmax_dns)]
     scmaxs,logws,mults = ([] for i in range(3))
     Ns_init,Ns_fin = (np.zeros(len(algs),dtype=int) for i in range(2))
@@ -217,23 +218,58 @@ def measure_score_distribution(config_algo, algs, dirdict, filedict, figfile_suf
     ccdf_fin_wted = utils.pmf2ccdf(hist_fin_wted,bin_edges)
     ccdf_fin_wted_lower = np.nanquantile(ccdfs_fin_wted, alpha/2, axis=0)
     ccdf_fin_wted_upper = np.nanquantile(ccdfs_fin_wted, 1-alpha/2, axis=0)
-    print(f'{alpha = }')
-    print(f'{ccdf_fin_wted_lower = }')
-    print(f'{ccdf_fin_wted_upper = }')
     ccdf_fin_unif = utils.pmf2ccdf(hist_fin_unif,bin_edges)
-    # Tally costs
-    N_init = np.sum(Ns_init)
-    N_fin = np.sum(Ns_fin)
-    cost_teams_init = N_init * (config_algo['time_horizon_phys'] - config_algo['advance_split_time_max_phys'] + config_algo['advance_split_time_phys'])
-    cost_teams_fin = N_fin/N_init * cost_teams_init
+
+    # --------------------- Tally costs ------------------------
+    N_teams_init = np.sum(Ns_init)
+    N_teams_fin = np.sum(Ns_fin)
+    cost_teams_init = N_teams_init * (config_algo['time_horizon_phys'] - config_algo['advance_split_time_max_phys'] + config_algo['advance_split_time_phys'])
+    cost_teams_fin = N_teams_fin/N_teams_init * cost_teams_init
     cost_dns = N_dns * (config_algo['time_horizon_phys'] - config_algo['advance_split_time_max_phys'])
     # Get DNS stats, comparing either to a single TEAMS run or the aggregate in cost 
     ccdf_dns,ccdf_dns_sep_lower,ccdf_dns_sep_upper = utils.pmf2ccdf(hist_dns,bin_edges,return_errbars=True,alpha=alpha,N_errbars=int(N_dns * cost_teams_fin/cost_dns * 1/len(algs)))
     _,ccdf_dns_pooled_lower,ccdf_dns_pooled_upper = utils.pmf2ccdf(hist_dns,bin_edges,return_errbars=True,alpha=alpha,N_errbars=int(N_dns * cost_teams_fin/cost_dns))
 
-    # Plot 
+    # Collect in a dictionary and store 
+    returnstats = dict({
+        'bin_edges': bin_edges,
+        # Separate TEAMS runs
+        'hists_init': hists_init,
+        'hists_fin_wted': hists_fin_wted,
+        'hists_fin_unif': hists_fin_unif,
+        'ccdfs_init': ccdfs_init,
+        'ccdfs_fin_wted': ccdf_fin_wted,
+        'ccdfs_fin_unif': ccdf_fin_unif,
+        # Pooled TEAMS runs
+        'hist_init': hist_init,
+        'hist_fin_wted': hist_fin_wted,
+        'hist_fin_unif': hist_fin_unif,
+        'ccdf_init': ccdf_init,
+        'ccdf_init_lower': ccdf_init_lower,
+        'ccdf_init_upper': ccdf_init_upper,
+        'ccdf_fin_wted': ccdf_fin_wted,
+        'ccdf_fin_wted_lower': ccdf_fin_wted_lower,
+        'ccdf_fin_wted_upper': ccdf_fin_wted_upper,
+        'ccdf_fin_unif': ccdf_fin_unif,
+        # DNS
+        'hist_dns': hist_dns,
+        'ccdf_dns': ccdf_dns,
+        'ccdf_dns_sep_lower': ccdf_dns_sep_lower,
+        'ccdf_dns_sep_upper': ccdf_dns_sep_upper,
+        'ccdf_dns_pooled_lower': ccdf_dns_pooled_lower,
+        'ccdf_dns_pooled_upper': ccdf_dns_pooled_upper,
+        # Scalars
+        'cost_teams_init': cost_teams_init,
+        'cost_teams_fin': cost_teams_fin,
+        'cost_dns': cost_dns,
+        'time_horizon_effective': config_algo['time_horizon_phys'] - config_algo['advance_split_time_max_phys'],
+        })
+    # TODO compute skill
+
+    # ---------------------------- Plot ----------------------------
+    # 3 columns: (0) all separate TEAMS results, (1) pooled TEAMS results, (2) GEV estimates
     teams_abbrv = 'TEAMS' if alg.advance_split_time>0 else 'AMS'
-    fig,axes = plt.subplots(ncols=2, figsize=(12,4))
+    fig,axes = plt.subplots(ncols=3, figsize=(18,4))
     # Individual curves on the left
     ax = axes[0]
     # DNS, with equal-cost errorbars to compare to single DNS runs
@@ -264,7 +300,7 @@ def measure_score_distribution(config_algo, algs, dirdict, filedict, figfile_suf
     ax.legend(handles=[hinit,hfin_wted,hfin_unif,hdns],bbox_to_anchor=(0,-0.2),loc='upper left')
     for ax in axes:
         ax.set_yscale('log')
-        ax.set_ylim([1/(2*N_dns), 1.1])
+        ax.set_ylim([1/(2*max(N_dns,N_teams_fin)), 1.1])
         ax.set_ylabel(r'Exc. Prob.')
         ax.set_xlabel(r'$S(X)$')
     fig.savefig(join(dirdict['plots'],r'score_hist_%s.png'%(figfile_suffix)), **pltkwargs)
@@ -311,7 +347,7 @@ def teams_single_procedure(i_expt):
         plot_observable_spaghetti(config_analysis, config_algo, alg, dirdict, filedict)
         # TODO have another ancestor-wise version, and another that shows family lines improving in parallel and dropping out
     if tododict['analysis']['score_distribution']:
-        measure_score_distribution(config_algo, [alg], dirdict, filedict, overwrite_flag=False)
+        measure_score_distribution(config_algo, [alg], dirdict, filedict, overwrite_dns=False)
     return
 
 def teams_meta_procedure_1param_multiseed(i_F4,i_delta,idx_seed): # Just different seeds for now
@@ -354,7 +390,7 @@ def teams_meta_procedure_1param_multiseed(i_F4,i_delta,idx_seed): # Just differe
     # Do meta-analysis
     if tododict['score_distribution']:
         figfile_suffix = (r'meta_F%g_ast%g'%(multiparams[1][i_F4],multiparams[2][i_delta])).replace('.','p')
-        measure_score_distribution(config_algo, algs, dirdict, filedict, figfile_suffix, overwrite_flag=False)
+        measure_score_distribution(config_algo, algs, dirdict, filedict, figfile_suffix, overwrite_dns=False)
 
     return
 
@@ -381,7 +417,7 @@ if __name__ == "__main__":
         for i_expt in idx_expt:
             teams_single_procedure(i_expt)
     elif procedure == 'meta':
-        idx_seed = list(range(16))
+        idx_seed = list(range(32))
         i_F4 = 1
         for i_delta in range(11):
             teams_meta_procedure_1param_multiseed(i_F4,i_delta,idx_seed)
