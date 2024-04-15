@@ -107,6 +107,11 @@ def convert_logsf_to_rtime(logsf, T):
     rtime[rtime <= T] = np.nan
     return rtime
 
+def convert_sf_to_rtime(sf, T):
+    rtime = -T / np.log1p(-sf)
+    rtime = np.where(rtime <= T, np.nan, rtime)
+    return rtime
+
 def compute_returnstats_and_histogram(f, time_block_size, bounds=None):
     if bounds is None:
         bounds = [np.min(f),np.max(f)]
