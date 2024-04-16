@@ -216,8 +216,10 @@ def measure_score_distribution(config_algo, algs, dirdict, filedict, figfile_suf
     hist_fin_wted = np.sum(hists_fin_wted, axis=0)
     ccdf_init,ccdf_init_lower,ccdf_init_upper = utils.pmf2ccdf(hist_init,bin_edges,return_errbars=True,alpha=alpha)
     ccdf_fin_wted = utils.pmf2ccdf(hist_fin_wted,bin_edges)
-    ccdf_fin_wted_lower = np.nanquantile(ccdfs_fin_wted, alpha/2, axis=0)
-    ccdf_fin_wted_upper = np.nanquantile(ccdfs_fin_wted, 1-alpha/2, axis=0)
+    ccdf_fin_wted_lower = np.quantile(np.nan_to_num(ccdfs_fin_wted,nan=0), alpha/2, axis=0)
+    ccdf_fin_wted_upper = np.quantile(np.nan_to_num(ccdfs_fin_wted,nan=0), 1-alpha/2, axis=0)
+    ccdf_fin_wted_lower = np.where(ccdf_fin_wted_lower==0, np.nan, ccdf_fin_wted_lower)
+    ccdf_fin_wted_upper = np.where(ccdf_fin_wted_upper==0, np.nan, ccdf_fin_wted_upper)
     ccdf_fin_unif = utils.pmf2ccdf(hist_fin_unif,bin_edges)
     # TODO put error bars on TEAMS by bootstrapping
     rng_boot = default_rng(45839)
@@ -468,8 +470,8 @@ if __name__ == "__main__":
         for i_expt in idx_expt:
             teams_single_procedure(i_expt)
     elif procedure == 'meta':
-        idx_seed = list(range(32))
-        i_F4 = 0
+        idx_seed = list(range(40))
+        i_F4 = int(sys.argv[2])
         for i_delta in range(11):
             teams_meta_procedure_1param_multiseed(i_F4,i_delta,idx_seed)
 
