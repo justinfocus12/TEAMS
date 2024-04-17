@@ -216,14 +216,16 @@ def teams_single_workflow(i_expt):
 def plot_observable_spaghetti(config_analysis, alg, dirdict, filedict):
     tu = alg.ens.dynsys.dt_save
     desc_per_anc = np.array([len(list(nx.descendants(alg.ens.memgraph,ancestor))) for ancestor in range(alg.population_size)])
-    order = np.argsort(desc_per_anc)[::-1]
-    print(f'{desc_per_anc[order] = }')
+    anc_scores = alg.branching_state['scores_max'][:alg.population_size]
+    #order = np.argsort(desc_per_anc)[::-1]
+    order = np.argsort(anc_scores[::-1])
+    ancs2plot = order[:6]
     angel = pickle.load(open(filedict['angel'],'rb'))
     for (obs_name,obs_props) in config_analysis['observables'].items():
         is_score = (obs_name == 'local_dayavg_rain')
         if is_score:
             obs_fun = lambda ds: obs_props['fun'](ds, **obs_props['kwargs'])
-            for ancestor in order[:min(alg.population_size,12)]:
+            for ancestor in ancs2plot:
                 outfile = join(dirdict['plots'], r'spaghetti_%s_anc%d.png'%(obs_props['abbrv'],ancestor))
                 landmark_label = {'lmx': 'local max', 'gmx': 'global max', 'thx': 'threshold crossing'}[alg.split_landmark]
                 title = r'%s ($\delta=%g$ before %s)'%(obs_props['label'],alg.advance_split_time*tu,landmark_label)
@@ -290,13 +292,8 @@ def plot_scorrelations(config_analysis, alg, dirdict, filedict, expt_label):
     return
 
 
-def measure_score_distribution(config_analysis, config_algo, alg, dirdict, filedict, expt_label, overwrite_flag=False):
+def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, expt_label, overwrite_flag=False, figfile_suffix=''):
     # Three histograms: initial population, weighted, and unweighted
-    scmax,sclev,logw,mult,tbr,tmx = (alg.branching_state[s] for s in 'scores_max score_levels log_weights multiplicities branch_times scores_max_timing'.split(' '))
-    hist_init,bin_edges_init = np.histogram(scmax[:alg.population_size], bins=15, density=True)
-    hist_unif,bin_edges_unif = np.histogram(scmax, bins=15, density=True)
-    hist_wted,bin_edges_wted = np.histogram(scmax, bins=15, weights=mult*np.exp(logw), density=True)
-    # Measure corresponding Buick distribution
     scmax_buick_file = join(dirdict['analysis'],'scmax_buick.npz')
     if (not exists(scmax_buick_file)) or overwrite_flag:
         print(f'{filedict["angel"] = }')
@@ -306,7 +303,7 @@ def measure_score_distribution(config_analysis, config_algo, alg, dirdict, filed
         for i in range(angel.branching_state['num_buicks_generated']-1):
             if angel.branching_state['num_branches_generated'][i] > 0:
                 mems_buick.append(next(angel.ens.memgraph.successors(angel.branching_state['generation_0'][i])))
-        score_fun = lambda ds: alg.score_combined(alg.score_components(ds['time'].to_numpy(),ds))
+        score_fun = lambda ds: algs[0].score_combined(algs[0].score_components(ds['time'].to_numpy(),ds))
         lonroll = lambda ds,dlon: ds.roll(lon=int(round(dlon/ds['lon'][:2].diff('lon').item())))
         score_funs_rolled = [lambda ds: score_fun(lonroll(ds,dlon)) for dlon in [0,30,60,90,120,150,180,210,240,270,300,330]]
 
@@ -316,35 +313,19 @@ def measure_score_distribution(config_analysis, config_algo, alg, dirdict, filed
         print(f'{scbuick = }')
         print(f'{scbuick.shape = }')
         print(f'{len(mems_buick) = }')
-        scmax_buick = np.nanmax(scbuick[:,:alg.time_horizon], axis=1)
+        scmax_buick = np.nanmax(scbuick[:,:algs[0].time_horizon], axis=1)
         np.savez(scmax_buick_file, scmax_buick=scmax_buick)
     else:
         scmax_buick = np.load(scmax_buick_file)['scmax_buick']
-    hist_buick,bin_edges_buick = np.histogram(scmax_buick, bins=15, density=True)
-    cbinfunc = lambda bin_edges: (bin_edges[1:] + bin_edges[:-1])/2
 
-    fig,axes = plt.subplots(nrows=2,figsize=(6,8))
-    ax = axes[0]
-    hinit, = ax.plot(cbinfunc(bin_edges_init), hist_init, marker='.', color='black', linestyle='--', linewidth=3, label=r'Init (%g)'%(alg.population_size))
-    hunif, = ax.plot(cbinfunc(bin_edges_unif), hist_unif, marker='.', color='dodgerblue', label=r'Fin. unweighted (%g)'%(alg.ens.get_nmem()))
-    hwted, = ax.plot(cbinfunc(bin_edges_wted), hist_wted, marker='.', color='red', label=r'Fin. weighted (%g)'%(np.sum(mult)))
-    hbuick, = ax.plot(cbinfunc(bin_edges_buick), hist_buick, marker='.', color='gray', label=r'Buick (%g)'%(len(scmax_buick)))
-    ax.set_yscale('log')
-    ax.set_title(expt_label)
-    ax.set_ylabel(r'Freq.')
-    ax = axes[1]
-    pmf2ccdf = lambda hist,bin_edges: np.cumsum((hist*np.diff(bin_edges))[::-1])[::-1]
-    hinit, = ax.plot(bin_edges_init[:-1], pmf2ccdf(hist_init,bin_edges_init), marker='.', color='black', linestyle='--', linewidth=3, label=r'Init (%g)'%(alg.population_size))
-    hunif, = ax.plot(bin_edges_unif[:-1], pmf2ccdf(hist_unif,bin_edges_unif), marker='.', color='dodgerblue', label=r'Fin. unweighted (%g)'%(alg.ens.get_nmem()))
-    hwted, = ax.plot(bin_edges_wted[:-1], pmf2ccdf(hist_wted,bin_edges_wted), marker='.', color='red', label=r'Fin. weighted (%g)'%(np.sum(mult)))
-    hbuick, = ax.plot(bin_edges_buick[:-1], pmf2ccdf(hist_buick,bin_edges_buick), marker='.', color='gray', label=r'Buick (%g)'%(len(scmax_buick)))
-    ax.set_yscale('log')
-    ax.set_ylabel(r'Exc. Prob.')
-    ax.set_xlabel(r'$S(X)$')
-    ax.legend(handles=[hinit,hunif,hwted,hbuick],bbox_to_anchor=(0,-0.2),loc='upper left')
-    fig.savefig(join(dirdict['plots'],'score_hist.png'), **pltkwargs)
-    print(f'{dirdict["plots"] = }')
-    plt.close(fig)
+    returnstats_file = join(dirdict['analysis'],'returnstats.npz')
+    figfile = join(dirdict['plots'],r'returnstats_%s.png'%(figfile_suffix))
+    param_display = '\n'.join([
+        r'$\sigma=%g$'%(algs[0].ens.dynsys.config['SPPT']['std_sppt']),
+        r'$\delta=%g$'%(config_algo['advance_split_time_phys']),
+        ])
+    algorithms_frierson.FriersonGCMTEAMS.measure_plot_score_distribution(config_algo, algs, scmax_buick, returnstats_file, figfile, param_display=param_display)
+
     return
 
 
@@ -381,15 +362,25 @@ def run_teams(dirdict,filedict,config_gcm,config_algo):
         pickle.dump(alg, open(filedict['alg'], 'wb'))
     return
 
+
+def teams_meta_procedure_1param_multiseed(i_sigma,i_delta,idx_seed): # Just different seeds for now
+    tododict = dict({
+        'score_distribution': 1,
+        })
+    # Figure out which flat indices corresond to this set of seeds
+    multiparams = teams_multiparams()
+    # TODO
+    return 
+
 def teams_single_procedure(i_expt):
 
     tododict = dict({
-        'run':             1,
+        'run':             0,
         'analysis': dict({
-            'observable_spaghetti':     1,
+            'observable_spaghetti':     0,
             'score_distribution':       1,
             'scorrelation':             0,
-            'fields_2d':                1,
+            'fields_2d':                0,
             }),
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = teams_single_workflow(i_expt)
@@ -400,7 +391,7 @@ def teams_single_procedure(i_expt):
         plot_observable_spaghetti(config_analysis, alg, dirdict, filedict)
         # TODO have another ancestor-wise version, and another that shows family lines improving in parallel and dropping out
     if tododict['analysis']['score_distribution']:
-        measure_score_distribution(config_analysis, config_algo, alg, dirdict, filedict, expt_label, overwrite_flag=True)
+        measure_plot_score_distribution(config_algo, [alg], dirdict, filedict, expt_label, overwrite_flag=False)
     if tododict['analysis']['scorrelation']:
         plot_scorrelations(config_analysis, alg, dirdict, filedict, expt_label)
     return
@@ -411,13 +402,13 @@ if __name__ == "__main__":
         procedure = sys.argv[1]
         idx_expt = [int(arg) for arg in sys.argv[2:]]
     else:
-        procedure = 'single'
+        procedure = 'meta'
         seed_incs,sigmas,deltas_phys,split_landmarks = teams_multiparams()
         iseed_isigma_idelta_islm = [
                 (i_seed,i_sigma,i_delta,0)
                 for i_seed in range(8)
                 for i_sigma in range(1)
-                for i_delta in range(3)
+                for i_delta in [3] #np.arange(4)[::-1]
                 ]
         shp = (len(seed_incs),len(sigmas),len(deltas_phys),len(split_landmarks))
         idx_expt = []

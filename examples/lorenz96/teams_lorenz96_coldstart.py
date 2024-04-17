@@ -291,7 +291,7 @@ def measure_score_distribution(config_algo, algs, dirdict, filedict, figfile_suf
 
     # ---------------------------- Plot ----------------------------
     # 3 columns: (0) all separate TEAMS results, (1) pooled TEAMS results, (2) GEV estimates
-    teams_abbrv = 'TEAMS' if alg.advance_split_time>0 else 'AMS'
+    teams_abbrv = 'TEAMS' if algs[0].advance_split_time>0 else 'AMS'
     fig,axes = plt.subplots(ncols=3, figsize=(18,4), sharex=False, sharey=True)
 
     # ++++ left-hand text label +++
@@ -396,7 +396,7 @@ def teams_single_procedure(i_expt):
         'run':             1,
         'analysis': dict({
             'observable_spaghetti':     1,
-            'score_distribution':       1,
+            'score_distribution':       0,
             }),
         })
     config_sde,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = teams_single_workflow(i_expt)
@@ -407,7 +407,8 @@ def teams_single_procedure(i_expt):
         plot_observable_spaghetti(config_analysis, config_algo, alg, dirdict, filedict)
         # TODO have another ancestor-wise version, and another that shows family lines improving in parallel and dropping out
     if tododict['analysis']['score_distribution']:
-        measure_score_distribution(config_algo, [alg], dirdict, filedict, overwrite_dns=False, alpha=0.9)
+        figfile_suffix = ''
+        measure_score_distribution(config_algo, [alg], dirdict, filedict, figfile_suffix, overwrite_dns=False, alpha=0.9)
     return
 
 
