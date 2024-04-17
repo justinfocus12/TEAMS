@@ -157,17 +157,20 @@ def plot_observable_spaghetti(config_analysis, config_algo, alg, dirdict, filedi
     return
 
 
-def measure_score_distribution(config_algo, algs, dirdict, filedict, figfile_suffix, alpha=0.1, overwrite_dns=True):
-    print(f'Plotting score distribution')
+def measure_score_distribution(config_algo, algs, dirdict, filedict, figfile_suffix, alpha=0.1, overwrite_dns=False):
+    print(f'Measuring score distribution')
     # TODO overlay the angel distribution on top 
     # Three histograms: initial population, weighted, and unweighted
 
     # ---------------------- Calculate DNS max scores ------------------------
     scmax_dns_file = join(dirdict['analysis'], 'scmax_dns.npz')
     if (not exists(scmax_dns_file)) or overwrite_dns:
+        print(f'About to compute DNS scores')
         dns = pickle.load(open(filedict['dns'], 'rb'))
         sccomp_dns = []
+        # TODO multi-thread this computation
         for mem in range(dns.ens.get_nmem()):
+            if mem % 100 == 0: print(f'Scoring member {mem}')
             sccomp_dns.append(
                     dns.ens.compute_observables([algs[0].score_components],mem)[0])
         ncomp = len(sccomp_dns[0])
@@ -310,13 +313,13 @@ def measure_score_distribution(config_algo, algs, dirdict, filedict, figfile_suf
     # DNS, with equal-cost errorbars to compare to single DNS runs
     sf2rt = lambda sf: utils.convert_sf_to_rtime(sf, returnstats['time_horizon_effective'])
     hdns, = ax.plot(sf2rt(ccdf_dns), bin_edges[:-1], marker='.', color='black', label=r'DNS (cost %.1E)'%(cost_dns))
-    ax.fill_betweenx(bin_edges[:-1], sf2rt(ccdf_dns_sep_lower), sf2rt(ccdf_dns_sep_upper), fc='gray', ec='none', zorder=-1, alpha=0.5)
+    ax.fill_betweenx(bin_edges[:-1], sf2rt(ccdf_dns_pooled_lower), sf2rt(ccdf_dns_pooled_upper), fc='gray', ec='none', zorder=-1, alpha=0.5)
     for i_alg,alg in enumerate(algs):
         # Initialization
         hinit_sep, = ax.plot(sf2rt(ccdfs_init[i_alg]),bin_edges[:-1],color='dodgerblue',linestyle='-',linewidth=1,alpha=0.5,label=r'Init')
         # Final (weighted)
         hfin_wted_sep, = ax.plot(sf2rt(ccdfs_fin_wted[i_alg]),bin_edges[:-1],color='red',linestyle='-',linewidth=1,alpha=0.5,label=teams_abbrv)
-    ax.fill_betweenx(bin_edges[:-1],sf2rt(ccdf_fin_wted_lower),sf2rt(ccdf_fin_wted_upper),fc='red',ec='none',zorder=-1,alpha=0.5)
+    #ax.fill_betweenx(bin_edges[:-1],sf2rt(ccdf_fin_wted_lower),sf2rt(ccdf_fin_wted_upper),fc='red',ec='none',zorder=-1,alpha=0.5)
     ax.set_ylabel(r'$\frac{1}{2}x_0^2$ Return level')
     ax.set_title(r'Single %s runs'%(teams_abbrv))
 
@@ -444,12 +447,17 @@ def teams_meta_procedure_1param_multiseed(i_F4,i_delta,idx_seed): # Just differe
         algs.append(pickle.load(open(filedicts[i_alg]['alg'],'rb')))
     # Do meta-analysis
     if tododict['score_distribution']:
+        print(f'About to measure score distribution')
         figfile_suffix = (r'meta_F%g_ast%g'%(multiparams[1][i_F4],multiparams[2][i_delta])).replace('.','p')
-        measure_score_distribution(config_algo, algs, dirdict, filedict, figfile_suffix, overwrite_dns=False)
+        measure_score_distribution(config_algo, algs, dirdict, filedict, figfile_suffix, overwrite_dns=True)
     return
 
 def teams_meta_procedure_1forcing_multilead(i_F4,idx_delta,idx_seed):
+    scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/"
+    date_str = "2024-04-12"
+    sub_date_str = "0"
     multiparams = teams_multiparams()
+    returnstats = []
     for i_delta in idx_delta:
         idx_multiparam = [(i_seed,i_F4,i_delta) for i_seed in idx_seed]
         idx_expt = []
@@ -460,8 +468,27 @@ def teams_meta_procedure_1forcing_multilead(i_F4,idx_delta,idx_seed):
         configs_sde,configs_algo,configs_analysis,expt_labels,expt_abbrvs,dirdicts,filedicts = tuple(
             tuple(workflows[i][j] for i in range(len(workflows)))
             for j in range(len(workflows[0])))
-    config_sde = configs_sde[0]
-    config_algo = configs_algo[0]
+        config_sde = configs_sde[0]
+        config_algo = configs_algo[0]
+        param_abbrv_sde,param_label_sde = lorenz96.Lorenz96SDE.label_from_config(config_sde)
+        returnstats_file = join(scratch_dir,date_str,sub_date_str,param_abbrv_sde,'meta','analysis','returnstats.npz')
+        returnstats.append(np.load(returnstats_file))
+        # Calculate the integrated error metrics 
+
+    return
+
+def compute_integrated_score_metrics(returnstats):
+    # -------- F-divergences --------
+    hist_dns = returnstats['hist_dns']
+    hist_teams = returnstats['hist_fin_wted']
+    nzidx_dns = np.where(hist_dns > 0)[0]
+    nzidx_teams = np.where(hist_teams > 0)[0]
+    nzidx_both = np.intersect1d(nzidx_dns, nzidx_teams)
+    # KL divergence
+    kldiv = np.sum(hist_dns[nzidx_both] * np.log(hist_dns[nzidx_both] / hist_teams[nzidx_both]))
+    # Chi-square divergence
+    x2div = np.sum((hist_dns[nzidx_dns] - hist_teams[nzidx_dns])**2 / hist_dns[nzidx_dns])
+    return
 
 
 if __name__ == "__main__":

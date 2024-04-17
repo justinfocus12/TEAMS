@@ -7,6 +7,8 @@ import matplotlib
 import matplotlib.pyplot as plt
 from os.path import join, exists
 import sys
+import psutil
+import gc as garbcol
 matplotlib.rcParams.update({
     "font.family": "monospace",
     "font.size": 15
@@ -219,7 +221,9 @@ class SDESystem(DynamicalSystem):
         tp_save = t_save * self.ode.dt_save # physical (unitful)
         Nt_save = len(t_save)
         # Initialize the solution array
+        print(f'Initializing output array...', end='')
         x_save = np.zeros((Nt_save, self.ode.state_dim))
+        print('done; integrating,...', end='')
         i_save = 0
         tp_save_next = tp_save[i_save]
         x = init_cond.copy()
@@ -236,6 +240,7 @@ class SDESystem(DynamicalSystem):
                     tp_save_next = tp_save[i_save]
             x = xnew
             tp = tpnew
+        print('done')
         return t_save,x_save
     def run_trajectory(self, icandf, obs_fun, saveinfo, root_dir):
         init_cond_nopert,f,rngstate = icandf['init_cond'],icandf['frc'],icandf['init_rngstate']
@@ -263,7 +268,11 @@ class SDESystem(DynamicalSystem):
         i_frc_bytype = np.zeros(len(f.frc_list), dtype=int) 
         nseg = len(seg_starts)
         i_save = 0
+        memusage = psutil.virtual_memory().used/1e9
+        print(f'Before segment loop, using {memusage} GB')
+        print(f'Starting segment: ', end='')
         for i_seg in range(nseg):
+            print(f'{i_seg}, ', end='')
             for i_type,i_frc in enumerate(i_frc_bytype):
                 cond0 = (i_frc < nfrc_bytype[i_type]) 
                 if cond0:
@@ -280,10 +289,18 @@ class SDESystem(DynamicalSystem):
             x[i_save:i_save+len(t_temp)] = x_temp
             init_cond_temp = x_temp[-1]
             i_save += len(t_temp) 
+        print(f'\nFinished all segments')
+        memusage = psutil.virtual_memory().used/1e9
+        print(f'After segment loop, using {memusage} GB')
         metadata = self.assemble_metadata(icandf, method, rng, saveinfo)
         observables = obs_fun(t,x)
         # save full state out to saveinfo
         np.savez(join(root_dir,saveinfo['filename']), t=t, x=x)
+        # Free memory
+        del t, x
+        garbcol.collect()
+        memusage = psutil.virtual_memory().used/1e9
+        print(f'After collecting garbage, using {memusage} GB')
         return metadata,observables
     def generate_default_init_cond(self, init_time):
         return self.ode.generate_default_init_cond(init_time)
