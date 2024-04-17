@@ -157,7 +157,7 @@ def plot_observable_spaghetti(config_analysis, config_algo, alg, dirdict, filedi
     return
 
 
-def measure_score_distribution(config_algo, algs, dirdict, filedict, figfile_suffix, alpha=0.5, overwrite_dns=False):
+def measure_score_distribution(config_algo, algs, dirdict, filedict, figfile_suffix, alpha=0.1, overwrite_dns=True):
     print(f'Plotting score distribution')
     # TODO overlay the angel distribution on top 
     # Three histograms: initial population, weighted, and unweighted
@@ -362,6 +362,7 @@ def measure_score_distribution(config_algo, algs, dirdict, filedict, figfile_suf
     print(join(dirdict['plots'],r'score_hist_%s.png'%(figfile_suffix)))
     return
 
+
 def run_teams(dirdict,filedict,config_sde,config_algo):
     root_dir = dirdict['data']
     if exists(filedict['alg']):
@@ -402,6 +403,7 @@ def teams_single_procedure(i_expt):
     if tododict['analysis']['score_distribution']:
         measure_score_distribution(config_algo, [alg], dirdict, filedict, overwrite_dns=False, alpha=0.9)
     return
+
 
 def teams_meta_procedure_1param_multiseed(i_F4,i_delta,idx_seed): # Just different seeds for now
     tododict = dict({
@@ -444,8 +446,23 @@ def teams_meta_procedure_1param_multiseed(i_F4,i_delta,idx_seed): # Just differe
     if tododict['score_distribution']:
         figfile_suffix = (r'meta_F%g_ast%g'%(multiparams[1][i_F4],multiparams[2][i_delta])).replace('.','p')
         measure_score_distribution(config_algo, algs, dirdict, filedict, figfile_suffix, overwrite_dns=False)
-
     return
+
+def teams_meta_procedure_1forcing_multilead(i_F4,idx_delta,idx_seed):
+    multiparams = teams_multiparams()
+    for i_delta in idx_delta:
+        idx_multiparam = [(i_seed,i_F4,i_delta) for i_seed in idx_seed]
+        idx_expt = []
+        for i_multiparam in idx_multiparam:
+            i_expt = np.ravel_multi_index(i_multiparam,tuple(len(mp) for mp in multiparams))
+            idx_expt.append(i_expt) #list(range(1,21))
+        workflows = tuple(teams_single_workflow(i_expt) for i_expt in idx_expt)
+        configs_sde,configs_algo,configs_analysis,expt_labels,expt_abbrvs,dirdicts,filedicts = tuple(
+            tuple(workflows[i][j] for i in range(len(workflows)))
+            for j in range(len(workflows[0])))
+    config_sde = configs_sde[0]
+    config_algo = configs_algo[0]
+
 
 if __name__ == "__main__":
     print(f'Got into Main')
@@ -470,7 +487,7 @@ if __name__ == "__main__":
         for i_expt in idx_expt:
             teams_single_procedure(i_expt)
     elif procedure == 'meta':
-        idx_seed = list(range(40))
+        idx_seed = list(range(56))
         i_F4 = int(sys.argv[2])
         for i_delta in range(11):
             teams_meta_procedure_1param_multiseed(i_F4,i_delta,idx_seed)
