@@ -57,7 +57,7 @@ print(f'{i = }'); i += 1
 
 def teams_multiparams():
     # Random seed
-    seed_incs = list(range(64)) #,1,2,3,4,5,6]
+    seed_incs = list(range(32)) 
     # Physical
     F4s = [0.25,0.5,1.0,3.0]
     # Algorithmic
@@ -122,7 +122,7 @@ def teams_single_workflow(i_expt):
         })
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/"
     date_str = "2024-04-12"
-    sub_date_str = "0"
+    sub_date_str = "2"
     dirdict = dict()
     dirdict['expt'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_sde, param_abbrv_algo)
     dirdict['data'] = join(dirdict['expt'], 'data')
@@ -143,12 +143,15 @@ def teams_single_workflow(i_expt):
 def plot_observable_spaghetti(config_analysis, config_algo, alg, dirdict, filedict):
     tu = alg.ens.dynsys.dt_save
     desc_per_anc = np.array([len(list(nx.descendants(alg.ens.memgraph,ancestor))) for ancestor in range(alg.population_size)])
-    order = np.argsort(desc_per_anc)[::-1]
+    anc_scores = alg.branching_state['scores_max'][:alg.population_size]
+    #order = np.argsort(desc_per_anc)[::-1]
+    order = np.argsort(anc_scores)[::-1]
+    ancs2plot = order[np.linspace(0,len(order)-1,6).astype(int)]
     print(f'{desc_per_anc[order] = }')
     for (obs_name,obs_props) in config_analysis['observables'].items():
         is_score = (obs_name == 'E0')
         obs_fun = lambda t,x: obs_props['fun'](t,x)
-        for ancestor in order[:4]:
+        for ancestor in ancs2plot:
             outfile = join(dirdict['plots'], r'spaghetti_%s_anc%d.png'%(obs_props['abbrv'],ancestor))
             title = r'%s ($\delta=%g$)'%(obs_props['label'],alg.advance_split_time*tu)
             fig,axes = alg.plot_observable_spaghetti(obs_fun, ancestor, title=title, is_score=is_score, outfile=None)
@@ -392,7 +395,7 @@ def teams_single_procedure(i_expt):
     tododict = dict({
         'run':             1,
         'analysis': dict({
-            'observable_spaghetti':     0,
+            'observable_spaghetti':     1,
             'score_distribution':       1,
             }),
         })
@@ -510,7 +513,12 @@ if __name__ == "__main__":
             i_expt = np.ravel_multi_index(i_multiparam,tuple(len(mp) for mp in multiparams))
             idx_expt.append(i_expt) #list(range(1,21))
     if procedure == 'single':
-        idx_expt = [int(arg) for arg in sys.argv[2:]]
+        seed_incs,F4s,deltas_phys = teams_multiparams()
+        i_F4,i_delta = np.unravel_index(int(sys.argv[2]), (len(F4s),len(deltas_phys)))
+        idx_expt = [
+                np.ravel_multi_index((i_seed,i_F4,i_delta), (len(seed_incs),len(F4s),len(deltas_phys)))
+                for i_seed in range(len(seed_incs))
+                ]
         for i_expt in idx_expt:
             teams_single_procedure(i_expt)
     elif procedure == 'meta':

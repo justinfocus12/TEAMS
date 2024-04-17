@@ -297,7 +297,7 @@ class SDESystem(DynamicalSystem):
         # save full state out to saveinfo
         np.savez(join(root_dir,saveinfo['filename']), t=t, x=x)
         # Free memory
-        del t, x
+        del t, x, x_temp
         garbcol.collect()
         memusage = psutil.virtual_memory().used/1e9
         print(f'After collecting garbage, using {memusage} GB')
