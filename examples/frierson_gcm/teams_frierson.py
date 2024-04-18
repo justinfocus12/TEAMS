@@ -292,31 +292,56 @@ def plot_scorrelations(config_analysis, alg, dirdict, filedict, expt_label):
     return
 
 
-def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, expt_label, overwrite_flag=False, figfile_suffix=''):
+def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, reference='dns', figfile_suffix='', overwrite_reference=False):
     # Three histograms: initial population, weighted, and unweighted
-    scmax_buick_file = join(dirdict['analysis'],'scmax_buick.npz')
-    if (not exists(scmax_buick_file)) or overwrite_flag:
-        print(f'{filedict["angel"] = }')
-        angel = pickle.load(open(filedict['angel'], 'rb'))
-        print(f'{angel.branching_state = }')
-        mems_buick = []
-        for i in range(angel.branching_state['num_buicks_generated']-1):
-            if angel.branching_state['num_branches_generated'][i] > 0:
-                mems_buick.append(next(angel.ens.memgraph.successors(angel.branching_state['generation_0'][i])))
-        score_fun = lambda ds: algs[0].score_combined(algs[0].score_components(ds['time'].to_numpy(),ds))
-        lonroll = lambda ds,dlon: ds.roll(lon=int(round(dlon/ds['lon'][:2].diff('lon').item())))
-        score_funs_rolled = [lambda ds: score_fun(lonroll(ds,dlon)) for dlon in [0,30,60,90,120,150,180,210,240,270,300,330]]
+    if reference == 'buick':
+        scmax_buick_file = join(dirdict['analysis'],'scmax_buick.npz')
+        if (not exists(scmax_buick_file)) or overwrite_reference:
+            print(f'{filedict["angel"] = }')
+            angel = pickle.load(open(filedict['angel'], 'rb'))
+            print(f'{angel.branching_state = }')
+            mems_buick = []
+            for i in range(angel.branching_state['num_buicks_generated']-1):
+                if angel.branching_state['num_branches_generated'][i] > 0:
+                    mems_buick.append(next(angel.ens.memgraph.successors(angel.branching_state['generation_0'][i])))
+            score_fun = lambda ds: algs[0].score_combined(algs[0].score_components(ds['time'].to_numpy(),ds))
+            lonroll = lambda ds,dlon: ds.roll(lon=int(round(dlon/ds['lon'][:2].diff('lon').item())))
+            score_funs_rolled = [lambda ds: score_fun(lonroll(ds,dlon)) for dlon in [0,30,60,90,120,150,180,210,240,270,300,330]][:1]
 
-        scbuick = np.concatenate(tuple(
-            angel.ens.compute_observables(score_funs_rolled, mem) 
-            for mem in mems_buick), axis=0) # TODO augment with zonal symmetry
-        print(f'{scbuick = }')
-        print(f'{scbuick.shape = }')
-        print(f'{len(mems_buick) = }')
-        scmax_buick = np.nanmax(scbuick[:,:algs[0].time_horizon], axis=1)
-        np.savez(scmax_buick_file, scmax_buick=scmax_buick)
-    else:
-        scmax_buick = np.load(scmax_buick_file)['scmax_buick']
+            scbuick = np.concatenate(tuple(
+                angel.ens.compute_observables(score_funs_rolled, mem) 
+                for mem in mems_buick), axis=0) # TODO augment with zonal symmetry
+            print(f'{scbuick = }')
+            print(f'{scbuick.shape = }')
+            print(f'{len(mems_buick) = }')
+            scmax_ref = np.nanmax(scbuick[:,:algs[0].time_horizon], axis=1)
+            np.savez(scmax_buick_file, scmax_ref=scmax_buick)
+        else:
+            scmax_ref = np.load(scmax_buick_file)['scmax_buick']
+    elif reference == 'dns':
+        spinup_phys = 700
+        scmax_dns_file = join(dirdict['analysis'],'scmax_dns.npz')
+        if (not exists(scmax_dns_file)) or overwrite_reference:
+            dns = pickle.load(open(filedict['dns'], 'rb'))
+            mems_dns = list(range(dns.ens.get_nmem()))
+            print(f'{mems_dns = }')
+            # TODO conctenate before taking score_dombined
+            score_fun = lambda ds: algs[0].score_combined(algs[0].score_components(ds['time'].to_numpy(),ds))
+            lonroll = lambda ds,dlon: ds.roll(lon=int(round(dlon/ds['lon'][:2].diff('lon').item())))
+            score_funs_rolled = [lambda ds: score_fun(lonroll(ds,dlon)) for dlon in [0,30,60,90,120,150,180,210,240,270,300,330]][:1]
+            tu = algs[0].ens.dynsys.dt_save
+            print(f'{tu = }')
+            scdns = []
+            for mem in mems_dns:
+                scdns.append(np.array(dns.ens.compute_observables(score_funs_rolled, mem)))
+            scdns = np.concatenate(scdns, axis=1)[0,int(spinup_phys/tu):]
+            scmax_ref = utils.compute_block_maxima(scdns, algs[0].time_horizon-max(algs[0].advance_split_time_max, (algs[0].score_params['components']['rainrate']['tavg']-1)))
+            print(f'{scdns[:10] = }')
+            print(f'{np.where(np.isnan(scdns)) = }')
+            print(f'{scdns.shape = }')
+            np.savez(scmax_dns_file, scmax=scmax_ref)
+        else:
+            scmax_ref = np.load(scmax_dns_file)['scmax']
 
     returnstats_file = join(dirdict['analysis'],'returnstats.npz')
     figfile = join(dirdict['plots'],r'returnstats_%s.png'%(figfile_suffix))
@@ -324,7 +349,7 @@ def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, expt_l
         r'$\sigma=%g$'%(algs[0].ens.dynsys.config['SPPT']['std_sppt']),
         r'$\delta=%g$'%(config_algo['advance_split_time_phys']),
         ])
-    algorithms_frierson.FriersonGCMTEAMS.measure_plot_score_distribution(config_algo, algs, scmax_buick, returnstats_file, figfile, param_display=param_display)
+    algorithms_frierson.FriersonGCMTEAMS.measure_plot_score_distribution(config_algo, algs, scmax_ref, returnstats_file, figfile, param_display=param_display)
 
     return
 
@@ -363,13 +388,48 @@ def run_teams(dirdict,filedict,config_gcm,config_algo):
     return
 
 
-def teams_meta_procedure_1param_multiseed(i_sigma,i_delta,idx_seed): # Just different seeds for now
+def teams_meta_procedure_1param_multiseed(i_sigma,i_delta,i_slm,idx_seed): # Just different seeds for now
     tododict = dict({
         'score_distribution': 1,
         })
     # Figure out which flat indices corresond to this set of seeds
     multiparams = teams_multiparams()
-    # TODO
+    idx_multiparam = [(i_seed,i_sigma,i_delta,i_slm) for i_seed in idx_seed]
+    idx_expt = []
+    for i_multiparam in idx_multiparam:
+        i_expt = np.ravel_multi_index(i_multiparam,tuple(len(mp) for mp in multiparams))
+        idx_expt.append(i_expt) #list(range(1,21))
+    workflows = tuple(teams_single_workflow(i_expt) for i_expt in idx_expt)
+    configs_gcm,configs_algo,configs_analysis,expt_labels,expt_abbrvs,dirdicts,filedicts = tuple(
+            tuple(workflows[i][j] for i in range(len(workflows)))
+            for j in range(len(workflows[0])))
+    config_gcm = configs_gcm[0]
+    config_algo = configs_algo[0]
+    
+    filedict = dict({
+        'angel': filedicts[0]['angel'],
+        'dns': '/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/2024-03-26/0/abs1_resT21_pertSPPT_std0p3_clip2_tau6h_L500km/DNS_si0/data/alg.pickle',
+        })
+    config_analysis = configs_analysis[0]
+    param_abbrv_gcm,param_label_gcm = frierson_gcm.FriersonGCM.label_from_config(config_gcm)
+    param_abbrv_algo,param_label_algo = algorithms_frierson.FriersonGCMTEAMS.label_from_config(config_algo)
+    # Set up a meta-dirdict 
+    scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
+    date_str = "2024-04-04"
+    sub_date_str = "1"
+    dirdict = dict()
+    dirdict['meta'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_gcm, 'meta') 
+    dirdict['data'] = join(dirdict['meta'], 'data')
+    dirdict['analysis'] = join(dirdict['meta'], 'analysis')
+    dirdict['plots'] = join(dirdict['meta'], 'plots')
+    for dirname in ('data','analysis','plots'):
+        makedirs(dirdict[dirname], exist_ok=True)
+    algs = []
+    for i_alg in range(len(workflows)):
+        algs.append(pickle.load(open(filedicts[i_alg]['alg'],'rb')))
+    if tododict['score_distribution']:
+        figfile_suffix = r'std%g_ast%g'%(config_gcm['SPPT']['std_sppt'],config_algo['advance_split_time_phys'])
+        measure_plot_score_distribution(config_algo, algs, dirdict, filedict, reference='dns', figfile_suffix=figfile_suffix, overwrite_reference=True)
     return 
 
 def teams_single_procedure(i_expt):
@@ -391,7 +451,7 @@ def teams_single_procedure(i_expt):
         plot_observable_spaghetti(config_analysis, alg, dirdict, filedict)
         # TODO have another ancestor-wise version, and another that shows family lines improving in parallel and dropping out
     if tododict['analysis']['score_distribution']:
-        measure_plot_score_distribution(config_algo, [alg], dirdict, filedict, expt_label, overwrite_flag=False)
+        measure_plot_score_distribution(config_algo, [alg], dirdict, filedict, expt_label, overwrite_reference=False)
     if tododict['analysis']['scorrelation']:
         plot_scorrelations(config_analysis, alg, dirdict, filedict, expt_label)
     return
@@ -420,7 +480,11 @@ if __name__ == "__main__":
         for i_expt in idx_expt:
             teams_single_procedure(i_expt)
     elif procedure == 'meta':
-        teams_meta_procedure(idx_expt)
+        idx_seed = list(range(8))
+        i_sigma = 0
+        i_slm = 0
+        for i_delta in range(4):
+            teams_meta_procedure_1param_multiseed(i_sigma,i_delta,i_slm,idx_seed)
 
 
 

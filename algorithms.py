@@ -1343,7 +1343,6 @@ class TEAMS(EnsembleAlgorithm):
         # DNS, with equal-cost errorbars to compare to single DNS runs
         sf2rt = lambda sf: utils.convert_sf_to_rtime(sf, returnstats['time_horizon_effective'])
         hdns, = ax.plot(sf2rt(ccdf_dns), bin_edges[:-1], marker='.', color='black', label=r'DNS (cost %.1E)'%(cost_dns))
-        ax.fill_betweenx(bin_edges[:-1], sf2rt(ccdf_dns_pooled_lower), sf2rt(ccdf_dns_pooled_upper), fc='gray', ec='none', zorder=-1, alpha=0.5)
         for i_alg,alg in enumerate(algs):
             # Initialization
             hinit_sep, = ax.plot(sf2rt(ccdfs_init[i_alg]),bin_edges[:-1],color='dodgerblue',linestyle='-',linewidth=1,alpha=0.5,label=r'Init')

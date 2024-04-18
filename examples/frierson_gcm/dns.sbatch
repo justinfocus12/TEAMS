@@ -2,11 +2,11 @@
 
 #SBATCH -n 4
 #SBATCH -N 1
-#SBATCH -t 0-10:00
+#SBATCH -t 0-08:00
 #SBATCH -p sched_mit_hill
-#SBATCH -e /net/bstor002.ib/pog/001/ju26596/TEAMS/logs/error_%A_%a.out
-#SBATCH -o /net/bstor002.ib/pog/001/ju26596/TEAMS/logs/output_%A_%a.out
-#SBATCH --mem-per-cpu=3GB
+#SBATCH -e /net/bstor002.ib/pog/001/ju26596/TEAMS/logs/dns_error_%A_%a.out
+#SBATCH -o /dev/null
+#SBATCH --mem-per-cpu=10GB
 
 module load anaconda3/2021.11
 source activate teamsenv

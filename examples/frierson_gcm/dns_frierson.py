@@ -59,8 +59,8 @@ def print_comp_proc(compproc):
 def dns_multiparams():
     seed_incs = [0]
     sigmas = [0.0,0.01,0.1,0.3,0.5]
-    taus = [tau_hrs * 3600 for tau_hrs in [6,24,96]]
-    Ls = [L_km * 1000 for L_km in [500,2000]]
+    taus = [tau_hrs * 3600 for tau_hrs in [6]]
+    Ls = [L_km * 1000 for L_km in [500]]
     return seed_incs,sigmas,taus,Ls
 
 def dns_paramset(i_expt):
@@ -72,7 +72,7 @@ def dns_paramset(i_expt):
     seed_inc,std_sppt,tau_sppt,L_sppt = (multiparams[i][i_param] for (i,i_param) in enumerate(idx_multiparam))
 
     expt_label = r'SPPT, $\sigma=%g$, $\tau=%g$ h, $L=%g$ km'%(std_sppt,tau_sppt/3600,L_sppt/1000)
-    expt_abbrv = r'SPPT_std%g_tau%gh_L%gkm'%(std_sppt,tau_sppt/3600,L_sppt/1000)
+    expt_abbrv = (r'SPPT_std%g_tau%gh_L%gkm'%(std_sppt,tau_sppt/3600,L_sppt/1000)).replace('.','p')
 
     config_gcm['outputs_per_day'] = 4
     config_gcm['pert_type'] = 'SPPT'
@@ -280,7 +280,6 @@ def run_dns(dirdict,filedict,config_gcm,config_algo):
         ens = Ensemble(gcm, root_dir=root_dir)
         alg = algorithms_frierson.FriersonGCMDirectNumericalSimulation(config_algo, ens)
     alg.ens.dynsys.set_nproc(nproc)
-    nmem = alg.ens.get_nmem()
     while not (alg.terminate):
         mem = alg.ens.get_nmem()
         print(f'----------- Starting member {mem} ----------------')

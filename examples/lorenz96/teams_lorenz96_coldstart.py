@@ -57,7 +57,7 @@ print(f'{i = }'); i += 1
 
 def teams_multiparams():
     # Random seed
-    seed_incs = list(range(32)) 
+    seed_incs = list(range(64)) 
     # Physical
     F4s = [0.25,0.5,1.0,3.0]
     # Algorithmic
