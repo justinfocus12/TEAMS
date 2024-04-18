@@ -128,16 +128,13 @@ def teams_single_workflow(i_expt):
     dirdict['data'] = join(dirdict['expt'], 'data')
     dirdict['analysis'] = join(dirdict['expt'], 'analysis')
     dirdict['plots'] = join(dirdict['expt'], 'plots')
-    print(f'Before makedirs')
     for dirname in ('data','analysis','plots'):
         makedirs(dirdict[dirname], exist_ok=True)
-    print(f'After makedirs')
     filedict = dict()
     filedict['alg'] = join(dirdict['data'], 'alg.pickle')
     filedict['alg_backup'] = join(dirdict['data'], 'alg_backup.pickle')
     filedict['dns'] = join(scratch_dir,'2024-04-12/0',param_abbrv_sde,'DNS_si0','data','alg.pickle')
 
-    print(f'Finished setting up workflow')
     return config_sde,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict
 
 def plot_observable_spaghetti(config_analysis, config_algo, alg, dirdict, filedict):
@@ -287,7 +284,7 @@ def measure_score_distribution(config_algo, algs, dirdict, filedict, figfile_suf
         })
     # TODO compute skill by various metrics
 
-    np.savez(join(dirdict['analysis'],'returnstats.npz'), **returnstats)
+    np.savez(join(dirdict['analysis'],r'returnstats_%s.npz'%(figfile_suffix)), **returnstats)
 
     # ---------------------------- Plot ----------------------------
     # 3 columns: (0) all separate TEAMS results, (1) pooled TEAMS results, (2) GEV estimates
@@ -452,8 +449,8 @@ def teams_meta_procedure_1param_multiseed(i_F4,i_delta,idx_seed,overwrite_dns=Fa
     # Do meta-analysis
     if tododict['score_distribution']:
         print(f'About to measure score distribution')
-        figfile_suffix = (r'meta_F%g_ast%g'%(multiparams[1][i_F4],multiparams[2][i_delta])).replace('.','p')
-        measure_score_distribution(config_algo, algs, dirdict, filedict, figfile_suffix, overwrite_dns=overwrite_dns)
+        param_suffix = (r'F%g_ast%g'%(multiparams[1][i_F4],multiparams[2][i_delta])).replace('.','p')
+        measure_score_distribution(config_algo, algs, dirdict, filedict, param_suffix, overwrite_dns=overwrite_dns)
     return
 
 def teams_meta_procedure_1forcing_multilead(i_F4,idx_delta,idx_seed):
@@ -461,8 +458,13 @@ def teams_meta_procedure_1forcing_multilead(i_F4,idx_delta,idx_seed):
     date_str = "2024-04-12"
     sub_date_str = "2"
     multiparams = teams_multiparams()
-    returnstats = []
+    seed_incs,F4s,deltas = multiparams
+    kldiv_pooled = np.zeros(len(idx_delta))
+    x2div_pooled = np.zeros(len(idx_delta))
+    kldiv_sep = np.zeros((len(idx_seed),len(idx_delta)))
+    x2div_sep = np.zeros((len(idx_seed),len(idx_delta)))
     for i_delta in idx_delta:
+        param_suffix = (r'F%g_ast%g'%(F4s[i_F4],deltas[i_delta])).replace('.','p')
         idx_multiparam = [(i_seed,i_F4,i_delta) for i_seed in idx_seed]
         idx_expt = []
         for i_multiparam in idx_multiparam:
@@ -475,25 +477,64 @@ def teams_meta_procedure_1forcing_multilead(i_F4,idx_delta,idx_seed):
         config_sde = configs_sde[0]
         config_algo = configs_algo[0]
         param_abbrv_sde,param_label_sde = lorenz96.Lorenz96SDE.label_from_config(config_sde)
-        returnstats_file = join(scratch_dir,date_str,sub_date_str,param_abbrv_sde,'meta','analysis','returnstats.npz')
-        returnstats.append(np.load(returnstats_file))
+        returnstats_file = join(scratch_dir,date_str,sub_date_str,param_abbrv_sde,'meta','analysis','returnstats_%s.npz'%(param_suffix))
+        print(f'{returnstats_file = }')
+        returnstats = np.load(returnstats_file)
+        print(f'{returnstats["hist_fin_wted"] = }')
         # Calculate the integrated error metrics 
+        kldiv_pooled[i_delta],kldiv_sep[:,i_delta],x2div_pooled[i_delta],x2div_sep[:,i_delta] = compute_integrated_returnstats_error_metrics(returnstats)
+
+    plot_dir = join(
+            '/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/2024-04-12/2',
+            param_abbrv_sde,
+            'meta',
+            'plots')
+
+    # Plot 
+    fig,ax = plt.subplots()
+    deltas = np.array([multiparams[2][i] for i in idx_delta])
+    ax.plot(deltas,kldiv_pooled,color='black',label='Pooled')
+    ax.plot(deltas,kldiv_sep.mean(axis=0),color='red',label='Mean over runs')
+    ax.set_title('KL divergence')
+    ax.set_xlabel(r'$\delta$')
+    fig.savefig(join(plot_dir,'kldiv.png'),**pltkwargs)
+    plt.close(fig)
+    fig,ax = plt.subplots()
+    ax.plot(deltas,x2div_pooled,color='black',label='Pooled')
+    ax.plot(deltas,x2div_sep.mean(axis=0),color='red',label='Mean over runs')
+    ax.set_title(r'$\chi^2$ divergence')
+    ax.set_xlabel(r'$\delta$')
+    fig.savefig(join(plot_dir,'x2div.png'),**pltkwargs)
+    plt.close(fig)
 
     return
 
-def compute_integrated_score_metrics(returnstats):
+def compute_integrated_returnstats_error_metrics(returnstats):
     # -------- F-divergences --------
-    hist_dns = returnstats['hist_dns']
-    hist_teams = returnstats['hist_fin_wted']
+    hist_dns = returnstats['hist_dns'] / np.sum(returnstats['hist_dns'])
+    hist_teams = returnstats['hist_fin_wted'] / np.sum(returnstats['hist_fin_wted'])
+    hists_teams = np.diag(1/np.sum(returnstats['hists_fin_wted'], axis=1)) @ returnstats['hists_fin_wted'] 
+    nalgs = len(hists_teams)
     nzidx_dns = np.where(hist_dns > 0)[0]
+    # Pooled
     nzidx_teams = np.where(hist_teams > 0)[0]
     nzidx_both = np.intersect1d(nzidx_dns, nzidx_teams)
-    # KL divergence
-    kldiv = np.sum(hist_dns[nzidx_both] * np.log(hist_dns[nzidx_both] / hist_teams[nzidx_both]))
-    # Chi-square divergence
-    x2div = np.sum((hist_dns[nzidx_dns] - hist_teams[nzidx_dns])**2 / hist_dns[nzidx_dns])
+    kldiv_pooled = np.sum(hist_dns[nzidx_both] * np.log(hist_dns[nzidx_both] / hist_teams[nzidx_both]))
+    x2div_pooled = np.sum((hist_dns[nzidx_dns] - hist_teams[nzidx_dns])**2 / hist_dns[nzidx_dns])
+    # Separate
+    kldiv_sep = np.zeros(nalgs)
+    x2div_sep = np.zeros(nalgs)
+    for i_alg in range(nalgs):
+        nzidx_teams = np.where(hists_teams[i_alg] > 0)[0]
+        nzidx_both = np.intersect1d(nzidx_dns, nzidx_teams)
+        kldiv_sep[i_alg] = np.sum(hist_dns[nzidx_both] * np.log(hist_dns[nzidx_both] / hists_teams[i_alg,nzidx_both]))
+        x2div_sep[i_alg] = np.sum((hist_dns[nzidx_dns] - hists_teams[i_alg,nzidx_dns])**2 / hist_dns[nzidx_dns])
+    return kldiv_pooled,kldiv_sep,x2div_pooled,x2div_sep
+
+
+
     # ----------- L2 metrics ----------
-    return
+    return kldiv,x2div
 
 
 if __name__ == "__main__":
@@ -525,9 +566,12 @@ if __name__ == "__main__":
             teams_single_procedure(i_expt)
     elif procedure == 'meta':
         idx_seed = list(range(64))
-        i_F4 = int(sys.argv[2])
-        for i_delta in range(11):
-            teams_meta_procedure_1param_multiseed(i_F4,i_delta,idx_seed,overwrite_dns=False)
+        idx_F4 = [int(arg) for arg in sys.argv[2:]]
+        idx_delta = np.arange(11)
+        for i_F4 in idx_F4:
+            #for i_delta in idx_delta:
+            #    teams_meta_procedure_1param_multiseed(i_F4,i_delta,idx_seed,overwrite_dns=False)
+            teams_meta_procedure_1forcing_multilead(i_F4,idx_delta,idx_seed)
 
 
 
