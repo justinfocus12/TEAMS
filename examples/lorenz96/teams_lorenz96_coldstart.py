@@ -285,7 +285,7 @@ def measure_score_distribution(config_algo, algs, dirdict, filedict, figfile_suf
         'cost_dns': cost_dns,
         'time_horizon_effective': config_algo['time_horizon_phys'] - config_algo['advance_split_time_max_phys'],
         })
-    # TODO compute skill
+    # TODO compute skill by various metrics
 
     np.savez(join(dirdict['analysis'],'returnstats.npz'), **returnstats)
 
@@ -412,7 +412,7 @@ def teams_single_procedure(i_expt):
     return
 
 
-def teams_meta_procedure_1param_multiseed(i_F4,i_delta,idx_seed): # Just different seeds for now
+def teams_meta_procedure_1param_multiseed(i_F4,i_delta,idx_seed,overwrite_dns=False): # Just different seeds for now
     tododict = dict({
         'score_distribution': 1,
         })
@@ -435,7 +435,7 @@ def teams_meta_procedure_1param_multiseed(i_F4,i_delta,idx_seed): # Just differe
     # Set up a meta-dirdict 
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/"
     date_str = "2024-04-12"
-    sub_date_str = "0"
+    sub_date_str = "2"
     dirdict = dict()
     dirdict['meta'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_sde, 'meta')
     dirdict['data'] = join(dirdict['meta'], 'data')
@@ -453,13 +453,13 @@ def teams_meta_procedure_1param_multiseed(i_F4,i_delta,idx_seed): # Just differe
     if tododict['score_distribution']:
         print(f'About to measure score distribution')
         figfile_suffix = (r'meta_F%g_ast%g'%(multiparams[1][i_F4],multiparams[2][i_delta])).replace('.','p')
-        measure_score_distribution(config_algo, algs, dirdict, filedict, figfile_suffix, overwrite_dns=True)
+        measure_score_distribution(config_algo, algs, dirdict, filedict, figfile_suffix, overwrite_dns=overwrite_dns)
     return
 
 def teams_meta_procedure_1forcing_multilead(i_F4,idx_delta,idx_seed):
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/"
     date_str = "2024-04-12"
-    sub_date_str = "0"
+    sub_date_str = "2"
     multiparams = teams_multiparams()
     returnstats = []
     for i_delta in idx_delta:
@@ -492,6 +492,7 @@ def compute_integrated_score_metrics(returnstats):
     kldiv = np.sum(hist_dns[nzidx_both] * np.log(hist_dns[nzidx_both] / hist_teams[nzidx_both]))
     # Chi-square divergence
     x2div = np.sum((hist_dns[nzidx_dns] - hist_teams[nzidx_dns])**2 / hist_dns[nzidx_dns])
+    # ----------- L2 metrics ----------
     return
 
 
@@ -523,10 +524,10 @@ if __name__ == "__main__":
         for i_expt in idx_expt:
             teams_single_procedure(i_expt)
     elif procedure == 'meta':
-        idx_seed = list(range(56))
+        idx_seed = list(range(64))
         i_F4 = int(sys.argv[2])
         for i_delta in range(11):
-            teams_meta_procedure_1param_multiseed(i_F4,i_delta,idx_seed)
+            teams_meta_procedure_1param_multiseed(i_F4,i_delta,idx_seed,overwrite_dns=False)
 
 
 

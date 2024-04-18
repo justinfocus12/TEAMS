@@ -294,6 +294,7 @@ def plot_scorrelations(config_analysis, alg, dirdict, filedict, expt_label):
 
 def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, reference='dns', figfile_suffix='', overwrite_reference=False):
     # Three histograms: initial population, weighted, and unweighted
+    tu = algs[0].ens.dynsys.dt_save
     if reference == 'buick':
         scmax_buick_file = join(dirdict['analysis'],'scmax_buick.npz')
         if (not exists(scmax_buick_file)) or overwrite_reference:
@@ -326,19 +327,24 @@ def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, refere
             mems_dns = list(range(dns.ens.get_nmem()))
             print(f'{mems_dns = }')
             # TODO conctenate before taking score_dombined
-            score_fun = lambda ds: algs[0].score_combined(algs[0].score_components(ds['time'].to_numpy(),ds))
+            score_comp = lambda ds: algs[0].score_components(ds['time'].to_numpy(),ds)
             lonroll = lambda ds,dlon: ds.roll(lon=int(round(dlon/ds['lon'][:2].diff('lon').item())))
-            score_funs_rolled = [lambda ds: score_fun(lonroll(ds,dlon)) for dlon in [0,30,60,90,120,150,180,210,240,270,300,330]][:1]
-            tu = algs[0].ens.dynsys.dt_save
-            print(f'{tu = }')
-            scdns = []
+            dlons = range(0,360,10) #[0,30,60,90,120,150,180,210,240,270,300,330]
+            score_comp_rolled = [lambda ds,dlon=dlon: score_comp(lonroll(ds,dlon)) for dlon in dlons]
+            sccomp = []
             for mem in mems_dns:
-                scdns.append(np.array(dns.ens.compute_observables(score_funs_rolled, mem)))
-            scdns = np.concatenate(scdns, axis=1)[0,int(spinup_phys/tu):]
-            scmax_ref = utils.compute_block_maxima(scdns, algs[0].time_horizon-max(algs[0].advance_split_time_max, (algs[0].score_params['components']['rainrate']['tavg']-1)))
-            print(f'{scdns[:10] = }')
-            print(f'{np.where(np.isnan(scdns)) = }')
-            print(f'{scdns.shape = }')
+                sccomp.append(dns.ens.compute_observables(score_comp_rolled,mem))
+            scmax_alllon = []
+            for i_lon in range(len(dlons)): 
+                sccomp_ilon = xr.concat((sccomp[mem][i_lon] for mem in mems_dns), dim='time') 
+                score_ilon = algs[0].score_combined(sccomp_ilon)[int(spinup_phys/tu):]
+                scmax_ilon = utils.compute_block_maxima(score_ilon, algs[0].time_horizon-max(algs[0].advance_split_time_max, (algs[0].score_params['components']['rainrate']['tavg']-1)))
+                print(f'At lonroll {dlons[i_lon]}: {scmax_ilon[:5] = }')
+                scmax_alllon.append(scmax_ilon)
+            scmax_ref = np.concatenate(scmax_alllon)
+
+            print(f'{scmax_ref[:10] = }')
+            print(f'{scmax_ref.shape = }')
             np.savez(scmax_dns_file, scmax=scmax_ref)
         else:
             scmax_ref = np.load(scmax_dns_file)['scmax']
@@ -408,7 +414,7 @@ def teams_meta_procedure_1param_multiseed(i_sigma,i_delta,i_slm,idx_seed): # Jus
     
     filedict = dict({
         'angel': filedicts[0]['angel'],
-        'dns': '/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/2024-03-26/0/abs1_resT21_pertSPPT_std0p3_clip2_tau6h_L500km/DNS_si0/data/alg.pickle',
+        'dns': '/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/2024-04-04/0/abs1_resT21_pertSPPT_std0p3_clip2_tau6h_L500km/DNS_si0/data/alg.pickle',
         })
     config_analysis = configs_analysis[0]
     param_abbrv_gcm,param_label_gcm = frierson_gcm.FriersonGCM.label_from_config(config_gcm)
@@ -437,10 +443,10 @@ def teams_single_procedure(i_expt):
     tododict = dict({
         'run':             0,
         'analysis': dict({
-            'observable_spaghetti':     0,
-            'score_distribution':       1,
+            'observable_spaghetti':     1,
+            'score_distribution':       0,
             'scorrelation':             0,
-            'fields_2d':                0,
+            'fields_2d':                1,
             }),
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = teams_single_workflow(i_expt)
