@@ -1224,7 +1224,7 @@ class TEAMS(EnsembleAlgorithm):
         return fig, axes
     # ------------------------ Analysis functions -------------------
     @staticmethod
-    def measure_plot_score_distribution(config_algo, algs, scmax_dns, returnstats_file, figfile, alpha=0.1, overwrite_dns=False, param_display=''):
+    def measure_plot_score_distribution(config_algo, algs, scmax_dns, returnstats_file, figfile, alpha=0.1, param_display=''):
         N_dns = len(scmax_dns)
         # ---------------- Calculate TEAMS statistics -------------------
         #Iterate through alg objects first to collect scores and define bin edges
@@ -1244,6 +1244,8 @@ class TEAMS(EnsembleAlgorithm):
         hist_dns,_ = np.histogram(scmax_dns, bins=bin_edges, density=False)
         # Now put the scores from separate runs into thi scommon set of bins
         hists_init,hists_fin_unif,hists_fin_wted,ccdfs_init,ccdfs_fin_unif,ccdfs_fin_wted = (np.zeros((len(algs),len(bin_edges)-1)) for i in range(6))
+        boost_family_mean = np.zeros(len(algs))
+        boost_population = np.zeros(len(algs))
         for i_alg,alg in enumerate(algs):
             hists_init[i_alg],_ = np.histogram(scmaxs[i_alg][:alg.population_size], bins=bin_edges, density=False)
             hists_fin_unif[i_alg],_ = np.histogram(scmaxs[i_alg], bins=bin_edges, density=False)
@@ -1251,6 +1253,12 @@ class TEAMS(EnsembleAlgorithm):
             ccdfs_init[i_alg] = utils.pmf2ccdf(hists_init[i_alg],bin_edges)
             ccdfs_fin_wted[i_alg] = utils.pmf2ccdf(hists_fin_wted[i_alg],bin_edges)
             ccdfs_fin_unif[i_alg] = utils.pmf2ccdf(hists_fin_unif[i_alg],bin_edges)
+            # Calculate gains
+            A = nx.adjacency_matrix(alg.ens.memgraph)[:alg.population_size,:].toarray()
+            boosts = A * alg.branching_state['scores_max'] - alg.branching_state['scores_max']
+            maxboosts = np.max(boosts,axis=1)
+            boost_family_mean[i_alg] = np.mean(maxboosts)
+            boost_population[i_alg] = np.max(maxboosts)
         hist_init = np.sum(hists_init, axis=0)
         hist_fin_unif = np.sum(hists_fin_unif, axis=0)
         hist_fin_wted = np.sum(hists_fin_wted, axis=0)
@@ -1293,6 +1301,8 @@ class TEAMS(EnsembleAlgorithm):
             'ccdfs_init': ccdfs_init,
             'ccdfs_fin_wted': ccdf_fin_wted,
             'ccdfs_fin_unif': ccdf_fin_unif,
+            'boost_family_mean': boost_family_mean,
+            'boost_population': boost_population,
             # Pooled TEAMS runs
             'hist_init': hist_init,
             'hist_fin_wted': hist_fin_wted,

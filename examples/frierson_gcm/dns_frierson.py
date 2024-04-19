@@ -86,7 +86,7 @@ def dns_paramset(i_expt):
         'seed_max': 100000,
         'seed_inc_init': seed_inc, # will be added to seed_min
         'max_member_duration_phys': 100.0,
-        'num_chunks_max': 70,
+        'num_chunks_max': 100,
         })
 
     return config_gcm,config_algo,expt_label,expt_abbrv
@@ -109,6 +109,13 @@ def dns_single_workflow(i_expt):
     # Fields to visualize 
     # 2D snapshots
     config_analysis['fields_lonlatdep'] = dict({
+        'r_sppt_g': dict({
+            'fun': frierson_gcm.FriersonGCM.r_sppt_g,
+            'roi': None,
+            'cmap': 'coolwarm',
+            'label': r'$r_{\mathrm{SPPT}}$',
+            'abbrv': 'RSPPT',
+            }),
         'rain': dict({
             'fun': frierson_gcm.FriersonGCM.total_rain,
             'roi': None,

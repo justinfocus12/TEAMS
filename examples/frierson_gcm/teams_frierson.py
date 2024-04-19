@@ -217,24 +217,29 @@ def plot_observable_spaghetti(config_analysis, alg, dirdict, filedict):
     tu = alg.ens.dynsys.dt_save
     desc_per_anc = np.array([len(list(nx.descendants(alg.ens.memgraph,ancestor))) for ancestor in range(alg.population_size)])
     anc_scores = alg.branching_state['scores_max'][:alg.population_size]
-    #order = np.argsort(desc_per_anc)[::-1]
-    order = np.argsort(anc_scores[::-1])
-    ancs2plot = order[:6]
+    # Select some ancestors to plot based on two criteria: (1) largest ancestral scores, (2) largest child scores
+    order_ancscores = np.argsort(anc_scores)[::-1]
+    A = nx.adjacency_matrix(alg.ens.memgraph)[:alg.population_size,:].toarray()
+    desc_scores = A * alg.branching_state['scores_max']
+    order_descscores = np.argsort(np.max(desc_scores,axis=1))[::-1]
+    ancs2plot = np.concatenate((order_ancscores[:4], order_descscores[:4]))
+    rank_labels = [f'ancrank{i}' for i in range(4)] + [f'descrank{i}' for i in range(4)]
     angel = pickle.load(open(filedict['angel'],'rb'))
     for (obs_name,obs_props) in config_analysis['observables'].items():
         is_score = (obs_name == 'local_dayavg_rain')
-        if is_score:
+        if True or is_score:
             obs_fun = lambda ds: obs_props['fun'](ds, **obs_props['kwargs'])
-            for ancestor in ancs2plot:
-                outfile = join(dirdict['plots'], r'spaghetti_%s_anc%d.png'%(obs_props['abbrv'],ancestor))
+            for i_ancestor,ancestor in enumerate(ancs2plot):
+                outfile = join(dirdict['plots'], r'spaghetti_%s_%s_anc%d.png'%(obs_props['abbrv'],rank_labels[i_ancestor],ancestor))
                 landmark_label = {'lmx': 'local max', 'gmx': 'global max', 'thx': 'threshold crossing'}[alg.split_landmark]
                 title = r'%s ($\delta=%g$ before %s)'%(obs_props['label'],alg.advance_split_time*tu,landmark_label)
                 fig,axes = alg.plot_observable_spaghetti(obs_fun, ancestor, outfile=None, title=title, is_score=is_score)
-                # Add a line for the Buick
-                mem_buick = next(angel.ens.memgraph.successors(angel.branching_state['generation_0'][ancestor]))
-                obs_buick = angel.ens.compute_observables([obs_fun], mem_buick)[0][:alg.time_horizon]
-                hbuick, = axes[0].plot((np.arange(len(obs_buick))+1)*tu, obs_buick, color='gray', linewidth=3, linestyle='--', zorder=-1, label='Buick')
-                if is_score: axes[1].axhline(np.nanmax(obs_buick), color='gray')
+                if False:
+                    # Add a line for the Buick
+                    mem_buick = next(angel.ens.memgraph.successors(angel.branching_state['generation_0'][ancestor]))
+                    obs_buick = angel.ens.compute_observables([obs_fun], mem_buick)[0][:alg.time_horizon]
+                    hbuick, = axes[0].plot((np.arange(len(obs_buick))+1)*tu, obs_buick, color='gray', linewidth=3, linestyle='--', zorder=-1, label='Buick')
+                    if is_score: axes[1].axhline(np.nanmax(obs_buick), color='gray')
                 fig.savefig(outfile, **pltkwargs)
                 plt.close(fig)
                 print(f'{outfile = }')
@@ -292,7 +297,7 @@ def plot_scorrelations(config_analysis, alg, dirdict, filedict, expt_label):
     return
 
 
-def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, reference='dns', figfile_suffix='', overwrite_reference=False):
+def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, reference='dns', param_suffix='', overwrite_reference=False):
     # Three histograms: initial population, weighted, and unweighted
     tu = algs[0].ens.dynsys.dt_save
     if reference == 'buick':
@@ -349,8 +354,8 @@ def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, refere
         else:
             scmax_ref = np.load(scmax_dns_file)['scmax']
 
-    returnstats_file = join(dirdict['analysis'],'returnstats.npz')
-    figfile = join(dirdict['plots'],r'returnstats_%s.png'%(figfile_suffix))
+    returnstats_file = join(dirdict['analysis'],'returnstats_%s.npz'%(param_suffix))
+    figfile = join(dirdict['plots'],r'returnstats_%s.png'%(param_suffix))
     param_display = '\n'.join([
         r'$\sigma=%g$'%(algs[0].ens.dynsys.config['SPPT']['std_sppt']),
         r'$\delta=%g$'%(config_algo['advance_split_time_phys']),
@@ -394,7 +399,7 @@ def run_teams(dirdict,filedict,config_gcm,config_algo):
     return
 
 
-def teams_meta_procedure_1param_multiseed(i_sigma,i_delta,i_slm,idx_seed): # Just different seeds for now
+def teams_meta_procedure_1param_multiseed(i_sigma,i_delta,i_slm,idx_seed,overwrite_reference=False): # Just different seeds for now
     tododict = dict({
         'score_distribution': 1,
         })
@@ -434,14 +439,14 @@ def teams_meta_procedure_1param_multiseed(i_sigma,i_delta,i_slm,idx_seed): # Jus
     for i_alg in range(len(workflows)):
         algs.append(pickle.load(open(filedicts[i_alg]['alg'],'rb')))
     if tododict['score_distribution']:
-        figfile_suffix = r'std%g_ast%g'%(config_gcm['SPPT']['std_sppt'],config_algo['advance_split_time_phys'])
-        measure_plot_score_distribution(config_algo, algs, dirdict, filedict, reference='dns', figfile_suffix=figfile_suffix, overwrite_reference=True)
+        param_suffix = r'std%g_ast%g'%(config_gcm['SPPT']['std_sppt'],config_algo['advance_split_time_phys'])
+        measure_plot_score_distribution(config_algo, algs, dirdict, filedict, reference='dns', param_suffix=param_suffix, overwrite_reference=overwrite_reference)
     return 
 
 def teams_single_procedure(i_expt):
 
     tododict = dict({
-        'run':             1,
+        'run':             0,
         'analysis': dict({
             'observable_spaghetti':     1,
             'score_distribution':       0,

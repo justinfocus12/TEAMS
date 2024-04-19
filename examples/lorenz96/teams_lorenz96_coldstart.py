@@ -157,7 +157,7 @@ def plot_observable_spaghetti(config_analysis, config_algo, alg, dirdict, filedi
     return
 
 
-def measure_score_distribution(config_algo, algs, dirdict, filedict, figfile_suffix, alpha=0.1, overwrite_dns=False):
+def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, param_suffix, alpha=0.1, overwrite_dns=False):
     print(f'Measuring score distribution')
     # TODO overlay the angel distribution on top 
     # Three histograms: initial population, weighted, and unweighted
@@ -190,6 +190,15 @@ def measure_score_distribution(config_algo, algs, dirdict, filedict, figfile_suf
     N_dns = len(scmax_dns)
 
     # ---------------- Calculate TEAMS statistics -------------------
+    returnstats_file = join(dirdict['analysis'],r'returnstats_%s.npz'%(param_suffix))
+    figfile = join(dirdict['plots'],r'returnstats_%s.png'%(param_suffix))
+    delta_phys = config_algo['advance_split_time_phys']
+    F4 = algs[0].ens.dynsys.config['frc']['white']['wavenumber_magnitudes'][0]
+    param_display = '\n'.join([
+        r'$\delta=%g$'%(delta_phys),
+        r'$F_4=%g$'%(F4),
+        ])
+    algorithms_lorenz96.Lorenz96TEAMS.measure_plot_score_distribution(config_algo, algs, scmax_dns, returnstats_file, figfile, param_display=param_display)
     #Iterate through alg objects first to collect scores and define bin edges
     sclim = [np.min(scmax_dns),np.max(scmax_dns)]
     scmaxs,logws,mults = ([] for i in range(3))
@@ -205,8 +214,11 @@ def measure_score_distribution(config_algo, algs, dirdict, filedict, figfile_suf
         sclim[0],sclim[1] = min(sclim[0],np.min(scmax)),max(sclim[1],np.max(scmax))
     bin_edges = np.linspace(sclim[0]-1e-10,sclim[1]+1e-10,16)
     hist_dns,_ = np.histogram(scmax_dns, bins=bin_edges, density=False)
-    # Now put the scores from separate runs into thi scommon set of bins
+    # Now put the scores from separate runs into this common set of bins
     hists_init,hists_fin_unif,hists_fin_wted,ccdfs_init,ccdfs_fin_unif,ccdfs_fin_wted = (np.zeros((len(algs),len(bin_edges)-1)) for i in range(6))
+    boost_family_mean = np.zeros(len(algs))
+    boost_population = np.zeros(len(algs))
+
     for i_alg,alg in enumerate(algs):
         hists_init[i_alg],_ = np.histogram(scmaxs[i_alg][:alg.population_size], bins=bin_edges, density=False)
         hists_fin_unif[i_alg],_ = np.histogram(scmaxs[i_alg], bins=bin_edges, density=False)
@@ -214,6 +226,12 @@ def measure_score_distribution(config_algo, algs, dirdict, filedict, figfile_suf
         ccdfs_init[i_alg] = utils.pmf2ccdf(hists_init[i_alg],bin_edges)
         ccdfs_fin_wted[i_alg] = utils.pmf2ccdf(hists_fin_wted[i_alg],bin_edges)
         ccdfs_fin_unif[i_alg] = utils.pmf2ccdf(hists_fin_unif[i_alg],bin_edges)
+        # Calculate gains
+        A = nx.adjacency_matrix(alg.ens.memgraph)[:alg.population_size,:].array()
+        boosts = A * alg.branching_state['scores_max'] - alg.branching_state['scores_max']
+        maxboosts = np.max(boosts,axis=1)
+        boost_family_mean[i_alg] = np.mean(maxboosts)
+        boost_population[i_alg] = np.max(maxboosts)
     hist_init = np.sum(hists_init, axis=0)
     hist_fin_unif = np.sum(hists_fin_unif, axis=0)
     hist_fin_wted = np.sum(hists_fin_wted, axis=0)
@@ -256,6 +274,8 @@ def measure_score_distribution(config_algo, algs, dirdict, filedict, figfile_suf
         'ccdfs_init': ccdfs_init,
         'ccdfs_fin_wted': ccdf_fin_wted,
         'ccdfs_fin_unif': ccdf_fin_unif,
+        'boost_family_mean': boost_family_mean,
+        'boost_population': boost_population,
         # Pooled TEAMS runs
         'hist_init': hist_init,
         'hist_fin_wted': hist_fin_wted,
@@ -284,7 +304,7 @@ def measure_score_distribution(config_algo, algs, dirdict, filedict, figfile_suf
         })
     # TODO compute skill by various metrics
 
-    np.savez(join(dirdict['analysis'],r'returnstats_%s.npz'%(figfile_suffix)), **returnstats)
+    np.savez()
 
     # ---------------------------- Plot ----------------------------
     # 3 columns: (0) all separate TEAMS results, (1) pooled TEAMS results, (2) GEV estimates
@@ -390,10 +410,11 @@ def run_teams(dirdict,filedict,config_sde,config_algo):
 def teams_single_procedure(i_expt):
 
     tododict = dict({
-        'run':             1,
+        'run':             0,
         'analysis': dict({
-            'observable_spaghetti':     1,
-            'score_distribution':       0,
+            'observable_spaghetti':     0,
+            'hovmoller':                1,
+            'score_distribution':       1,
             }),
         })
     config_sde,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = teams_single_workflow(i_expt)
@@ -404,15 +425,15 @@ def teams_single_procedure(i_expt):
         plot_observable_spaghetti(config_analysis, config_algo, alg, dirdict, filedict)
         # TODO have another ancestor-wise version, and another that shows family lines improving in parallel and dropping out
     if tododict['analysis']['score_distribution']:
-        figfile_suffix = ''
-        measure_score_distribution(config_algo, [alg], dirdict, filedict, figfile_suffix, overwrite_dns=False, alpha=0.9)
+        param_suffix = ''
+        measure_score_distribution(config_algo, [alg], dirdict, filedict, param_suffix, overwrite_dns=False, alpha=0.9)
     return
 
 def meta_workflow_multiseed(i_F4,i_delta,idx_seed):
     return
 
 
-def teams_meta_procedure_1param_multiseed(i_F4,i_delta,idx_seed,overwrite_dns=False): # Just different seeds for now
+def teams_multiseed_procedure(i_F4,i_delta,idx_seed,overwrite_dns=False): # Just different seeds for now
     tododict = dict({
         'score_distribution': 1,
         })
@@ -456,7 +477,7 @@ def teams_meta_procedure_1param_multiseed(i_F4,i_delta,idx_seed,overwrite_dns=Fa
         measure_score_distribution(config_algo, algs, dirdict, filedict, param_suffix, overwrite_dns=overwrite_dns)
     return
 
-def teams_meta_procedure_1forcing_multilead(i_F4,idx_delta,idx_seed):
+def teams_multidelta_procedure(i_F4,idx_delta,idx_seed):
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/"
     date_str = "2024-04-12"
     sub_date_str = "2"
@@ -538,12 +559,16 @@ def compute_integrated_returnstats_error_metrics(returnstats):
 
 if __name__ == "__main__":
     print(f'Got into Main')
+    multiparams = teams_multiparams()
+    shp = tuple(len(mp) for mp in multiparams)
+    seed_incs,F4s,deltas_phys = multiparams
+    nseeds,nFs,ndeltas = shp
+    # The "procedure" argument determines how following arguments are interpreted
     if len(sys.argv) > 1:
         procedure = sys.argv[1]
     else:
         # This little section is for ad-hoc testing
         procedure = 'meta'
-        multiparams = teams_multiparams()
         idx_multiparam = [
                 (i_seed,i_F4,i_delta) 
                 for i_seed in range(0,4)
@@ -552,29 +577,27 @@ if __name__ == "__main__":
                 ]
         idx_expt = []
         for i_multiparam in idx_multiparam:
-            i_expt = np.ravel_multi_index(i_multiparam,tuple(len(mp) for mp in multiparams))
+            i_expt = np.ravel_multi_index(i_multiparam,shp)
             idx_expt.append(i_expt) #list(range(1,21))
     if procedure == 'single':
-        seed_incs,F4s,deltas_phys = teams_multiparams()
-        i_F4,i_delta = np.unravel_index(int(sys.argv[2]), (len(F4s),len(deltas_phys)))
+        i_F4,i_delta = np.unravel_index(int(sys.argv[2]), (nFs,ndeltas))
         idx_expt = [
                 np.ravel_multi_index((i_seed,i_F4,i_delta), (len(seed_incs),len(F4s),len(deltas_phys)))
                 for i_seed in range(len(seed_incs))
                 ]
         for i_expt in idx_expt:
             teams_single_procedure(i_expt)
-    elif procedure == 'meta_seed':
-        seed_incs,F4s,deltas_phys = teams_multiparams()
-        idx_seed = list(range(len(seed_incs)))
-        i_F4_delta = int(sys.argv[2])
-        i_F4,i_delta = np.unravel_index(i_F4_delta,(len(seed_incs),len(deltas_phys)))
-        teams_meta_procedure_1param_multiseed(i_F4,i_delta,idx_seed,overwrite_dns=False)
-    elif procedure == 'meta_seed_delta':
-        seed_incs,F4s,deltas_phys = teams_multiparams()
+    elif procedure == 'multiseed':
+        idx_seed = list(range(nseeds))
+        i_F4,i_delta = np.unravel_index(int(sys.argv[2]),(nFs,ndeltas))
+        teams_multiseed_procedure(i_F4,i_delta,idx_seed,overwrite_dns=False)
+    elif procedure == 'multidelta':
         i_F4 = int(sys.argv[2])
         idx_delta = list(range(len(deltas_phys)))
         idx_seed = list(range(len(seed_incs)))
-        teams_meta_procedure_1forcing_multilead(i_F4,idx_delta,idx_seed)
+        teams_multidelta_procedure(i_F4,idx_delta,idx_seed)
+    elif procedure == 'multiF':
+        # analyze all experiments together
 
 
 
