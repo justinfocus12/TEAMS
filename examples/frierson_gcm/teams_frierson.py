@@ -80,7 +80,7 @@ def teams_paramset(i_expt):
 
     config_algo = dict({
         'num_levels_max': 512-64, # This parameter shouldn't affect the filenaming or anything like that 
-        'num_members_max': 256,
+        'num_members_max': 512,
         'num_active_families_min': 2,
         'seed_min': 1000,
         'seed_max': 100000,
@@ -441,7 +441,7 @@ def teams_meta_procedure_1param_multiseed(i_sigma,i_delta,i_slm,idx_seed): # Jus
 def teams_single_procedure(i_expt):
 
     tododict = dict({
-        'run':             0,
+        'run':             1,
         'analysis': dict({
             'observable_spaghetti':     1,
             'score_distribution':       0,

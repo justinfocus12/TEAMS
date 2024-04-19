@@ -408,6 +408,9 @@ def teams_single_procedure(i_expt):
         measure_score_distribution(config_algo, [alg], dirdict, filedict, figfile_suffix, overwrite_dns=False, alpha=0.9)
     return
 
+def meta_workflow_multiseed(i_F4,i_delta,idx_seed):
+    return
+
 
 def teams_meta_procedure_1param_multiseed(i_F4,i_delta,idx_seed,overwrite_dns=False): # Just different seeds for now
     tododict = dict({
@@ -533,10 +536,6 @@ def compute_integrated_returnstats_error_metrics(returnstats):
 
 
 
-    # ----------- L2 metrics ----------
-    return kldiv,x2div
-
-
 if __name__ == "__main__":
     print(f'Got into Main')
     if len(sys.argv) > 1:
@@ -564,14 +563,18 @@ if __name__ == "__main__":
                 ]
         for i_expt in idx_expt:
             teams_single_procedure(i_expt)
-    elif procedure == 'meta':
-        idx_seed = list(range(64))
-        idx_F4 = [int(arg) for arg in sys.argv[2:]]
-        idx_delta = np.arange(11)
-        for i_F4 in idx_F4:
-            #for i_delta in idx_delta:
-            #    teams_meta_procedure_1param_multiseed(i_F4,i_delta,idx_seed,overwrite_dns=False)
-            teams_meta_procedure_1forcing_multilead(i_F4,idx_delta,idx_seed)
+    elif procedure == 'meta_seed':
+        seed_incs,F4s,deltas_phys = teams_multiparams()
+        idx_seed = list(range(len(seed_incs)))
+        i_F4_delta = int(sys.argv[2])
+        i_F4,i_delta = np.unravel_index(i_F4_delta,(len(seed_incs),len(deltas_phys)))
+        teams_meta_procedure_1param_multiseed(i_F4,i_delta,idx_seed,overwrite_dns=False)
+    elif procedure == 'meta_seed_delta':
+        seed_incs,F4s,deltas_phys = teams_multiparams()
+        i_F4 = int(sys.argv[2])
+        idx_delta = list(range(len(deltas_phys)))
+        idx_seed = list(range(len(seed_incs)))
+        teams_meta_procedure_1forcing_multilead(i_F4,idx_delta,idx_seed)
 
 
 

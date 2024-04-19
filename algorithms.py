@@ -958,7 +958,8 @@ class TEAMS(EnsembleAlgorithm):
         self.num2drop = config['num2drop']
         return
     def set_capacity(self, num_levels_max, num_members_max):
-        num_new_levels = num_levels_max - self.num_levels_max
+        print(f'Resetting cpacity; before, {self.terminate = }')
+        num_new_levels = num_levels_max - len(self.branching_state['score_levels'])
         num_new_members = num_members_max - self.ens.get_nmem()
         num_active_members = len(self.branching_state['members_active'])
         num_active_families = len(set((sorted(nx.ancestors(self.ens.memgraph, ma) | {ma}))[0] for ma in self.branching_state['members_active'])) 
@@ -971,6 +972,7 @@ class TEAMS(EnsembleAlgorithm):
             self.num_levels_max = num_levels_max
             self.num_members_max = num_members_max
             self.terminate = False
+        print(f'Resetting cpacity; after, {self.terminate = }')
         return
     def set_init_conds(self, init_times, init_conds):
         self.init_times = init_times
