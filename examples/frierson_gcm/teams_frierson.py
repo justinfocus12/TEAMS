@@ -8,7 +8,7 @@ import networkx as nx
 print(f'{i = }'); i += 1
 import xarray as xr
 print(f'{i = }'); i += 1
-from matplotlib import pyplot as plt, rcParams 
+from matplotlib import pyplot as plt, rcParams, gridspec
 print(f'{i = }'); i += 1
 rcParams.update({
     "font.family": "monospace",
@@ -203,6 +203,19 @@ def teams_single_workflow(i_expt):
                 ),
             'abbrv':  'R1day90x30',
             'label': 'Rain day-avg $(\phi,\lambda)=(45\pm15,180\pm45)$',
+            'cmap': 'Blues',
+            }),
+        'area_cwv_90x30': dict({
+            'fun': lambda ds: frierson_gcm.FriersonGCM.sel_from_roi(
+                frierson_gcm.FriersonGCM.column_water_vapor(ds),
+                dict(
+                    lat=slice(config_analysis['target_location']['lat']-15,config_analysis['target_location']['lat']+15),
+                    lon=slice(config_analysis['target_location']['lon']-45,config_analysis['target_location']['lon']+45),
+                    ),
+                ),
+            'abbrv': 'CWV90x30',
+            'label': r'Column water vapor $(\phi,\lambda)=(45\pm15,180\pm45)$',
+            'cmap': 'Blues',
             }),
         })
     
@@ -237,17 +250,76 @@ def plot_fields_2d(config_analysis, alg, dirdict, filedict, expt_label):
     anc_scores = alg.branching_state['scores_max'][:alg.population_size]
     # Select some ancestors to plot based on two criteria: (1) largest ancestral scores, (2) largest child scores
     order_ancscores = np.argsort(anc_scores)[::-1]
-    A = nx.adjacency_matrix(alg.ens.memgraph)[:alg.population_size,:].toarray()
-    desc_scores = A * alg.branching_state['scores_max']
-    order_descscores = np.argsort(np.max(desc_scores,axis=1))[::-1]
-    ancs2plot = np.concatenate((order_ancscores[:1], order_descscores[:1]))
-    rank_labels = [f'ancrank{i}' for i in range(1)] + [f'descrank{i}' for i in range(1)]
+    descendants = [list(sorted(nx.descendants(alg.ens.memgraph, anc))) for anc in range(alg.population_size)]
+    print(f'{descendants[0] = }')
+    # Get the best score of the ultimate descendant
+    desc_scores = []
+    max_desc_scores = []
+    for anc in range(alg.population_size):
+        desc_scores_anc = [alg.branching_state['scores_max'][d] for d in descendants[anc]]
+        desc_scores.append(desc_scores_anc)
+        max_desc_scores.append(-np.inf if len(desc_scores_anc)==0 else max(desc_scores_anc))
+    order_descscores = np.argsort(max_desc_scores)[::-1]
+    ancs2plot = np.concatenate((order_ancscores[:4], order_descscores[:4]))
     for (obs_name,obs_props) in config_analysis['fields_2d'].items():
         for i_ancestor,ancestor in enumerate(ancs2plot):
-            fig,axes = plt.subplots(nrows=2,figsize=(12,8))
-            # Top row: side-by-side ancestor and best descendant
-            # Bottom row: the two timeseries, with a vertical line indicating the time of the snapshot
-            plt.close(fig)
+            best_desc = descendants[ancestor][np.argmax(desc_scores[ancestor])]
+            lineage = list(sorted(nx.ancestors(alg.ens.memgraph, best_desc) | {best_desc}))
+            print(f'{lineage = }')
+            f_anc,f_desc = tuple(alg.ens.compute_observables([obs_props['fun']], mem)[0].compute() for mem in [lineage[0],lineage[-1]])
+            vmin,vmax = min((f.min().item() for f in (f_anc,f_desc))),max((f.max().item() for f in (f_anc,f_desc)))
+            score_lineage = tuple(alg.branching_state['scores_tdep'][mem] for mem in lineage)
+            tmx = alg.branching_state['scores_max_timing'][ancestor]
+            tbr = alg.branching_state['branch_times'][best_desc]
+            tinit,tfin = alg.ens.get_member_timespan(ancestor)
+
+            for time2plot in range(max(tmx-int(4/tu),tinit+1),tmx+int(3/tu)):
+                fig = plt.figure(tight_layout=True, figsize=(12,12))
+                gs = gridspec.GridSpec(3,2)
+                ax0 = fig.add_subplot(gs[0,0]) # Ancestor 2D field
+                ax1 = fig.add_subplot(gs[1,0]) # Descendant 2D field
+                ax2 = fig.add_subplot(gs[1,1]) # Descendant - Ancestor
+                # Bottom row: the two timeseries, with a vertical line indicating the time of the snapshot
+                ax3 = fig.add_subplot(gs[2,:]) # Timeseries of precip
+                # Ancestor
+                ax = ax0
+                xr.plot.pcolormesh(f_anc.isel(time=time2plot-tinit-1), x='lon', y='lat', cmap=obs_props['cmap'], ax=ax, vmin=vmin, vmax=vmax)
+                ax.set_xlabel('Lon')
+                ax.set_ylabel('Lat')
+                ax.set_title('Anc.')
+
+                # Descendant
+                ax = ax1
+                xr.plot.pcolormesh(f_desc.isel(time=time2plot-tinit-1), x='lon', y='lat', cmap=obs_props['cmap'], ax=ax, vmin=vmin, vmax=vmax)
+                ax.set_xlabel('Lon')
+                ax.set_ylabel('Lat')
+                ax.set_title('Desc.')
+
+                # Difference
+                ax = ax2
+                xr.plot.pcolormesh(f_desc.isel(time=time2plot-tinit-1)-f_anc.isel(time=time2plot-tinit-1), x='lon', y='lat', cmap=obs_props['cmap'], cbar_kwargs={'label': None}, ax=ax)
+                ax.set_xlabel('Lon')
+                ax.set_ylabel('Lat')
+                ax.set_title('Desc. - Anc.')
+
+                # Timeseries
+                ax = ax3
+                for i_mem,mem in enumerate(lineage):
+                    if i_mem == 0:
+                        linespecs = dict(color='black',linewidth=2,linestyle='--',label='Anc.')
+                    else:
+                        linespecs = dict(color=plt.cm.rainbow((i_mem+1)/len(lineage)),linewidth=1,linestyle='-')
+                    h, = ax.plot(np.arange(tinit+1,tfin+1)*tu, score_lineage[i_mem], **linespecs)
+                    tmx_mem = alg.branching_state['scores_max_timing'][mem]
+                    ax.scatter([tmx_mem], score_lineage[i_mem][tmx_mem-tbr], marker='o', color=linespecs['color'])
+                ax.axvline(tbr*tu, color='gray', linestyle='--')
+                ax.axvline(time2plot*tu, color='gray')
+                ax.set_ylabel(r'$R(X(t))$')
+
+                fig.suptitle(obs_props['label'])
+                fig.savefig(join(dirdict['plots'],r'fields_anc%d_%s_t%d'%(ancestor,obs_props['abbrv'],time2plot-tinit)), **pltkwargs)
+
+                plt.close(fig)
     return
 
 def plot_observable_spaghetti(config_analysis, alg, dirdict, filedict):
@@ -485,7 +557,7 @@ def teams_single_procedure(i_expt):
     tododict = dict({
         'run':             0,
         'analysis': dict({
-            'observable_spaghetti':     1,
+            'observable_spaghetti':     0,
             'score_distribution':       0,
             'scorrelation':             0,
             'fields_2d':                1,
