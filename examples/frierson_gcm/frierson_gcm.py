@@ -625,8 +625,9 @@ class FriersonGCM(DynamicalSystem):
 
 
     # --------------- Observable functions ---------------------
-    def compute_observables(self, obs_funs, metadata, root_dir):
+    def compute_observables(self, obs_funs, metadata, root_dir, compute=False):
         ds = xr.open_mfdataset(join(root_dir,metadata['filename_traj']), decode_times=False)
+        if compute: ds = ds.compute()
         obs = []
         for i_fun,fun in enumerate(obs_funs):
             obs.append(fun(ds)) #.compute())

@@ -53,10 +53,10 @@ class Ensemble(ABC):
         md1list = [self.traj_metadata[mem1] for mem1 in mem1list]
         return self.dynsys.compute_pairwise_observables(pair_funs, md0, md1list, self.root_dir)
         
-    def compute_observables(self, obs_funs, mem):
+    def compute_observables(self, obs_funs, mem, **kwargs):
         # args_dict and kwargs_dict should have a different value for each obs_name
         metadata = self.traj_metadata[mem]
-        return self.dynsys.compute_observables(obs_funs, metadata, self.root_dir)
+        return self.dynsys.compute_observables(obs_funs, metadata, self.root_dir, **kwargs)
 
     def compute_observables_along_lineage(self, obs_funs, mem_leaf, merge_as_scalars=False):
         mems = sorted(nx.ancestors(self.memgraph, mem_leaf) | {mem_leaf})
