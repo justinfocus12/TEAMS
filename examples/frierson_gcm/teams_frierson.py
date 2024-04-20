@@ -189,7 +189,25 @@ def teams_single_workflow(i_expt):
             }),
         })
     config_analysis['observables'] = observables
-    obs_names = list(observables.keys())
+    config_analysis['fields_2d'] = dict({
+        'area_rain_90x30': dict({
+            'fun': lambda ds: frierson_gcm.FriersonGCM.rolling_time_mean(
+                frierson_gcm.FriersonGCM.sel_from_roi(
+                    frierson_gcm.FriersonGCM.total_rain(ds),
+                    dict(
+                        lat=slice(config_analysis['target_location']['lat']-15,config_analysis['target_location']['lat']+15),
+                        lon=slice(config_analysis['target_location']['lon']-45,config_analysis['target_location']['lon']+45),
+                        ),
+                    ),
+                config_gcm['outputs_per_day'],
+                ),
+            'abbrv':  'R1day90x30',
+            'label': 'Rain day-avg $(\phi,\lambda)=(45\pm15,180\pm45)$',
+            }),
+        })
+    
+
+
     # Set up directories
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
     date_str = "2024-04-04"
@@ -212,6 +230,25 @@ def teams_single_workflow(i_expt):
     filedict['alg_backup'] = join(dirdict['data'], 'alg_backup.pickle')
 
     return config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict
+
+def plot_fields_2d(config_analysis, alg, dirdict, filedict, expt_label):
+    tu = alg.ens.dynsys.dt_save
+    desc_per_anc = np.array([len(list(nx.descendants(alg.ens.memgraph,ancestor))) for ancestor in range(alg.population_size)])
+    anc_scores = alg.branching_state['scores_max'][:alg.population_size]
+    # Select some ancestors to plot based on two criteria: (1) largest ancestral scores, (2) largest child scores
+    order_ancscores = np.argsort(anc_scores)[::-1]
+    A = nx.adjacency_matrix(alg.ens.memgraph)[:alg.population_size,:].toarray()
+    desc_scores = A * alg.branching_state['scores_max']
+    order_descscores = np.argsort(np.max(desc_scores,axis=1))[::-1]
+    ancs2plot = np.concatenate((order_ancscores[:1], order_descscores[:1]))
+    rank_labels = [f'ancrank{i}' for i in range(1)] + [f'descrank{i}' for i in range(1)]
+    for (obs_name,obs_props) in config_analysis['fields_2d'].items():
+        for i_ancestor,ancestor in enumerate(ancs2plot):
+            fig,axes = plt.subplots(nrows=2,figsize=(12,8))
+            # Top row: side-by-side ancestor and best descendant
+            # Bottom row: the two timeseries, with a vertical line indicating the time of the snapshot
+            plt.close(fig)
+    return
 
 def plot_observable_spaghetti(config_analysis, alg, dirdict, filedict):
     tu = alg.ens.dynsys.dt_save
@@ -465,6 +502,8 @@ def teams_single_procedure(i_expt):
         measure_plot_score_distribution(config_algo, [alg], dirdict, filedict, expt_label, overwrite_reference=False)
     if tododict['analysis']['scorrelation']:
         plot_scorrelations(config_analysis, alg, dirdict, filedict, expt_label)
+    if tododict['analysis']['fields_2d']:
+        plot_fields_2d(config_analysis, alg, dirdict, filedict, expt_label)
     return
 
 if __name__ == "__main__":

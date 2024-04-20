@@ -154,6 +154,12 @@ def dns_single_workflow(i_expt):
         })
     # Latitude-dependent fields, zonally symmetric
     config_analysis['fields_latdep'] = dict({
+        'u_500': dict({
+            'fun': frierson_gcm.FriersonGCM.zonal_velocity,
+            'roi': dict(pfull=500),
+            'abbrv': 'U500',
+            'label': r'Zon. Vel. ($p/p_s=0.5$) [m/s]',
+            }),
         'rain': dict({
             'fun': frierson_gcm.FriersonGCM.total_rain,
             'roi': None,
@@ -165,12 +171,6 @@ def dns_single_workflow(i_expt):
             'roi': dict(lat=slice(30,None)),
             'abbrv': 'Rlat30-90',
             'label': 'Rain (6h avg) [mm/day]',
-            }),
-        'u_500': dict({
-            'fun': frierson_gcm.FriersonGCM.zonal_velocity,
-            'roi': dict(pfull=500),
-            'abbrv': 'U500',
-            'label': r'Zon. Vel. ($p/p_s=0.5$) [m/s]',
             }),
         'temp_700': dict({
             'fun': frierson_gcm.FriersonGCM.temperature,
@@ -354,7 +354,7 @@ def compute_basic_stats(config_analysis, alg, dirdict):
     # Visualize zonal mean fields
     for (field_name,field_props) in config_analysis['fields_latdep'].items():
         print(f'Computing stats of {field_name}')
-        fun = lambda ds: frierson_gcm.FriersonGCM.sel_from_roi(field_props['fun'](ds), field_props['roi'])
+        fun = lambda ds: frierson_gcm.FriersonGCM.sel_from_roi(field_props['fun'](ds), field_props['roi']).compute() # TODO need to massively speed this up
         f = xr.concat(tuple(alg.ens.compute_observables([fun], mem)[0] for mem in mems2summarize), dim='time')
         print(f'{f.dims = }, {f.coords = }')
         moments = config_analysis['basic_stats']['moments']
@@ -362,7 +362,7 @@ def compute_basic_stats(config_analysis, alg, dirdict):
         for moment in moments:
             f_stats[r'moment%d'%(moment)] = np.power(f,moment).mean(dim=['time','lon'])
         quantiles = config_analysis['basic_stats']['quantiles']
-        f_stats['quantiles'] = f.quantile(quantiles, dim=['time','lon']) # TODO instead stack the longitudes and then take quantiles! 
+        f_stats['quantiles'] = f.quantile(quantiles, dim=['time','lon']) 
         f_stats = xr.Dataset(data_vars = f_stats)
         f_stats.to_netcdf(join(dirdict['analysis'], r'%s.nc'%(field_props['abbrv'])))
         # Plot 
