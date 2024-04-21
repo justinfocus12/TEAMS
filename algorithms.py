@@ -1224,6 +1224,55 @@ class TEAMS(EnsembleAlgorithm):
         return fig, axes
     # ------------------------ Analysis functions -------------------
     @staticmethod
+    def measure_plot_boost_distribution(config_algo, algs, figfile, alpha=0.1, param_display=''):
+        # Joint distributions of scores, and score timings, between ancestor and descendant
+        # ---------------- Calculate TEAMS statistics -------------------
+        #Iterate through alg objects first to collect scores and define bin edges
+        N = config_algo['population_size']
+        Nalg = len(algs)
+        Nanc = Nalg * N
+        sc_anc = np.zeros(Nanc)
+        desc = []
+        sc_desc = []
+        sclim = np.array([np.inf,-np.inf])
+        for i_alg,alg in enumerate(algs):
+            sclim[0] = min(sclim[0],np.min(alg.branching_state['scores_max']))
+            sclim[1] = max(sclim[1],np.max(alg.branching_state['scores_max']))
+            sc_anc[N*i_alg:N*(i_alg+1)] = alg.branching_state['scores_max'][:N]
+            for anc in range(N):
+                descendants = list(sorted(nx.descendants(alg.ens.memgraph, anc)))
+                desc.append(descendants)
+                sc_desc.append([alg.branching_state['scores_max'][d] for d in descendants])
+        print(f'{sc_desc[0] = }')
+        bins = np.linspace(sclim[0]-1e-10,sclim[1]+1e-10,30)
+        binwidth = bins[1] - bins[0]
+        anc2bin = ((sc_anc - bins[0])/binwidth).astype(int)
+        print(f'{anc2bin.shape = }')
+        # Determine quantiles to plot 
+        alphas = np.array([0.5,0.25])
+        lowers = np.nan*np.ones((len(alphas),len(bins)-1))
+        uppers = np.nan*np.ones((len(alphas),len(bins)-1))
+        means = np.zeros(len(bins)-1)
+        bidx2plot = []
+        for b in range(len(bins)-1):
+            ancs_b = np.where(anc2bin == b)[0]
+            if len(ancs_b) > 0:
+                bidx2plot.append(b)
+                desc_scores_b = np.concatenate(tuple(sc_desc[a] for a in ancs_b))
+                means[b] = np.mean(desc_scores_b)
+                for i_alpha,alpha in enumerate(alphas):
+                    if len(desc_scores_b) > 2/alpha:
+                        lowers[i_alpha,b] = np.quantile(desc_scores_b, alpha/2)
+                        uppers[i_alpha,b] = np.quantile(desc_scores_b, 1-alpha/2)
+        fig,ax = plt.subplots()
+        ax.plot(bins[bidx2plot]+binwidth/2, means[bidx2plot], color='black', linewidth=2, marker='o')
+        for i_alpha,alpha in enumerate(alphas):
+            ax.fill_between(bins[bidx2plot]+binwidth/2, lowers[i_alpha,bidx2plot],uppers[i_alpha,bidx2plot],color='gray',alpha=1-i_alpha/len(alphas),zorder=-i_alpha-1)
+        fig.savefig(figfile, **pltkwargs)
+        print(f'{figfile = }')
+        plt.close(fig)
+        
+    @staticmethod
     def measure_plot_score_distribution(config_algo, algs, scmax_dns, returnstats_file, figfile, alpha=0.1, param_display=''):
         N_dns = len(scmax_dns)
         # ---------------- Calculate TEAMS statistics -------------------

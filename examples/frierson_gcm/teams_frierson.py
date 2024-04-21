@@ -539,7 +539,8 @@ def run_teams(dirdict,filedict,config_gcm,config_algo):
 
 def teams_meta_procedure_1param_multiseed(i_sigma,i_delta,i_slm,idx_seed,overwrite_reference=False): # Just different seeds for now
     tododict = dict({
-        'score_distribution': 1,
+        'score_distribution': 0,
+        'boost_distribution': 1,
         })
     # Figure out which flat indices corresond to this set of seeds
     multiparams = teams_multiparams()
@@ -576,9 +577,12 @@ def teams_meta_procedure_1param_multiseed(i_sigma,i_delta,i_slm,idx_seed,overwri
     algs = []
     for i_alg in range(len(workflows)):
         algs.append(pickle.load(open(filedicts[i_alg]['alg'],'rb')))
+    param_suffix = r'std%g_ast%g'%(config_gcm['SPPT']['std_sppt'],config_algo['advance_split_time_phys'])
     if tododict['score_distribution']:
-        param_suffix = r'std%g_ast%g'%(config_gcm['SPPT']['std_sppt'],config_algo['advance_split_time_phys'])
         measure_plot_score_distribution(config_algo, algs, dirdict, filedict, reference='dns', param_suffix=param_suffix, overwrite_reference=overwrite_reference)
+    if tododict['boost_distribution']:
+        figfile = join(dirdict['plots'], (r'boost_distn_%s.png'%(param_suffix)).replace('.','p'))
+        algorithms_frierson.FriersonGCMTEAMS.measure_plot_boost_distribution(config_algo, algs, figfile)
     return 
 
 def teams_single_procedure(i_expt):
@@ -587,7 +591,7 @@ def teams_single_procedure(i_expt):
         'run':             0,
         'analysis': dict({
             'observable_spaghetti':     0,
-            'score_distribution':       0,
+            'score_distribution':       1,
             'scorrelation':             0,
             'fields_2d':                1,
             }),
@@ -600,7 +604,7 @@ def teams_single_procedure(i_expt):
         plot_observable_spaghetti(config_analysis, alg, dirdict, filedict)
         # TODO have another ancestor-wise version, and another that shows family lines improving in parallel and dropping out
     if tododict['analysis']['score_distribution']:
-        measure_plot_score_distribution(config_algo, [alg], dirdict, filedict, expt_label, overwrite_reference=False)
+        measure_plot_score_distribution(config_algo, [alg], dirdict, filedict, expt_label, overwrite_reference=True)
     if tododict['analysis']['scorrelation']:
         plot_scorrelations(config_analysis, alg, dirdict, filedict, expt_label)
     if tododict['analysis']['fields_2d']:
@@ -634,8 +638,8 @@ if __name__ == "__main__":
         idx_seed = list(range(8))
         i_sigma = 0
         i_slm = 0
-        for i_delta in range(4):
-            teams_meta_procedure_1param_multiseed(i_sigma,i_delta,i_slm,idx_seed)
+        i_delta = int(sys.argv[2])
+        teams_meta_procedure_1param_multiseed(i_sigma,i_delta,i_slm,idx_seed)
 
 
 
