@@ -472,7 +472,7 @@ def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, refere
             # TODO conctenate before taking score_dombined
             score_comp = lambda ds: algs[0].score_components(ds['time'].to_numpy(),ds)
             lonroll = lambda ds,dlon: ds.roll(lon=int(round(dlon/ds['lon'][:2].diff('lon').item())))
-            dlons = range(0,360,10) #[0,30,60,90,120,150,180,210,240,270,300,330]
+            dlons = range(0,360,20) #[0,30,60,90,120,150,180,210,240,270,300,330]
             score_comp_rolled = [lambda ds,dlon=dlon: score_comp(lonroll(ds,dlon)) for dlon in dlons]
             sccomp = []
             for mem in mems_dns:
@@ -577,11 +577,11 @@ def teams_meta_procedure_1param_multiseed(i_sigma,i_delta,i_slm,idx_seed,overwri
     algs = []
     for i_alg in range(len(workflows)):
         algs.append(pickle.load(open(filedicts[i_alg]['alg'],'rb')))
-    param_suffix = r'std%g_ast%g'%(config_gcm['SPPT']['std_sppt'],config_algo['advance_split_time_phys'])
+    param_suffix = (r'std%g_ast%g'%(config_gcm['SPPT']['std_sppt'],config_algo['advance_split_time_phys'])).replace('.','p')
     if tododict['score_distribution']:
         measure_plot_score_distribution(config_algo, algs, dirdict, filedict, reference='dns', param_suffix=param_suffix, overwrite_reference=overwrite_reference)
     if tododict['boost_distribution']:
-        figfile = join(dirdict['plots'], (r'boost_distn_%s.png'%(param_suffix)).replace('.','p'))
+        figfile = join(dirdict['plots'], r'boost_distn_%s.png'%(param_suffix))
         algorithms_frierson.FriersonGCMTEAMS.measure_plot_boost_distribution(config_algo, algs, figfile)
     return 
 
@@ -591,7 +591,6 @@ def teams_single_procedure(i_expt):
         'run':             0,
         'analysis': dict({
             'observable_spaghetti':     0,
-            'score_distribution':       1,
             'scorrelation':             0,
             'fields_2d':                1,
             }),
@@ -603,8 +602,6 @@ def teams_single_procedure(i_expt):
     if tododict['analysis']['observable_spaghetti']:
         plot_observable_spaghetti(config_analysis, alg, dirdict, filedict)
         # TODO have another ancestor-wise version, and another that shows family lines improving in parallel and dropping out
-    if tododict['analysis']['score_distribution']:
-        measure_plot_score_distribution(config_algo, [alg], dirdict, filedict, expt_label, overwrite_reference=True)
     if tododict['analysis']['scorrelation']:
         plot_scorrelations(config_analysis, alg, dirdict, filedict, expt_label)
     if tododict['analysis']['fields_2d']:
@@ -639,7 +636,7 @@ if __name__ == "__main__":
         i_sigma = 0
         i_slm = 0
         i_delta = int(sys.argv[2])
-        teams_meta_procedure_1param_multiseed(i_sigma,i_delta,i_slm,idx_seed)
+        teams_meta_procedure_1param_multiseed(i_sigma,i_delta,i_slm,idx_seed,overwrite_reference=True)
 
 
 

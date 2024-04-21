@@ -1230,44 +1230,57 @@ class TEAMS(EnsembleAlgorithm):
         #Iterate through alg objects first to collect scores and define bin edges
         N = config_algo['population_size']
         Nalg = len(algs)
-        Nanc = Nalg * N
-        sc_anc = np.zeros(Nanc)
-        desc = []
-        sc_desc = []
         sclim = np.array([np.inf,-np.inf])
+        sc_anc = [] # here 'ancestor' can include intermediates along the family tree
+        sc_desc = [] 
         for i_alg,alg in enumerate(algs):
             sclim[0] = min(sclim[0],np.min(alg.branching_state['scores_max']))
             sclim[1] = max(sclim[1],np.max(alg.branching_state['scores_max']))
-            sc_anc[N*i_alg:N*(i_alg+1)] = alg.branching_state['scores_max'][:N]
-            for anc in range(N):
-                descendants = list(sorted(nx.descendants(alg.ens.memgraph, anc)))
-                desc.append(descendants)
-                sc_desc.append([alg.branching_state['scores_max'][d] for d in descendants])
-        print(f'{sc_desc[0] = }')
+            # Compute everyone's descendants by raising the matrix to higher powers
+            A = nx.adjacency_matrix(alg.ens.memgraph)
+            B = np.zeros(A.shape)
+            while A.count_nonzero() > 0:
+                B += A
+                A = A @ A
+            sc_anc_new = list(alg.branching_state['scores_max'])
+            sc_desc_new = []
+            for anc in range(alg.ens.get_nmem()):
+                desc = np.where(B[anc,:] == 1)[0]
+                sc_desc_new.append(np.array([alg.branching_state['scores_max'][i] for i in desc]))
+            sc_anc += sc_anc_new
+            sc_desc += sc_desc_new
+            print(f'{len(sc_anc) = }')
+            print(f'{len(sc_desc) = }')
+        sc_anc = np.array(sc_anc)
         bins = np.linspace(sclim[0]-1e-10,sclim[1]+1e-10,30)
         binwidth = bins[1] - bins[0]
         anc2bin = ((sc_anc - bins[0])/binwidth).astype(int)
         print(f'{anc2bin.shape = }')
         # Determine quantiles to plot 
-        alphas = np.array([0.5,0.25])
+        alphas = np.array([0.5,0.25,0.1])
         lowers = np.nan*np.ones((len(alphas),len(bins)-1))
         uppers = np.nan*np.ones((len(alphas),len(bins)-1))
         means = np.zeros(len(bins)-1)
         bidx2plot = []
+        fig,ax = plt.subplots()
         for b in range(len(bins)-1):
             ancs_b = np.where(anc2bin == b)[0]
             if len(ancs_b) > 0:
+                print(f'{ancs_b.min() = }')
                 bidx2plot.append(b)
                 desc_scores_b = np.concatenate(tuple(sc_desc[a] for a in ancs_b))
+                ax.scatter(bins[b]+binwidth/2 * np.ones(len(desc_scores_b)), desc_scores_b, color='red', marker='.', zorder=2)
                 means[b] = np.mean(desc_scores_b)
                 for i_alpha,alpha in enumerate(alphas):
                     if len(desc_scores_b) > 2/alpha:
                         lowers[i_alpha,b] = np.quantile(desc_scores_b, alpha/2)
                         uppers[i_alpha,b] = np.quantile(desc_scores_b, 1-alpha/2)
-        fig,ax = plt.subplots()
         ax.plot(bins[bidx2plot]+binwidth/2, means[bidx2plot], color='black', linewidth=2, marker='o')
         for i_alpha,alpha in enumerate(alphas):
             ax.fill_between(bins[bidx2plot]+binwidth/2, lowers[i_alpha,bidx2plot],uppers[i_alpha,bidx2plot],color='gray',alpha=1-i_alpha/len(alphas),zorder=-i_alpha-1)
+        ax.set_xlabel('Ancestor score')
+        ax.set_ylabel('Descendant score')
+        ax.set_title(r'$\delta=%g$'%(config_algo['advance_split_time_phys']))
         fig.savefig(figfile, **pltkwargs)
         print(f'{figfile = }')
         plt.close(fig)
