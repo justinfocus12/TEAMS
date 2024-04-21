@@ -1223,6 +1223,14 @@ class TEAMS(EnsembleAlgorithm):
             plt.close(fig)
         return fig, axes
     # ------------------------ Analysis functions -------------------
+    def collect_ancdesc_pairs_byscore(self, anc_min, anc_max, desc_min, desc_max):
+        B = self.ens.construct_descent_matrix().tocsr()
+        scores = np.array(self.branching_state['scores_max'])
+        anc_flag = sps.diags((scores >= anc_min)*(scores < anc_max))
+        desc_flag = sps.diags((scores >= desc_min)*(scores < desc_max))
+        C = sps.diags(anc_flag) @ B @ sps.diags(desc_flag)
+        ancs,descs = C.nonzero()
+        return ancs,descs
     @staticmethod
     def measure_plot_boost_distribution(config_algo, algs, figfile, alpha=0.1, param_display=''):
         # TODO add a histogram of scores, and repeat this whole process for timings as well. This helps to diagnose how much delta is creating new maxima vs. building upon old ones 
@@ -1240,11 +1248,7 @@ class TEAMS(EnsembleAlgorithm):
             sclim[0] = min(sclim[0],np.min(alg.branching_state['scores_max']))
             sclim[1] = max(sclim[1],np.max(alg.branching_state['scores_max']))
             # Compute everyone's descendants by raising the matrix to higher powers
-            A = nx.adjacency_matrix(alg.ens.memgraph)
-            B = np.zeros(A.shape)
-            while A.count_nonzero() > 0:
-                B += A
-                A = A @ A
+            B = alg.ens.construct_descent_matrix().toarray()
             sc_anc_new = list(alg.branching_state['scores_max'])
             logw_anc_new = list(alg.branching_state['log_weights'])
             sc_desc_new = []

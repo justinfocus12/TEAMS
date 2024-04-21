@@ -221,6 +221,45 @@ class FriersonGCMTEAMS(algorithms.TEAMS):
             'frc': forcing.OccasionalReseedForcing(init_time, fin_time, reseed_times, seeds),
             })
         return icandf
+    @classmethod
+    def plot_boost_composites(algs, config_analysis, plotdir):
+        for i_alg,alg in enumerate(algs):
+            Bs.append(alg.ens.construct_descent_matrix().toarray() for alg in algs)
+            sc_all.append(np.array(alg.branching_state['scores_max']))
+        for boost_size in config_analysis['composites']['boost_sizes']:
+            for anc_score in config_analysis['composites']['anc_scores']:
+                anc_min = anc_score - config_analysis['composites']['score_tolerance']/2
+                anc_max = anc_score + config_analysis['composites']['score_tolerance']/2
+                desc_min = anc_min + boost_size
+                desc_max = anc_max + boost_size
+                for (field_name,field_props) in config_analysis['fields_2d']:
+                    fs_anc = []
+                    fs_desc = []
+                    fs_diff = []
+                    logw_anc = []
+                    logw_desc = []
+                    for i_alg,alg in enumerate(algs):
+                        ancs,descs = alg.collect_ancdesc_pairs_byscore(anc_min,anc_max,desc_min,desc_max)
+                        for (anc,desc) in zip(ancs,descs):
+                            f_anc_new,f_desc_new = tuple(alg.ens.compute_observables([field_props['fun']], mem, compute=True)[0] for mem in (anc,desc))
+                            fs_anc.append(f_anc_new)
+                            fs_desc.append(f_desc_new)
+                            # TODO
+
+                        logw_anc += [alg.branching_state['log_weights'][anc] for anc in ancs]
+                        logw_desc += [alg.branching_state['log_weights'][desc] for desc in descs]
+                    # Compute average 
+                    logw_anc = np.array(logw_anc)
+                    logw_anc -= logsumexp(logw_anc)
+                    logw_desc = np.array(logw_desc)
+                    logw_desc -= logsumexp(logw_desc)
+                    fs_anc = xr.concat(dim='member').assign_coords(member=
+
+
+
+
+
+
 
 class FriersonGCMITEAMS(algorithms.ITEAMS):
     @classmethod

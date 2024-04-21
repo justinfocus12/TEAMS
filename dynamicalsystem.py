@@ -104,13 +104,15 @@ class ODESystem(DynamicalSystem):
 
     @staticmethod
     def load_trajectory(metadata, root_dir, tspan=None):
-        traj = dict(np.load(join(root_dir,metadata['filename'])))
+        traj = np.load(join(root_dir,metadata['filename']))
+        t,x = traj['t'].copy(),traj['x'].copy()
+        traj.close()
         if tspan is not None:
             idx0 = np.where(traj['t'] == tspan[0])[0][0]
             idx1 = np.where(traj['t'] == tspan[1])[0][0]
-            traj['t'] = traj['t'][idx0:idx1+1]
-            traj['x'] = traj['x'][idx0:idx1+1]
-        return traj['t'],traj['x']
+            t = t[idx0:idx1+1]
+            x = x[idx0:idx1+1]
+        return t,x
 
     # These are driven by impulses only
     def timestep_rk4(self, t, x): # physical time units
@@ -438,12 +440,14 @@ class CoupledSystem(DynamicalSystem):
             })
         return md
     def load_trajectory(self, metadata, root_dir, tspan=None):
-        traj = dict(np.load(join(root_dir,metadata['filename'])))
+        traj = np.load(join(root_dir,metadata['filename']))
+        t,x,y = traj['t'].copy(),traj['x'].copy(),traj['y'].copy()
+        traj.close()
         if tspan is not None:
             idx0 = np.where(traj['t'] == tspan[0])[0][0]
             idx1 = np.where(traj['t'] == tspan[1])[0][0]
-            traj['t'] = traj['t'][idx0:idx1+1]
-            traj['x'] = traj['x'][idx0:idx1+1]
-            traj['y'] = traj['y'][idx0:idx1+1]
-        return traj['t'],traj['x'],traj['y']
+            t = t[idx0:idx1+1]
+            x = x[idx0:idx1+1]
+            y = y[idx0:idx1+1]
+        return t,x,y
 

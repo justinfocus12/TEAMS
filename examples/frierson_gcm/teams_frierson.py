@@ -583,6 +583,8 @@ def teams_meta_procedure_1param_multiseed(i_sigma,i_delta,i_slm,idx_seed,overwri
     if tododict['boost_distribution']:
         figfile = join(dirdict['plots'], r'boost_distn_%s.png'%(param_suffix))
         algorithms_frierson.FriersonGCMTEAMS.measure_plot_boost_distribution(config_algo, algs, figfile)
+    if tododict['boost_composites']:
+        algorithms_frierson.FriergonGCMTEAMS.plot_boost_composites(algs, boost_distn_file)
     return 
 
 def teams_single_procedure(i_expt):

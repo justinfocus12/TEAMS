@@ -71,6 +71,13 @@ class Ensemble(ABC):
             for i_fun in range(len(funs)):
                 obs_merged[i_fun][(tinit-t0):(tfin-t0)] = obs[i_mem][len(obs[i_mem])-1-(tfin-tinit):]
         return obs_merged
+    def construct_descent_matrix(self):
+        A = nx.adjacency_matrix(self.memgraph, dtype=bool)
+        B = sps.lil_matrix(A.shape, dtype=bool)
+        while A.count_nonzero() > 0:
+            B += A
+            A = A @ A
+        return B
 
 
 
