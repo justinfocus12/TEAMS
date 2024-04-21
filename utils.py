@@ -123,3 +123,14 @@ def compute_returnstats_and_histogram(f, time_block_size, bounds=None):
     logsf_gev,rtime_gev = gev_return_time(bin_edges[:-1],time_block_size,shape,loc,scale)
     return bin_edges[:-1], hist, rtime[idx], logsf[idx], rtime_gev, logsf_gev, shape, loc, scale
 
+
+def weighted_quantile(a, q, w, logscale=False):
+    order = np.argsort(a)
+    if logscale:
+        log_cumweight = np.logaddexp.accumulate(w[order])
+        i = np.argmax(log_cumweight - log_cumweight[-1] >= np.log(q))
+    else:
+        cumweight = np.cumsum(w[order])
+        i = np.argmax(cumweight >= q*cumweight[-1])
+    return a[order[i]]
+

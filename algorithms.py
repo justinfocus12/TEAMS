@@ -1225,6 +1225,7 @@ class TEAMS(EnsembleAlgorithm):
     # ------------------------ Analysis functions -------------------
     @staticmethod
     def measure_plot_boost_distribution(config_algo, algs, figfile, alpha=0.1, param_display=''):
+        # TODO add a histogram of scores, and repeat this whole process for timings as well. This helps to diagnose how much delta is creating new maxima vs. building upon old ones 
         # Joint distributions of scores, and score timings, between ancestor and descendant
         # ---------------- Calculate TEAMS statistics -------------------
         #Iterate through alg objects first to collect scores and define bin edges
@@ -1233,6 +1234,8 @@ class TEAMS(EnsembleAlgorithm):
         sclim = np.array([np.inf,-np.inf])
         sc_anc = [] # here 'ancestor' can include intermediates along the family tree
         sc_desc = [] 
+        logw_anc = []
+        logw_desc = [] # descendant weights
         for i_alg,alg in enumerate(algs):
             sclim[0] = min(sclim[0],np.min(alg.branching_state['scores_max']))
             sclim[1] = max(sclim[1],np.max(alg.branching_state['scores_max']))
@@ -1243,44 +1246,65 @@ class TEAMS(EnsembleAlgorithm):
                 B += A
                 A = A @ A
             sc_anc_new = list(alg.branching_state['scores_max'])
+            logw_anc_new = list(alg.branching_state['log_weights'])
             sc_desc_new = []
+            logw_desc_new = []
             for anc in range(alg.ens.get_nmem()):
                 desc = np.where(B[anc,:] == 1)[0]
                 sc_desc_new.append(np.array([alg.branching_state['scores_max'][i] for i in desc]))
+                logw_desc_new.append(np.array([alg.branching_state['log_weights'][i] for i in desc]))
             sc_anc += sc_anc_new
+            logw_anc += logw_anc_new
             sc_desc += sc_desc_new
-            print(f'{len(sc_anc) = }')
-            print(f'{len(sc_desc) = }')
+            logw_desc += logw_desc_new
         sc_anc = np.array(sc_anc)
+        logw_anc = np.array(logw_anc)
         bins = np.linspace(sclim[0]-1e-10,sclim[1]+1e-10,30)
         binwidth = bins[1] - bins[0]
         anc2bin = ((sc_anc - bins[0])/binwidth).astype(int)
         print(f'{anc2bin.shape = }')
         # Determine quantiles to plot 
         alphas = np.array([0.5,0.25,0.1])
-        lowers = np.nan*np.ones((len(alphas),len(bins)-1))
-        uppers = np.nan*np.ones((len(alphas),len(bins)-1))
-        means = np.zeros(len(bins)-1)
+        lowers_wted = np.nan*np.ones((len(alphas),len(bins)-1))
+        uppers_wted = np.nan*np.ones((len(alphas),len(bins)-1))
+        means_wted = np.nan*np.ones(len(bins)-1)
+        lowers_unif = np.nan*np.ones((len(alphas),len(bins)-1))
+        uppers_unif = np.nan*np.ones((len(alphas),len(bins)-1))
+        means_unif = np.nan*np.ones(len(bins)-1)
         bidx2plot = []
-        fig,ax = plt.subplots()
+        fig,axes = plt.subplots(ncols=2,figsize=(10,5))
         for b in range(len(bins)-1):
             ancs_b = np.where(anc2bin == b)[0]
             if len(ancs_b) > 0:
                 print(f'{ancs_b.min() = }')
                 bidx2plot.append(b)
-                desc_scores_b = np.concatenate(tuple(sc_desc[a] for a in ancs_b))
-                ax.scatter(bins[b]+binwidth/2 * np.ones(len(desc_scores_b)), desc_scores_b, color='red', marker='.', zorder=2)
-                means[b] = np.mean(desc_scores_b)
+                scores_b = np.concatenate([sc_anc[ancs_b]] + [sc_desc[a] for a in ancs_b])
+                logw_b = np.concatenate([logw_anc[ancs_b]] + [logw_desc[a] for a in ancs_b])
+                logw_b -= logsumexp(logw_b)
+                axes[0].scatter((bins[b]+binwidth/2) * np.ones(len(scores_b)), scores_b, color='red', marker='.', zorder=2, s=rcParams['lines.markersize'] ** 2 / 3 * np.exp(logw_b - max(logw_b)))
+                axes[1].scatter((bins[b]+binwidth/2) * np.ones(len(scores_b)), scores_b, color='red', marker='.', zorder=2, s=rcParams['lines.markersize'] ** 2 / 3)
+                print(f'{logw_b = }')
+                print(f'{scores_b = }')
+
+                means_wted[b] = np.exp(logsumexp(logw_b, b=scores_b) - logsumexp(logw_b))
+                means_unif[b] = np.mean(scores_b)
                 for i_alpha,alpha in enumerate(alphas):
-                    if len(desc_scores_b) > 2/alpha:
-                        lowers[i_alpha,b] = np.quantile(desc_scores_b, alpha/2)
-                        uppers[i_alpha,b] = np.quantile(desc_scores_b, 1-alpha/2)
-        ax.plot(bins[bidx2plot]+binwidth/2, means[bidx2plot], color='black', linewidth=2, marker='o')
+                    lowers_wted[i_alpha,b] = utils.weighted_quantile(scores_b, alpha/2, logw_b, logscale=True)
+                    uppers_wted[i_alpha,b] = utils.weighted_quantile(scores_b, 1-alpha/2, logw_b, logscale=True)
+                    lowers_unif[i_alpha,b] = np.quantile(scores_b, alpha/2)
+                    uppers_unif[i_alpha,b] = np.quantile(scores_b, 1-alpha/2)
+        axes[0].plot(bins[bidx2plot]+binwidth/2, means_wted[bidx2plot], color='black', linewidth=2, marker='o')
+        axes[1].plot(bins[bidx2plot]+binwidth/2, means_unif[bidx2plot], color='black', linewidth=2, marker='o')
         for i_alpha,alpha in enumerate(alphas):
-            ax.fill_between(bins[bidx2plot]+binwidth/2, lowers[i_alpha,bidx2plot],uppers[i_alpha,bidx2plot],color='gray',alpha=1-i_alpha/len(alphas),zorder=-i_alpha-1)
-        ax.set_xlabel('Ancestor score')
-        ax.set_ylabel('Descendant score')
-        ax.set_title(r'$\delta=%g$'%(config_algo['advance_split_time_phys']))
+            axes[0].fill_between(bins[bidx2plot]+binwidth/2, lowers_wted[i_alpha,bidx2plot],uppers_wted[i_alpha,bidx2plot],color='gray',alpha=1-i_alpha/len(alphas),zorder=-i_alpha-1)
+            axes[1].fill_between(bins[bidx2plot]+binwidth/2, lowers_unif[i_alpha,bidx2plot],uppers_unif[i_alpha,bidx2plot],color='gray',alpha=1-i_alpha/len(alphas),zorder=-i_alpha-1)
+        for ax in axes:
+            ax.axline((0,0),slope=1,color='black',linestyle='--')
+            ax.set_xlabel('Ancestor score')
+            ax.set_ylabel('Descendant score')
+        axes[0].set_title('Weighted')
+        axes[1].set_title('Unweighted')
+        fig.suptitle(r'$\delta=%g$'%(config_algo['advance_split_time_phys']))
         fig.savefig(figfile, **pltkwargs)
         print(f'{figfile = }')
         plt.close(fig)
