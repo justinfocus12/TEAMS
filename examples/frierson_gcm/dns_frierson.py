@@ -109,47 +109,53 @@ def dns_single_workflow(i_expt):
     # Fields to visualize 
     # 2D snapshots
     config_analysis['fields_lonlatdep'] = dict({
-        'r_sppt_g': dict({
-            'fun': frierson_gcm.FriersonGCM.r_sppt_g,
-            'roi': None,
-            'cmap': 'coolwarm',
-            'label': r'$r_{\mathrm{SPPT}}$',
-            'abbrv': 'RSPPT',
-            }),
         'rain': dict({
-            'fun': frierson_gcm.FriersonGCM.total_rain,
-            'roi': None,
-            'cmap': 'Blues',
-            'label': 'Rain',
-            'abbrv': 'R',
-            }),
-        'rain_extratropical': dict({
-            'fun': frierson_gcm.FriersonGCM.total_rain,
+            'fun': lambda ds: frierson_gcm.FriersonGCM.rolling_time_mean(
+                frierson_gcm.FriersonGCM.sel_from_roi(
+                    frierson_gcm.FriersonGCM.total_rain(ds),
+                    dict(lat=slice(30,None)),
+                    ),
+                config_gcm['outputs_per_day'],
+                ),
             'roi': dict(lat=slice(30,None)),
             'cmap': 'Blues',
-            'label': 'Rain',
-            'abbrv': 'Rlat30-90',
+            'label': '1-day rain [mm]',
+            'abbrv': 'R1daylat30-90',
+            }),
+        'column_water_vapor': dict({
+            'fun': frierson_gcm.FriersonGCM.column_water_vapor,
+            'roi': dict(lat=slice(30,None)),
+            'cmap': 'Blues',
+            'label': r'Col. Water Vapor [kg/m$^2$]',
+            'abbrv': 'CWVlat30-90',
+            }),
+        'r_sppt_g': dict({
+            'fun': frierson_gcm.FriersonGCM.r_sppt_g,
+            'roi': dict(lat=slice(30,None)),
+            'cmap': 'coolwarm',
+            'label': r'$r_{\mathrm{SPPT}}$',
+            'abbrv': 'RSPPTlat30-90',
             }),
         'temp_700': dict({
             'fun': frierson_gcm.FriersonGCM.temperature,
-            'roi': dict(pfull=700),
+            'roi': dict(pfull=700,lat=slice(30,None)),
             'cmap': 'Reds',
-            'label': 'Temp ($p/p_s=0.7$)',
-            'abbrv': 'T700',
+            'label': 'Temp [K] ($p/p_s=0.7$)',
+            'abbrv': 'T700lat30-90',
             }),
         'u_500': dict({
             'fun': frierson_gcm.FriersonGCM.zonal_velocity,
-            'roi': dict(pfull=500),
+            'roi': dict(pfull=500,lat=slice(30,None)),
             'cmap': 'coolwarm',
-            'label': 'Zon. Vel. ($p/p_s=0.5$)',
-            'abbrv': 'U500',
+            'label': 'Zon. Vel. [m/s] ($p/p_s=0.5$)',
+            'abbrv': 'U500lat30-90',
             }),
         'surface_pressure': dict({
             'fun': frierson_gcm.FriersonGCM.surface_pressure,
-            'roi': None,
+            'roi': dict(lat=slice(30,None)),
             'cmap': 'coolwarm',
-            'label': 'Surf. Pres.',
-            'abbrv': 'PS',
+            'label': 'Surf. Pres. [Pa]',
+            'abbrv': 'PSlat30-90',
             }),
         })
     # Latitude-dependent fields, zonally symmetric
@@ -217,24 +223,47 @@ def dns_single_workflow(i_expt):
 
     # Scalar observables to plot timeseries of 
     config_analysis['observables'] = dict({
+        'local_ps': dict({
+            'fun': lambda ds: frierson_gcm.FriersonGCM.sel_from_roi(
+                frierson_gcm.FriersonGCM.surface_pressure(ds),
+                config_analysis['target_location']
+                ),
+            'abbrv': 'PSloc',
+            'label': r'Surf. Pres. [Pa] $(\phi,\lambda)=(45,180)$',
+            'kwargs': dict(),
+            }),
+        'local_rsppt': dict({
+            'fun': lambda ds: frierson_gcm.FriersonGCM.sel_from_roi(
+                frierson_gcm.FriersonGCM.r_sppt_g(ds),
+                config_analysis['target_location']
+                ),
+            'abbrv': 'RSPPTloc',
+            'label': r'$r_{\mathrm{SPPT}} (\phi,\lambda)=(45,180)$',
+            'kwargs': dict(),
+            }),
         'local_rain': dict({
-            'fun': frierson_gcm.FriersonGCM.regional_rain,
-            'kwargs': dict({
-                'roi': config_analysis['target_location'],
-                }),
-            'abbrv': 'Rloc',
-            'label': r'Rain rate $(\phi,\lambda)=(45,180)$',
+            'fun': lambda ds: frierson_gcm.FriersonGCM.rolling_time_mean(
+                frierson_gcm.FriersonGCM.regional_rain(ds, roi=config_analysis['target_location']),
+                config_gcm['outputs_per_day'],
+                ),
+            'kwargs': dict(), 
+            'abbrv': 'R1dayloc',
+            'label': r'1-day rain [mm] $(\phi,\lambda)=(45,180)$',
             }),
         'area_rain_60x20': dict({
-            'fun': frierson_gcm.FriersonGCM.regional_rain,
-            'kwargs': dict(
-                roi = dict({
-                    'lat': slice(config_analysis['target_location']['lat']-10,config_analysis['target_location']['lat']+10),
-                    'lon': slice(config_analysis['target_location']['lon']-30,config_analysis['target_location']['lon']+30),
-                    }),
+            'fun': lambda ds: frierson_gcm.FriersonGCM.rolling_time_mean(
+                frierson_gcm.FriersonGCM.regional_rain(
+                    ds, 
+                    roi = dict({
+                        'lat': slice(config_analysis['target_location']['lat']-10,config_analysis['target_location']['lat']+10),
+                        'lon': slice(config_analysis['target_location']['lon']-30,config_analysis['target_location']['lon']+30),
+                        }),
+                    ),
+                config_gcm['outputs_per_day'],
                 ),
-            'abbrv': 'R60x20',
-            'label': r'Rain rate $(\phi,\lambda)=(45\pm10,180\pm30)$',
+            'kwargs': dict(),
+            'abbrv': 'R1day60x20',
+            'label': r'1-day rain [mm/day] $(\phi,\lambda)=(45\pm10,180\pm30)$',
             }),
         'local_cwv': dict({
             'fun': frierson_gcm.FriersonGCM.regional_cwv,
@@ -307,16 +336,22 @@ def plot_snapshots(config_analysis, alg, dirdict):
     time_block_size = int(config_analysis['time_block_size_phys']/tu)
     all_starts,all_ends = alg.ens.get_all_timespans()
     mem = np.where(all_starts >= spinup)[0][0]
-    print(f'{spinup = }, {mem = }')
+    print(f'{spinup = }, {mem = }, {all_starts[mem]=}')
     for (field_name,field_props) in config_analysis['fields_lonlatdep'].items():
-        fig,ax = plt.subplots()
-        field = frierson_gcm.FriersonGCM.sel_from_roi(alg.ens.compute_observables([field_props['fun']], mem)[0], field_props['roi'])
-        xr.plot.pcolormesh(field.isel(time=0), x='lon', y='lat', cmap=field_props['cmap'], ax=ax)
-        ax.set_title(field_props['label'])
-        ax.set_xlabel('Longitude')
-        ax.set_ylabel('Latitude')
-        fig.savefig(join(dirdict['plots'],r'%s_t%g.png'%(field_props['abbrv'],all_starts[mem]*tu)), **pltkwargs)
-        plt.close(fig)
+        fun = lambda ds: frierson_gcm.FriersonGCM.sel_from_roi(field_props['fun'](ds), field_props['roi']).isel(dict(time=np.arange(3,100,step=4)))
+        field = alg.ens.compute_observables([fun], mem, compute=True)[0]
+        vmin,vmax = field.min().item(), field.max().item()
+        for i_time in range(field.time.size):
+            t = field['time'].isel(time=i_time).item()
+            print(f'Plotting field {field_name}, time {t}')
+            fig,ax = plt.subplots(figsize=(9,3))
+            xr.plot.pcolormesh(field.isel(time=i_time), x='lon', y='lat', cmap=field_props['cmap'], vmin=vmin, vmax=vmax, ax=ax, cbar_kwargs={'label': None})
+            ax.set_title(r'%s ($t=%.2f$ days)'%(field_props['label'],t))
+            ax.set_xlabel('Longitude')
+            ax.set_ylabel('Latitude')
+            time_abbrv = (r't%g'%(t)).replace('.','p')
+            fig.savefig(join(dirdict['plots'],r'%s_%s.png'%(field_props['abbrv'],time_abbrv)), **pltkwargs)
+            plt.close(fig)
     return
 
 def plot_timeseries(config_analysis, alg, dirdict):
@@ -623,11 +658,11 @@ def dns_meta_procedure(idx_expt):
 
 def dns_single_procedure(i_expt):
     tododict = dict({
-        'run':                            1,
-        'plot_snapshots':                 1,
+        'run':                            0,
+        'plot_snapshots':                 0,
         'plot_timeseries':                1,
-        'compute_basic_stats':            1,
-        'compute_extreme_stats':          1,
+        'compute_basic_stats':            0,
+        'compute_extreme_stats':          0,
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = dns_single_workflow(i_expt)
 

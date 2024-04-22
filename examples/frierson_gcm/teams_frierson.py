@@ -598,9 +598,9 @@ def teams_single_procedure(i_expt):
     tododict = dict({
         'run':             0,
         'analysis': dict({
-            'observable_spaghetti':     0,
+            'observable_spaghetti':     1,
             'scorrelation':             0,
-            'fields_2d':                1,
+            'fields_2d':                0,
             }),
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = teams_single_workflow(i_expt)
@@ -635,7 +635,6 @@ if __name__ == "__main__":
         for i_multiparam in iseed_isigma_idelta_islm:
             i_expt = np.ravel_multi_index(i_multiparam,shp)
             idx_expt.append(i_expt)
-    print(f'Got into Main')
     if procedure == 'single':
         for i_expt in idx_expt:
             teams_single_procedure(i_expt)

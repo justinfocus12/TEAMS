@@ -259,6 +259,8 @@ class FriersonGCMTEAMS(algorithms.TEAMS):
                     logw_desc = np.array(logw_desc)
                     logw_desc -= logsumexp(logw_desc)
                     print(f'{logw_anc = }, {logw_desc = }')
+
+
                     f_mean_anc = (
                             xr.concat([fs_anc[i] * np.exp(logw_anc[i]) for i in range(len(fs_anc))], dim='member')
                             .assign_coords(member=np.arange(len(fs_anc)))
@@ -276,7 +278,10 @@ class FriersonGCMTEAMS(algorithms.TEAMS):
                             .sum(dim='member')
                             )
                     vmin,vmax = min(f_mean_anc.min().item(),f_mean_desc.min().item()),max(f_mean_anc.max().item(),f_mean_desc.max().item())
+                    vmax_std = max(np.abs(f_diff_mean).max().item(),f_diff_std.max().item())
+                    vmin_std = -vmax_std
 
+                    # ---------------- Plot averages ----------------
                     fig,axes = plt.subplots(ncols=2, nrows=2, figsize=(16,8), sharey=True, sharex=True)
                     ax = axes[0,0]
                     xr.plot.pcolormesh(f_mean_anc,x='lon',y='lat',cmap=field_props['cmap'],ax=ax,vmin=vmin,vmax=vmax,cbar_kwargs={'orientation': 'vertical','label': None})
@@ -285,10 +290,10 @@ class FriersonGCMTEAMS(algorithms.TEAMS):
                     xr.plot.pcolormesh(f_mean_desc,x='lon',y='lat',cmap=field_props['cmap'],ax=ax,vmin=vmin,vmax=vmax,cbar_kwargs={'orientation': 'vertical','label': None})
                     ax.set_title(r'Descendants (scores %g-%g)'%(desc_min,desc_max))
                     ax = axes[1,0]
-                    xr.plot.pcolormesh(f_diff_mean,x='lon',y='lat',cmap=field_props['cmap'],ax=ax,cbar_kwargs={'orientation': 'vertical','label': None})
+                    xr.plot.pcolormesh(f_diff_mean,x='lon',y='lat',cmap=field_props['cmap'],vmin=vmin_std,vmax=vmax_std,ax=ax,cbar_kwargs={'orientation': 'vertical','label': None})
                     ax.set_title("Mean diff.")
                     ax = axes[1,1]
-                    xr.plot.pcolormesh(f_diff_std,x='lon',y='lat',cmap=field_props['cmap'],ax=ax,cbar_kwargs={'orientation': 'vertical','label': None})
+                    xr.plot.pcolormesh(f_diff_std,x='lon',y='lat',cmap=field_props['cmap'],vmin=vmin_std,vmax=vmax_std,ax=ax,cbar_kwargs={'orientation': 'vertical','label': None})
                     ax.set_title("Std. diff.")
                     for ax in axes.flat:
                         ax.set(xlabel='',ylabel='')
@@ -296,6 +301,9 @@ class FriersonGCMTEAMS(algorithms.TEAMS):
                     figfile = (r'composite_boost%gplus%g_%s_%s'%(anc_score,boost_size,field_props['abbrv'],param_suffix)).replace('.','p')
                     fig.savefig(join(plotdir,r'%s.png'%(figfile)),**pltkwargs)
                     plt.close(fig)
+                    # -------------------------------------------------
+                    # ------------------ Plot samples ---------------
+
         return
 
 
