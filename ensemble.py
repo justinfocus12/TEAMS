@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 import numpy as np
+from scipy import sparse as sps
 import networkx as nx
 import pickle
 from os.path import join, exists

@@ -1226,9 +1226,9 @@ class TEAMS(EnsembleAlgorithm):
     def collect_ancdesc_pairs_byscore(self, anc_min, anc_max, desc_min, desc_max):
         B = self.ens.construct_descent_matrix().tocsr()
         scores = np.array(self.branching_state['scores_max'])
-        anc_flag = sps.diags((scores >= anc_min)*(scores < anc_max))
-        desc_flag = sps.diags((scores >= desc_min)*(scores < desc_max))
-        C = sps.diags(anc_flag) @ B @ sps.diags(desc_flag)
+        anc_flag = (scores >= anc_min)*(scores < anc_max)
+        desc_flag = (scores >= desc_min)*(scores < desc_max)
+        C = sps.diags(anc_flag, dtype=bool) @ B @ sps.diags(desc_flag, dtype=bool)
         ancs,descs = C.nonzero()
         return ancs,descs
     @staticmethod

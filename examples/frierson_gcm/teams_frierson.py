@@ -243,6 +243,11 @@ def teams_single_workflow(i_expt):
             'cmap': 'Blues',
             }),
         })
+    config_analysis['composites'] = dict({
+        'anc_scores': [20,30,40,50],
+        'boost_sizes': [15],
+        'score_tolerance': 5,
+        })
     
 
 
@@ -540,7 +545,8 @@ def run_teams(dirdict,filedict,config_gcm,config_algo):
 def teams_meta_procedure_1param_multiseed(i_sigma,i_delta,i_slm,idx_seed,overwrite_reference=False): # Just different seeds for now
     tododict = dict({
         'score_distribution': 0,
-        'boost_distribution': 1,
+        'boost_distribution': 0,
+        'boost_composites':   1,
         })
     # Figure out which flat indices corresond to this set of seeds
     multiparams = teams_multiparams()
@@ -584,7 +590,7 @@ def teams_meta_procedure_1param_multiseed(i_sigma,i_delta,i_slm,idx_seed,overwri
         figfile = join(dirdict['plots'], r'boost_distn_%s.png'%(param_suffix))
         algorithms_frierson.FriersonGCMTEAMS.measure_plot_boost_distribution(config_algo, algs, figfile)
     if tododict['boost_composites']:
-        algorithms_frierson.FriergonGCMTEAMS.plot_boost_composites(algs, boost_distn_file)
+        algorithms_frierson.FriersonGCMTEAMS.plot_boost_composites(algs, config_analysis, dirdict['plots'], param_suffix)
     return 
 
 def teams_single_procedure(i_expt):

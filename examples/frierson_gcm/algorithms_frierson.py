@@ -1,5 +1,6 @@
 import numpy as np
 from numpy.random import default_rng
+from scipy.special import logsumexp,softmax
 import xarray as xr
 from matplotlib import pyplot as plt, rcParams 
 rcParams.update({
@@ -221,39 +222,83 @@ class FriersonGCMTEAMS(algorithms.TEAMS):
             'frc': forcing.OccasionalReseedForcing(init_time, fin_time, reseed_times, seeds),
             })
         return icandf
-    @classmethod
-    def plot_boost_composites(algs, config_analysis, plotdir):
-        for i_alg,alg in enumerate(algs):
-            Bs.append(alg.ens.construct_descent_matrix().toarray() for alg in algs)
-            sc_all.append(np.array(alg.branching_state['scores_max']))
+    @staticmethod
+    def plot_boost_composites(algs, config_analysis, plotdir, param_suffix):
         for boost_size in config_analysis['composites']['boost_sizes']:
             for anc_score in config_analysis['composites']['anc_scores']:
                 anc_min = anc_score - config_analysis['composites']['score_tolerance']/2
                 anc_max = anc_score + config_analysis['composites']['score_tolerance']/2
                 desc_min = anc_min + boost_size
                 desc_max = anc_max + boost_size
-                for (field_name,field_props) in config_analysis['fields_2d']:
+                for (field_name,field_props) in config_analysis['fields_2d'].items():
                     fs_anc = []
                     fs_desc = []
-                    fs_diff = []
                     logw_anc = []
                     logw_desc = []
+                    print(f'--------------Compositing fields {field_name} ------------')
                     for i_alg,alg in enumerate(algs):
+                        print(f'{i_alg = }, {alg.ens.get_nmem() = }')
                         ancs,descs = alg.collect_ancdesc_pairs_byscore(anc_min,anc_max,desc_min,desc_max)
-                        for (anc,desc) in zip(ancs,descs):
-                            f_anc_new,f_desc_new = tuple(alg.ens.compute_observables([field_props['fun']], mem, compute=True)[0] for mem in (anc,desc))
-                            fs_anc.append(f_anc_new)
-                            fs_desc.append(f_desc_new)
-                            # TODO
-
-                        logw_anc += [alg.branching_state['log_weights'][anc] for anc in ancs]
-                        logw_desc += [alg.branching_state['log_weights'][desc] for desc in descs]
+                        print(f'{len(ancs) = }, {len(descs) = }')
+                        for i_mem,mem in enumerate(np.concatenate((ancs, descs))):
+                            print(f'{mem = }, {alg.branching_state["scores_max"][mem] = }')
+                            tinit,tfin = alg.ens.get_member_timespan(mem)
+                            tmx = alg.branching_state['scores_max_timing'][mem]
+                            fun = lambda ds: field_props['fun'](ds).isel(time=tmx-tinit-1,drop=True)
+                            f_new = alg.ens.compute_observables([fun], mem, compute=True)[0]
+                            logw_new = alg.branching_state['log_weights'][mem]
+                            if i_mem < len(ancs):
+                                fs_anc.append(f_new)
+                                logw_anc.append(logw_new)
+                            else:
+                                fs_desc.append(f_new)
+                                logw_desc.append(logw_new)
                     # Compute average 
                     logw_anc = np.array(logw_anc)
                     logw_anc -= logsumexp(logw_anc)
                     logw_desc = np.array(logw_desc)
                     logw_desc -= logsumexp(logw_desc)
-                    fs_anc = xr.concat(dim='member').assign_coords(member=
+                    print(f'{logw_anc = }, {logw_desc = }')
+                    f_mean_anc = (
+                            xr.concat([fs_anc[i] * np.exp(logw_anc[i]) for i in range(len(fs_anc))], dim='member')
+                            .assign_coords(member=np.arange(len(fs_anc)))
+                            .sum(dim='member')
+                            )
+                    f_mean_desc = (
+                            xr.concat([fs_desc[i] * np.exp(logw_desc[i]) for i in range(len(fs_desc))], dim='member')
+                            .assign_coords(member=np.arange(len(fs_desc)))
+                            .sum(dim='member')
+                            )
+                    f_diff_mean = f_mean_desc - f_mean_anc
+                    f_diff_std = np.sqrt(
+                            xr.concat([(fs_desc[i]-fs_anc[i]-f_diff_mean)**2 * np.exp(logw_desc[i]) for i in range(len(fs_desc))], dim='member')
+                            .assign_coords(member=np.arange(len(fs_desc)))
+                            .sum(dim='member')
+                            )
+                    vmin,vmax = min(f_mean_anc.min().item(),f_mean_desc.min().item()),max(f_mean_anc.max().item(),f_mean_desc.max().item())
+
+                    fig,axes = plt.subplots(ncols=2, nrows=2, figsize=(16,8), sharey=True, sharex=True)
+                    ax = axes[0,0]
+                    xr.plot.pcolormesh(f_mean_anc,x='lon',y='lat',cmap=field_props['cmap'],ax=ax,vmin=vmin,vmax=vmax,cbar_kwargs={'orientation': 'vertical','label': None})
+                    ax.set_title(r'Ancestors (scores %g-%g)'%(anc_min,anc_max))
+                    ax = axes[0,1]
+                    xr.plot.pcolormesh(f_mean_desc,x='lon',y='lat',cmap=field_props['cmap'],ax=ax,vmin=vmin,vmax=vmax,cbar_kwargs={'orientation': 'vertical','label': None})
+                    ax.set_title(r'Descendants (scores %g-%g)'%(desc_min,desc_max))
+                    ax = axes[1,0]
+                    xr.plot.pcolormesh(f_diff_mean,x='lon',y='lat',cmap=field_props['cmap'],ax=ax,cbar_kwargs={'orientation': 'vertical','label': None})
+                    ax.set_title("Mean diff.")
+                    ax = axes[1,1]
+                    xr.plot.pcolormesh(f_diff_std,x='lon',y='lat',cmap=field_props['cmap'],ax=ax,cbar_kwargs={'orientation': 'vertical','label': None})
+                    ax.set_title("Std. diff.")
+                    for ax in axes.flat:
+                        ax.set(xlabel='',ylabel='')
+                    fig.suptitle(r'%s composite (%d samples)'%(field_props['label'],len(fs_anc)),x=0.5, y=1.00, ha='center', va='bottom')
+                    figfile = (r'composite_boost%gplus%g_%s_%s'%(anc_score,boost_size,field_props['abbrv'],param_suffix)).replace('.','p')
+                    fig.savefig(join(plotdir,r'%s.png'%(figfile)),**pltkwargs)
+                    plt.close(fig)
+        return
+
+
 
 
 
