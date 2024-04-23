@@ -54,7 +54,7 @@ print(f'{i = }'); i += 1
 import algorithms_frierson; reload(algorithms_frierson)
 
 def teams_multiparams():
-    seed_incs = list(range(8))
+    seed_incs = list(range(16))
     sigmas = [0.3]
     deltas_phys = [0.0,6.0,8.0,10.0]
     split_landmarks = ['thx']
@@ -596,7 +596,7 @@ def teams_meta_procedure_1param_multiseed(i_sigma,i_delta,i_slm,idx_seed,overwri
 def teams_single_procedure(i_expt):
 
     tododict = dict({
-        'run':             0,
+        'run':             1,
         'analysis': dict({
             'observable_spaghetti':     1,
             'scorrelation':             0,
