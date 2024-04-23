@@ -1314,7 +1314,7 @@ class TEAMS(EnsembleAlgorithm):
         plt.close(fig)
         
     @staticmethod
-    def measure_plot_score_distribution(config_algo, algs, scmax_dns, returnstats_file, figfile, alpha=0.1, param_display=''):
+    def measure_plot_score_distribution(config_algo, algs, scmax_dns, returnstats_file, figfile, alpha=0.05, param_display=''):
         N_dns = len(scmax_dns)
         # ---------------- Calculate TEAMS statistics -------------------
         #Iterate through alg objects first to collect scores and define bin edges
