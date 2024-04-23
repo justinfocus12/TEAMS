@@ -300,6 +300,7 @@ def teams_multidelta_procedure(i_F4,idx_delta,idx_seed):
     x2div_pooled = np.zeros(len(idx_delta))
     kldiv_sep = np.zeros((len(idx_seed),len(idx_delta)))
     x2div_sep = np.zeros((len(idx_seed),len(idx_delta)))
+    boost_family_mean = np.zeros((len(idx_seed),len(idx_delta)))
     for i_delta in idx_delta:
         param_suffix = (r'F%g_ast%g'%(F4s[i_F4],deltas[i_delta])).replace('.','p')
         idx_multiparam = [(i_seed,i_F4,i_delta) for i_seed in idx_seed]
@@ -320,6 +321,8 @@ def teams_multidelta_procedure(i_F4,idx_delta,idx_seed):
         print(f'{returnstats["hist_fin_wted"] = }')
         # Calculate the integrated error metrics 
         kldiv_pooled[i_delta],kldiv_sep[:,i_delta],x2div_pooled[i_delta],x2div_sep[:,i_delta] = compute_integrated_returnstats_error_metrics(returnstats)
+        # Load the max-gains metrics
+        boost_family_mean[:,i_delta] = returnstats['boost_family_mean']
 
     plot_dir = join(
             '/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/2024-04-12/2',
@@ -330,9 +333,10 @@ def teams_multidelta_procedure(i_F4,idx_delta,idx_seed):
     # Plot 
     alphas = [0.5] # Sets the width of the band for KL divergence
     transparencies = [0.5,0.2]
-    fig,ax = plt.subplots()
     deltas = np.array([multiparams[2][i] for i in idx_delta])
     print(f'{x2div_sep[:,2] = }')
+
+    # ------------ Plot X2-divergence ------------
     fig,ax = plt.subplots(figsize=(6,2))
     handles = []
     h, = ax.plot(deltas,np.median(x2div_sep,axis=0),color='red',marker='.',label='Runwise median')
@@ -352,6 +356,26 @@ def teams_multidelta_procedure(i_F4,idx_delta,idx_seed):
     ax.text(-0.15,0.5,r'$F_4=%g$'%(F4s[i_F4]),ha='right',va='center',transform=ax.transAxes)
     fig.savefig(join(plot_dir,'x2div.png'),**pltkwargs)
     plt.close(fig)
+
+    # -------- Plot family gains ------------
+    fig,ax = plt.subplots(figsize=(6,2))
+    handles = []
+    h, = ax.plot(deltas,np.median(boost_family_mean,axis=0),color='red',marker='.',label='Runwise median')
+    handles.append(h)
+    h, = ax.plot(deltas,np.mean(boost_family_mean,axis=0),color='black',marker='.',label='Runwise mean')
+    handles.append(h)
+    print(f'{np.mean(boost_family_mean,axis=0) = }')
+    for i_alpha,alpha in enumerate(alphas):
+        lo,hi = np.quantile(boost_family_mean, [alpha/2,1-alpha/2], axis=0)
+        print(f'{alpha = }')
+        print(f'{lo = }')
+        print(f'{hi = }')
+        h = ax.fill_between(deltas, lo, hi, fc='red', ec='none', alpha=transparencies[i_alpha], zorder=-i_alpha-1, label=r'{:d}% CI'.format(int(round((1-alpha)*100))))
+        handles.append(h)
+    ax.set_xlabel(r'$\delta$')
+    ax.legend(handles=handles, bbox_to_anchor=(0.0,1.01), loc='lower left', title=r'Mean family boost')
+    ax.text(-0.15,0.5,r'$F_4=%g$'%(F4s[i_F4]),ha='right',va='center',transform=ax.transAxes)
+    fig.savefig(join(plot_dir,'mean_family_boost.png'),**pltkwargs)
 
     return
 

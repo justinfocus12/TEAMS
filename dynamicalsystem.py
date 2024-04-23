@@ -108,8 +108,8 @@ class ODESystem(DynamicalSystem):
         t,x = traj['t'].copy(),traj['x'].copy()
         traj.close()
         if tspan is not None:
-            idx0 = np.where(traj['t'] == tspan[0])[0][0]
-            idx1 = np.where(traj['t'] == tspan[1])[0][0]
+            idx0 = np.where(t == tspan[0])[0][0]
+            idx1 = np.where(t == tspan[1])[0][0]
             t = t[idx0:idx1+1]
             x = x[idx0:idx1+1]
         return t,x
@@ -444,8 +444,8 @@ class CoupledSystem(DynamicalSystem):
         t,x,y = traj['t'].copy(),traj['x'].copy(),traj['y'].copy()
         traj.close()
         if tspan is not None:
-            idx0 = np.where(traj['t'] == tspan[0])[0][0]
-            idx1 = np.where(traj['t'] == tspan[1])[0][0]
+            idx0 = np.where(t == tspan[0])[0][0]
+            idx1 = np.where(t == tspan[1])[0][0]
             t = t[idx0:idx1+1]
             x = x[idx0:idx1+1]
             y = y[idx0:idx1+1]

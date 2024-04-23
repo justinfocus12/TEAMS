@@ -1332,7 +1332,7 @@ class TEAMS(EnsembleAlgorithm):
             sclim[0],sclim[1] = min(sclim[0],np.min(scmax)),max(sclim[1],np.max(scmax))
         bin_edges = np.linspace(sclim[0]-1e-10,sclim[1]+1e-10,16)
         hist_dns,_ = np.histogram(scmax_dns, bins=bin_edges, density=False)
-        # Now put the scores from separate runs into thi scommon set of bins
+        # Now put the scores from separate runs into this common set of bins
         hists_init,hists_fin_unif,hists_fin_wted,ccdfs_init,ccdfs_fin_unif,ccdfs_fin_wted = (np.zeros((len(algs),len(bin_edges)-1)) for i in range(6))
         boost_family_mean = np.zeros(len(algs))
         boost_population = np.zeros(len(algs))
@@ -1344,9 +1344,12 @@ class TEAMS(EnsembleAlgorithm):
             ccdfs_fin_wted[i_alg] = utils.pmf2ccdf(hists_fin_wted[i_alg],bin_edges)
             ccdfs_fin_unif[i_alg] = utils.pmf2ccdf(hists_fin_unif[i_alg],bin_edges)
             # Calculate gains
-            A = nx.adjacency_matrix(alg.ens.memgraph)[:alg.population_size,:].toarray()
-            boosts = A * alg.branching_state['scores_max'] - alg.branching_state['scores_max']
-            maxboosts = np.max(boosts,axis=1)
+            A = alg.ens.construct_descent_matrix().toarray().astype(int)
+            print(f'{np.min(A) = }, {np.max(A) = }')
+            print(f'{np.sum(A,axis=1) = }')
+            desc_scores = A * np.array(scmaxs[i_alg]) 
+            maxboosts = np.maximum(0, np.max(desc_scores,axis=1) - np.array(scmaxs[i_alg]))
+            print(f'{np.min(maxboosts) = }, {np.max(maxboosts) = }')
             boost_family_mean[i_alg] = np.mean(maxboosts)
             boost_population[i_alg] = np.max(maxboosts)
         hist_init = np.sum(hists_init, axis=0)
@@ -1419,7 +1422,6 @@ class TEAMS(EnsembleAlgorithm):
             'cost_dns': cost_dns,
             'time_horizon_effective': config_algo['time_horizon_phys'] - config_algo['advance_split_time_max_phys'],
             })
-        # TODO compute skill
 
         np.savez(returnstats_file, **returnstats)
 
