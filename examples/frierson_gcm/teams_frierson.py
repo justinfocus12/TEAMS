@@ -542,11 +542,11 @@ def run_teams(dirdict,filedict,config_gcm,config_algo):
     return
 
 
-def teams_meta_procedure_1param_multiseed(i_sigma,i_delta,i_slm,idx_seed,overwrite_reference=False): # Just different seeds for now
+def teams_multiseed_procedure(i_sigma,i_delta,i_slm,idx_seed,overwrite_reference=False): # Just different seeds for now
     tododict = dict({
-        'score_distribution': 0,
-        'boost_distribution': 0,
-        'boost_composites':   1,
+        'score_distribution': 1,
+        'boost_distribution': 1,
+        'boost_composites':   0,
         })
     # Figure out which flat indices corresond to this set of seeds
     multiparams = teams_multiparams()
@@ -638,12 +638,12 @@ if __name__ == "__main__":
     if procedure == 'single':
         for i_expt in idx_expt:
             teams_single_procedure(i_expt)
-    elif procedure == 'meta':
-        idx_seed = list(range(8))
+    elif procedure == 'multiseed':
+        idx_seed = list(range(16))
         i_sigma = 0
         i_slm = 0
         i_delta = int(sys.argv[2])
-        teams_meta_procedure_1param_multiseed(i_sigma,i_delta,i_slm,idx_seed,overwrite_reference=True)
+        teams_multiseed_procedure(i_sigma,i_delta,i_slm,idx_seed,overwrite_reference=False)
 
 
 
