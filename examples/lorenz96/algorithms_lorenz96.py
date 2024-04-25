@@ -69,14 +69,18 @@ class Lorenz96SDEDirectNumericalSimulation(algorithms.SDEDirectNumericalSimulati
         else:
             tspan = [int(t/tu) for t in tspan_phys]
 
+        print(f'{tspan = }')
         fig,axes = plt.subplots(ncols=2, figsize=(16,4))
         # Left: timeseries
         ax = axes[0]
         handles = []
-        for k in [K//2-1,K//2,K//2+1]:
+        ks = [0,1]
+        colors = ['red','blue']
+        for i_k,k in enumerate(ks):
             obs_fun = lambda t,x: x[:,k]
-            h = self.plot_obs_segment(obs_fun, tspan, fig, ax, label=r'$x_{%g}$'%(k))
+            h = self.plot_obs_segment(obs_fun, tspan, fig, ax, label=r'$x_{%g}(t)$'%(k),color=colors[i_k])
             handles.append(h)
+        ax.set_xlabel('Time')
         ax.legend(handles=handles)
 
         # Right: Hovmoller
@@ -84,9 +88,11 @@ class Lorenz96SDEDirectNumericalSimulation(algorithms.SDEDirectNumericalSimulati
         time,memset,tidx = self.get_member_subset(tspan)
         obs_fun = lambda t,x: x
         x_seg = np.concatenate(tuple(self.ens.compute_observables([obs_fun], mem)[0] for mem in memset), axis=0)[tidx,:]
-        im = ax.pcolormesh(time*tu, np.arange(K), x_seg.T, shading='nearest', cmap='BrBG')
+        # Roll x 
+        x_seg = np.roll(x_seg, K//2, axis=1)
+        im = ax.pcolormesh(time*tu, np.arange(-K//2,K/2), x_seg.T, shading='nearest', cmap='BrBG')
+        ax.set_ylabel(r'Longitude $k$')
         ax.set_xlabel('Time')
-        ax.set_ylabel(r'$k$')
         fig.savefig(outfile, **pltkwargs)
         plt.close(fig)
         return

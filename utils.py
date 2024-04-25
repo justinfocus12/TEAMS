@@ -92,6 +92,9 @@ def gev_return_time(x,T,shape,loc,scale):
 
 def compute_return_time_block_maxima(x,T):
     block_maxima = compute_block_maxima(x,T)
+    return compute_return_time_block_maxima_preblocked(block_maxima,T)
+
+def compute_return_time_block_maxima_preblocked(block_maxima,T):
     rlev,logsf = compute_logsf_empirical(block_maxima)
     rtime = convert_logsf_to_rtime(logsf,T)
     # Also do a GEV fit 
@@ -123,6 +126,15 @@ def compute_returnstats_and_histogram(f, time_block_size, bounds=None):
     logsf_gev,rtime_gev = gev_return_time(bin_edges[:-1],time_block_size,shape,loc,scale)
     return bin_edges[:-1], hist, rtime[idx], logsf[idx], rtime_gev, logsf_gev, shape, loc, scale
 
+def compute_returnstats_preblocked(block_maxima, time_block_size, bounds=None):
+    if bounds is None:
+        bounds = [np.min(block_maxima),np.max(block_maxima)]
+    bins = np.linspace(bounds[0]-1e-10,bounds[1]+1e-10,30)
+    rlev,rtime,logsf,rtime_gev,logsf_gev,shape,loc,scale = compute_return_time_block_maxima_preblocked(block_maxima, time_block_size)
+    idx = np.searchsorted(rlev, bins[:-1])
+    print(f'{idx = }')
+    logsf_gev,rtime_gev = gev_return_time(bins[:-1],time_block_size,shape,loc,scale)
+    return bins[:-1], rtime[idx], logsf[idx], rtime_gev, logsf_gev, shape, loc, scale
 
 def weighted_quantile(a, q, w, logscale=False):
     order = np.argsort(a)

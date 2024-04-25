@@ -5,6 +5,7 @@ from scipy import sparse as sps
 from os.path import join, exists
 from os import makedirs
 import sys
+import psutil
 import glob
 import copy as copylib
 import matplotlib
@@ -58,12 +59,22 @@ def dns_single_workflow(i_expt):
     param_abbrv_dynsys,param_label_dynsys = Lorenz96SDE.label_from_config(config_dynsys)
     param_abbrv_algo,param_label_algo = L96SDEDNS.label_from_config(config_algo)
     config_analysis = dict({
+        'time_block_size_phys': 6,
+        'k_roll_step': 4, # step size for augmenting Lorenz96 with rotational symmetry 
+        'spinup_phys': 50,
+        'observables_rotsym': dict({
+            'xk': dict({
+                'fun': lambda t,x: x,
+                'abbrv': 'xk',
+                'label': r'$x_k$',
+                }),
+            'Ek': dict({
+                'fun': lambda t,x: x**2/2,
+                'label': r'$\frac{1}{2}x_k^2$',
+                'abbrv': 'Ek',
+                }),
+            }),
         # return statistics analysis
-        'return_stats': dict({
-            'time_block_size_phys': 12,
-            'spinup_phys': 30,
-            'k_roll_step': 4, # step size for augmenting Lorenz96 with rotational symmetry 
-            })
         # Other possible parameters: method used for fitting GEV, threshold for GPD, ...
         })
 
@@ -144,25 +155,81 @@ def run_dns(dirdict,filedict,config_dynsys,config_algo):
         pickle.dump(alg, open(filedict['alg'], 'wb'))
     return
 
-def analyze_dns(config,tododict,dirdict,filedict):
-    alg = pickle.load(open(filedict['alg'], 'rb'))
+def compute_extreme_stats_new(config_analysis, alg, dirdict):
+    # TODO fill in this function the same way it's done in TEAMS, just for synchrony
+    pass
+
+def compute_extreme_stats(config_analysis, alg, dirdict):
+    nmem = alg.ens.get_nmem()
     tu = alg.ens.dynsys.dt_save
-    obs_names = list(filedict['return_stats'].keys())
-    if tododict['return_stats']:
-        cfrs = config['return_stats']
-        K = alg.ens.dynsys.ode.K
-        for obs_name in obs_names:
-            obs_funs2concat = []
-            for kshift in np.arange(0,K,step=cfrs['k_roll_step'],dtype=int):
-                print(f'{kshift = }')
-                obs_funs2concat.append(
-                        lambda t,x,kshift=kshift: getattr(alg.ens.dynsys.ode, obs_name)(t,np.roll(x,kshift,axis=1)))
-            alg.compute_return_stats(
-                    obs_funs2concat, int(cfrs['time_block_size_phys']/tu), int(cfrs['spinup_phys']/tu), filedict['return_stats'][obs_name]['analysis'])
-    # TODO: do autocorrelation, cross-correlation analysis
+    spinup = int(config_analysis['spinup_phys']/tu)
+    time_block_size = int(config_analysis['time_block_size_phys']/tu)
+    all_starts,all_ends = alg.ens.get_all_timespans()
+    mems2summarize = np.where((all_starts >= spinup)*(all_starts <= 1e7))[0]
+    print(f'{len(mems2summarize) = }')
+    # TODO need to distribute the block maxima method
+    for obs_name,obs_props in config_analysis['observables_rotsym'].items():
+        print(f'About to compute extreme stats for {obs_name}')
+        blocks_per_k = int((all_ends[mems2summarize[-1]] - all_starts[mems2summarize[0]])/time_block_size)
+        block_maxima = np.nan*np.ones((blocks_per_k, alg.ens.dynsys.ode.K))
+        i_block = 0
+        for i_mem,mem in enumerate(mems2summarize):
+            fk = alg.ens.compute_observables([obs_props['fun']], mem)[0]
+            if i_mem == 0:
+                # Initialize a histogram, might have to extend it 
+                bin_edges = np.linspace(np.min(fk)-1e-10,np.max(fk)+1e-10,40)
+                bin_width = bin_edges[1] - bin_edges[0]
+                hist = np.zeros(len(bin_edges)-1, dtype=int)
+            elif np.max(fk) > bin_edges[-1]:
+                num_new_bins = int(np.ceil((np.max(fk) - bin_edges[-1])/bin_width))
+                bin_edges = np.concatenate((bin_edges, bin_edges[-1] + bin_width*np.arange(1,num_new_bins+1)))
+                hist = np.concatenate((hist, np.zeros(num_new_bins, dtype=int)))
+            elif np.min(fk) < bin_edges[0]:
+                num_new_bins = int(np.ceil((bin_edges[0]-np.min(fk))/bin_width))
+                bin_edges = np.concatenate((bin_edges[0]-bin_width*np.arange(1,num_new_bins+1)[::-1], bin_edges))
+                hist = np.concatenate((np.zeros(num_new_bins,dtype=int), hist))
+
+            hist_new,_ = np.histogram(fk.flat, bins=bin_edges)
+            hist += hist_new
+
+            for k in range(alg.ens.dynsys.ode.K):
+                block_maxima_mem_k = utils.compute_block_maxima(fk[:,k],time_block_size)
+                block_maxima[i_block:i_block+len(block_maxima_mem_k),k] = block_maxima_mem_k
+            i_block += len(block_maxima_mem_k)
+
+            if mem % 100 == 0: 
+                print(f'{mem = }')
+                memusage_GB = psutil.Process().memory_info().rss / 1e9
+                print(f'Using {memusage_GB} GB')
+        block_maxima = np.concatenate(block_maxima[:i_block,:], axis=0)
+        rlev,rtime,logsf,rtime_gev,logsf_gev,shape,loc,scale = utils.compute_returnstats_preblocked(block_maxima, time_block_size)
+        bin_lows = bin_edges[:-1]
+        extstats = dict({'bin_lows': bin_lows, 'hist': hist, 'rlev': rlev, 'rtime': rtime, 'logsf': logsf, 'rtime_gev': rtime_gev, 'logsf_gev': logsf_gev, 'shape': shape, 'loc': loc, 'scale': scale})
+        # TODO carefully compare different block sizes, both for GEV fitting and for return period validity 
+        np.savez(join(dirdict['analysis'],r'extstats_rotsym_%s.npz'%(obs_props['abbrv'])), **extstats)
+        # Plot 
+        bin_mids = bin_lows + 0.5*(bin_lows[1]-bin_lows[0])
+        fig,axes = plt.subplots(ncols=2,figsize=(12,4),gridspec_kw={'wspace': 0.25})
+        ax = axes[0]
+        ax.plot(bin_mids,hist/(np.sum(hist)*bin_width),color='black',marker='.')
+        ax.set_xlabel(obs_props['label'])
+        ax.set_ylabel('Prob. density')
+        ax.set_yscale('log')
+        ax = axes[1]
+        hemp, = ax.plot(rtime,rlev,color='black',marker='.',label='Empirical')
+        hgev, = ax.plot(rtime_gev,rlev,color='cyan',marker='.',label='GEV fit')
+        ax.legend(handles=[hemp,hgev])
+        print(f'{rtime_gev = }')
+        ax.set_ylim([rlev[np.argmax(rtime>0)],2*rlev[-1]-rlev[-2]])
+        ax.set_xlabel('Return time')
+        ax.set_ylabel('Return level %s'%(obs_props['label']))
+        ax.set_xscale('log')
+        fig.savefig(join(dirdict['plots'],r'extstats_%s.png'%(obs_props['abbrv'])),**pltkwargs)
+        plt.close(fig)
     return
 
-def plot_dns(tododict,dirdict,filedict):
+
+def plot_dns(config_analysis,alg,dirdict):
     obs_names = list(filedict['return_stats'].keys())
     obsprop = Lorenz96ODE.observable_props()
     if tododict['basic_vis']:
@@ -173,30 +240,31 @@ def plot_dns(tododict,dirdict,filedict):
             L96SDEDNS.plot_return_stats(filedict['return_stats'][obs_name]['analysis'], filedict['return_stats'][obs_name]['plots'], obsprop[obs_name])
     return
 
+
 def dns_single_procedure(i_expt):
     tododict = dict({
-        'run':                   1,
-        'analysis': dict({
-            'return_stats':    0,
-            'autocorrelation': 0,
-            }),
-        'plots': dict({
-            'return_stats':    0,
-            'autocorrelation': 0,
-            'basic_vis':       0,
-            }),
+        'run':                   0,
+        'plot_segment':          0,
+        'return_stats':          1,
         })
 
     # Quantities of interest for statistics. These should be registered as observables under the system.
+    print(f'Workflow setup...',end='')
     config_dynsys,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = dns_single_workflow(i_expt)
+    print('done')
 
     if tododict['run']:
         run_dns(dirdict,filedict,config_dynsys,config_algo)
-    if utils.find_true_in_dict(tododict['analysis']):
-        analyze_dns(config_analysis,tododict['analysis'],dirdict,filedict)
-    if utils.find_true_in_dict(tododict['plots']):
-        plot_dns(tododict['plots'],dirdict,filedict)
-
+    alg = pickle.load(open(filedict['alg'],'rb'))
+    if tododict['plot_segment']:
+        outfile = join(dirdict['plots'],'dns_segment.png')
+        alg.plot_dns_segment(outfile, tspan_phys=[500,515])
+    if tododict['return_stats']:
+        print(f'About to compute extreme stats')
+        memusage_GB = psutil.Process().memory_info().rss / 1e9
+        print(f'Using {memusage_GB} GB')
+        compute_extreme_stats(config_analysis,alg,dirdict)
+        #L96SDEDNS.plot_return_stats(filedict['return_stats'][obs_name]['analysis'], filedict['return_stats'][obs_name]['plots'], obsprop[obs_name])
     return
 
 if __name__ == "__main__":
@@ -206,4 +274,4 @@ if __name__ == "__main__":
         for i_expt in idx_expt:
             dns_single_procedure(i_expt)
     elif procedure == 'meta':
-        meta_dns_procedure(idx_param)
+        meta_dns_procedure(idx_expt)

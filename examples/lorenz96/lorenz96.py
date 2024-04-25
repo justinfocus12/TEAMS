@@ -111,17 +111,6 @@ class Lorenz96ODE(ODESystem): # TODO make a superclass Lorenz96, and a sibling s
         for i_fun,fun in enumerate(obs_funs):
             obs.append(fun(t,x))
         return obs
-    def compute_stats_dns_rotsym(self, fk, k_roll_step, time_block_size, bounds=None):
-        # Given a physical input field f(k), augment it by rotations to compute return periods
-        # constant parameters to adjust 
-        time_block_size = 10
-        # Concatenate a long array of timeseries at different longitudes
-        ksubset = np.arange(0, self.K, step=k_roll_step)
-        # Clip the time axis to contain exactly an integer multiple of the block size
-        ntimes = fk.shape[0]
-        clip_size = np.mod(ntimes, time_block_size)
-        fconcat = np.concatenate(tuple(fk[:,k] for k in ksubset))
-        return utils.compute_returnstats_and_histogram(fconcat, time_block_size, bounds=bounds)
     @staticmethod
     def observable_props():
         obslib = dict({
@@ -274,6 +263,8 @@ class Lorenz96SDE(SDESystem):
         return self.ode.compute_observables(obs_funs, metadata, root_dir)
     def compute_pairwise_observables(self, pair_funs, md0, md1list, root_dir):
         return self.ode.compute_pairwise_observables(pair_funs, md0, md1list, root_dir)
+    def compute_stats_dns_rotsym(self, *args, **kwargs):
+        return self.ode.compute_stats_dns_rotsym(*args, **kwargs)
     @staticmethod
     def observable_props():
         return Lorenz96ODE.observable_props()

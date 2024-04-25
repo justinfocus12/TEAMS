@@ -630,7 +630,7 @@ class FriersonGCM(DynamicalSystem):
         for i_fun,fun in enumerate(obs_funs):
             obs.append(fun(ds)) #.compute())
         return obs
-    def compute_stats_dns_rotsym(self, fxt, lon_roll_step_requested, time_block_size, bounds=None):
+    def compute_stats_dns_zonsym(self, fxt, lon_roll_step_requested, time_block_size, bounds=None):
         # Given a physical input field f(x,y,t), augment it by rotations to compute return periods
         # constant parameters to adjust 
         # Concatenate a long array of timeseries at different longitudes
