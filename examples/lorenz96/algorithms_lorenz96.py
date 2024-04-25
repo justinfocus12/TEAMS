@@ -6,6 +6,7 @@ from os.path import join, exists
 from os import makedirs
 import sys
 import copy as copylib
+import psutil
 import matplotlib
 import matplotlib.pyplot as plt
 matplotlib.rcParams.update({
@@ -93,8 +94,54 @@ class Lorenz96SDEDirectNumericalSimulation(algorithms.SDEDirectNumericalSimulati
         im = ax.pcolormesh(time*tu, np.arange(-K//2,K/2), x_seg.T, shading='nearest', cmap='BrBG')
         ax.set_ylabel(r'Longitude $k$')
         ax.set_xlabel('Time')
+        
+        m = self.ens.dynsys.config['frc']['white']['wavenumbers'][0]
+        Fm = self.ens.dynsys.config['frc']['white']['wavenumber_magnitudes'][0]
+        fig.suptitle(r'$F_{%d}=%g$'%(m,Fm))
         fig.savefig(outfile, **pltkwargs)
         plt.close(fig)
+        return
+    def compute_extreme_stats_rotsym(self, obs_fun, spinup, time_block_size, returnstats_file):
+        all_starts,all_ends = self.ens.get_all_timespans()
+        mems2summarize = np.where((all_starts >= spinup)*(all_starts <= 1e7))[0]
+        blocks_per_k = int((all_ends[mems2summarize[-1]] - all_starts[mems2summarize[0]])/time_block_size)
+        K = self.ens.dynsys.ode.K
+        block_maxima = np.nan*np.ones((K, blocks_per_k))
+        i_block = 0
+        for i_mem,mem in enumerate(mems2summarize):
+            fk = self.ens.compute_observables([obs_fun], mem)[0]
+            if i_mem == 0:
+                # Initialize a histogram, might have to extend it 
+                bin_edges = np.linspace(np.min(fk)-1e-10,np.max(fk)+1e-10,40)
+                bin_width = bin_edges[1] - bin_edges[0]
+                hist = np.zeros(len(bin_edges)-1, dtype=int)
+            elif np.max(fk) > bin_edges[-1]:
+                num_new_bins = int(np.ceil((np.max(fk) - bin_edges[-1])/bin_width))
+                bin_edges = np.concatenate((bin_edges, bin_edges[-1] + bin_width*np.arange(1,num_new_bins+1)))
+                hist = np.concatenate((hist, np.zeros(num_new_bins, dtype=int)))
+            elif np.min(fk) < bin_edges[0]:
+                num_new_bins = int(np.ceil((bin_edges[0]-np.min(fk))/bin_width))
+                bin_edges = np.concatenate((bin_edges[0]-bin_width*np.arange(1,num_new_bins+1)[::-1], bin_edges))
+                hist = np.concatenate((np.zeros(num_new_bins,dtype=int), hist))
+
+            hist_new,_ = np.histogram(fk.flat, bins=bin_edges)
+            hist += hist_new
+
+            for k in range(K):
+                block_maxima_mem_k = utils.compute_block_maxima(fk[:,k],time_block_size)
+                block_maxima[k,i_block:i_block+len(block_maxima_mem_k)] = block_maxima_mem_k
+            i_block += len(block_maxima_mem_k)
+
+            if mem % 100 == 0: 
+                print(f'{mem = }')
+                memusage_GB = psutil.Process().memory_info().rss / 1e9
+                print(f'Using {memusage_GB} GB')
+        block_maxima = np.concatenate(block_maxima[:,:i_block], axis=0)
+        rlev,rtime,logsf,rtime_gev,logsf_gev,shape,loc,scale = utils.compute_returnstats_preblocked(block_maxima, time_block_size)
+        bin_lows = bin_edges[:-1]
+        extstats = dict({'bin_lows': bin_lows, 'hist': hist, 'rlev': rlev, 'rtime': rtime, 'logsf': logsf, 'rtime_gev': rtime_gev, 'logsf_gev': logsf_gev, 'shape': shape, 'loc': loc, 'scale': scale})
+        # TODO carefully compare different block sizes, both for GEV fitting and for return period validity 
+        np.savez(returnstats_file, **extstats)
         return
     @classmethod
     def plot_return_stats(cls, return_stats_filename, output_filename, obsprop):

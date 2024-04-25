@@ -545,7 +545,7 @@ def run_teams(dirdict,filedict,config_gcm,config_algo):
 def teams_multiseed_procedure(i_sigma,i_delta,i_slm,idx_seed,overwrite_reference=False): # Just different seeds for now
     tododict = dict({
         'score_distribution': 1,
-        'boost_distribution': 1,
+        'boost_distribution': 0,
         'boost_composites':   0,
         })
     # Figure out which flat indices corresond to this set of seeds
