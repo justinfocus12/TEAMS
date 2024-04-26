@@ -103,7 +103,7 @@ class Lorenz96SDEDirectNumericalSimulation(algorithms.SDEDirectNumericalSimulati
         return
     def compute_extreme_stats_rotsym(self, obs_fun, spinup, time_block_size, returnstats_file):
         all_starts,all_ends = self.ens.get_all_timespans()
-        mems2summarize = np.where((all_starts >= spinup)*(all_starts <= 1e7))[0]
+        mems2summarize = np.where(all_starts >= spinup)[0]
         blocks_per_k = int((all_ends[mems2summarize[-1]] - all_starts[mems2summarize[0]])/time_block_size)
         K = self.ens.dynsys.ode.K
         block_maxima = np.nan*np.ones((K, blocks_per_k))
@@ -136,11 +136,39 @@ class Lorenz96SDEDirectNumericalSimulation(algorithms.SDEDirectNumericalSimulati
                 print(f'{mem = }')
                 memusage_GB = psutil.Process().memory_info().rss / 1e9
                 print(f'Using {memusage_GB} GB')
-        block_maxima = np.concatenate(block_maxima[:,:i_block], axis=0)
+        block_maxima = np.concatenate(block_maxima[:,:i_block])
         rlev,rtime,logsf,rtime_gev,logsf_gev,shape,loc,scale = utils.compute_returnstats_preblocked(block_maxima, time_block_size)
         bin_lows = bin_edges[:-1]
-        extstats = dict({'bin_lows': bin_lows, 'hist': hist, 'rlev': rlev, 'rtime': rtime, 'logsf': logsf, 'rtime_gev': rtime_gev, 'logsf_gev': logsf_gev, 'shape': shape, 'loc': loc, 'scale': scale})
-        # TODO carefully compare different block sizes, both for GEV fitting and for return period validity 
+        # Now the block maxima-centric method, with error bars
+        bins_bm = np.linspace(np.min(block_maxima)-1e-10, np.max(block_maxima)+1e-10, 40)
+        hist_bm,_ = np.histogram(block_maxima, bins=bins_bm)
+        alpha = 0.05
+        ccdf_bm,ccdf_bm_lower_cpi,ccdf_bm_upper_cpi = utils.pmf2ccdf(hist_bm,bins_bm,return_errbars=True,alpha=alpha) 
+        ccdf_bm_2,ccdf_bm_boot = utils.compute_ccdf_errbars_bootstrap(block_maxima,bins_bm)
+        assert np.all(ccdf_bm == ccdf_bm_2)
+        print(f'{ccdf_bm_boot.shape = }')
+        ccdf_bm_lower_bsi = np.quantile(ccdf_bm_boot,alpha/2,axis=0)
+        ccdf_bm_upper_bsi = np.quantile(ccdf_bm_boot,1-alpha/2,axis=0)
+        extstats = dict({
+            'bin_lows': bin_lows, 
+            'hist': hist, 
+            'rlev': rlev, 
+            'rtime': rtime, 
+            'logsf': logsf, 
+            'rtime_gev': rtime_gev, 
+            'logsf_gev': logsf_gev, 
+            'shape': shape, 
+            'loc': loc, 
+            'scale': scale,
+            # Below the more basic method results
+            'bins_bm': bins_bm, 
+            'hist_bm': hist_bm, 
+            'ccdf_bm': ccdf_bm,
+            'ccdf_bm_lower_cpi': ccdf_bm_lower_cpi, 
+            'ccdf_bm_upper_cpi': ccdf_bm_upper_cpi, 
+            'ccdf_bm_lower_bsi': ccdf_bm_lower_bsi, 
+            'ccdf_bm_upper_bsi': ccdf_bm_upper_bsi
+            })
         np.savez(returnstats_file, **extstats)
         return
     @classmethod

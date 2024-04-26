@@ -1,4 +1,5 @@
 import numpy as np
+from numpy.random import default_rng
 from scipy.special import logsumexp
 from scipy.stats import genextreme as spgex, beta as spbeta
 
@@ -47,7 +48,7 @@ def clopper_pearson_confidence_interval(nsucc, ntot, alpha):
     upper = spbeta.ppf(1-alpha/2, nsucc+1, ntot-nsucc)
     return lower,upper
 
-def pmf2ccdf(hist,bin_edges,return_errbars=False,alpha=None,N_errbars=None): 
+def pmf2ccdf(hist,bin_edges,return_errbars=False,alpha=0.05,N_errbars=None): 
     N = np.sum(hist)
     ccdf = np.cumsum(hist[::-1])[::-1] 
     ccdf_norm = np.where(ccdf>0, ccdf, np.nan) / N
@@ -59,17 +60,20 @@ def pmf2ccdf(hist,bin_edges,return_errbars=False,alpha=None,N_errbars=None):
     lower,upper = clopper_pearson_confidence_interval(ccdf*N_errbars/N, N_errbars, alpha)
     return ccdf_norm,lower,upper
 
-def compute_ccdf_errbars_bootstrap(x,bin_edges,boot_size,n_boot=1000,seed=91830):
+def compute_ccdf_errbars_bootstrap(x,bin_edges,boot_size=None,n_boot=5000,seed=91830):
     hist,_ = np.histogram(x,bins=bin_edges)
     N = np.sum(hist)
-    assert n_boot < N
+    print(f'{N = }')
+    if boot_size is None: boot_size = N
+    assert boot_size <= N
     ccdf = pmf2ccdf(hist,bin_edges)
     ccdf_boot = np.zeros((n_boot,len(bin_edges)-1))
     rng = default_rng(seed=seed)
-    x_resamp = rng.choice(np.arange(N),replace=True,size=(n_boot,boot_size))
     for i_boot in range(n_boot):
-        hist_boot,_ = np.histogram(x[i_boot,:],bins=bin_edges)
-        ccdf_boot[i_boot],_ = pmf2ccdf(hist_boot,bin_edges)
+        if i_boot % 100 == 0: print(f'{i_boot = }')
+        x_resamp = x[rng.choice(np.arange(N),replace=True,size=boot_size)]
+        hist_boot,_ = np.histogram(x_resamp,bins=bin_edges)
+        ccdf_boot[i_boot] = pmf2ccdf(hist_boot,bin_edges)
     return ccdf,ccdf_boot
 
 

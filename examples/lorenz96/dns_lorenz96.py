@@ -59,9 +59,9 @@ def dns_single_workflow(i_expt):
     param_abbrv_dynsys,param_label_dynsys = Lorenz96SDE.label_from_config(config_dynsys)
     param_abbrv_algo,param_label_algo = L96SDEDNS.label_from_config(config_algo)
     config_analysis = dict({
-        'time_block_size_phys': 6,
         'k_roll_step': 4, # step size for augmenting Lorenz96 with rotational symmetry 
         'spinup_phys': 50,
+        'time_block_size_phys': 6,
         'observables_rotsym': dict({
             'xk': dict({
                 'fun': lambda t,x: x,
@@ -97,44 +97,32 @@ def dns_single_workflow(i_expt):
     return config_dynsys,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict
 
 def dns_meta_workflow(idx_param):
+    num_expt = len(idx_param)
+    workflow_tuple = tuple(dns_single_workflow(i_param) for i_param in idx_param)
+    workflows = dict()
+    for i_key,key in enumerate(('configs_dynsys,configs_algo,configs_analysis,expt_labels,expt_abbrvs,dirdicts,filedicts').split(',')):
+        workflows[key] = tuple(workflow_tuple[j][i_key] for j in range(len(workflow_tuple)))
+    print(f'{workflows.keys() = }')
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/"
     date_str = "2024-04-12"
     sub_date_str = "0"
-    mfd = dict() # meta-filedict
-    mdd = dict() # meta-dirdict
-    mdd['analysis'] = join(scratch_dir,date_str,sub_date_str,'meta_analysis')
-    mdd['plots'] = join(scratch_dir,date_str,sub_date_str,'meta_plots')
-    for meta_dir in list(mdd.values()):
-        makedirs(meta_dir, exist_ok=True)
-    expt_labels = []
-    expt_abbrvs = []
-    filedicts = []
-    for i_param in idx_param:
-        _,_,_,expt_label,expt_abbrv,_,filedict = dns_workflow(i_param)
-        expt_labels.append(expt_label)
-        expt_abbrvs.append(expt_abbrvs)
-        filedicts.append(filedict)
-    mfd['return_stats'] = dict()
-    obs_names = list(filedicts[0]['return_stats'].keys())
-    obsprop = Lorenz96ODE.observable_props()
-    for obs_name in obs_names:
-        mfd['return_stats'][obs_name] = dict({
-            'plots': join(mdd['plots'], r'return_stats_%s.png'%(obsprop[obs_name]['abbrv'])),
-            })
-    return mdd,mfd,filedicts,expt_labels,expt_abbrvs
+    meta_dirdict = dict()
+    meta_dirdict['meta'] = join(scratch_dir,date_str,sub_date_str,'meta')
+    for subdir in ['data','analysis','plots']:
+        meta_dirdict[subdir] = join(meta_dirdict['meta'],subdir)
+        makedirs(meta_dirdict[subdir],exist_ok=True)
+    config_meta_analysis = dict()
+    for key in ['observables_rotsym']:
+        config_meta_analysis[key] = workflows['configs_analysis'][0][key]
+    return workflows,config_meta_analysis,meta_dirdict
 
-def meta_dns_procedure(idx_param):
-    mdd,mfd,filedicts,expt_labels,expt_abbrvs = meta_dns_workflow(idx_param)
-    # Plot return stats 
-    obs_names = list(mfd['return_stats'].keys())
-    obsprop = Lorenz96ODE.observable_props()
-    for obs_name in obs_names:
-        return_stats_filenames = [fd['return_stats'][obs_name]['analysis'] for fd in filedicts]
-        L96SDEDNS.plot_return_stats_meta(return_stats_filenames, mfd['return_stats'][obs_name]['plots'], obsprop[obs_name], expt_labels)
-    return
-
-def plot_extreme_stats_meta(config_analysis, algs, dirdict):
-    # Plot pdfs of x on the left, and return level curves of E on the right 
+def dns_meta_procedure(idx_expt):
+    tododict = dict({
+        'compare_extreme_stats':           1,
+        })
+    workflows,config_meta_analysis,meta_dirdict = dns_meta_workflow(idx_expt)
+    if tododict['compare_extreme_stats']:
+        compare_extreme_stats(workflows,config_meta_analysis,meta_dirdict)
     return
 
 def run_dns(dirdict,filedict,config_dynsys,config_algo):
@@ -158,10 +146,6 @@ def run_dns(dirdict,filedict,config_dynsys,config_algo):
         pickle.dump(alg, open(filedict['alg'], 'wb'))
     return
 
-def compute_extreme_stats_new(config_analysis, alg, dirdict):
-    # TODO fill in this function the same way it's done in TEAMS, just for synchrony
-    pass
-
 def measure_plot_extreme_stats(config_analysis, alg, dirdict, overwrite_extstats=False, plot_gev=True):
     nmem = alg.ens.get_nmem()
     tu = alg.ens.dynsys.dt_save
@@ -176,6 +160,12 @@ def measure_plot_extreme_stats(config_analysis, alg, dirdict, overwrite_extstats
 
         extstats = np.load(returnstats_file)
         bin_lows,hist,rlev,rtime,logsf,rtime_gev,logsf_gev,shape,loc,scale = (extstats[v] for v in 'bin_lows,hist,rlev,rtime,logsf,rtime_gev,logsf_gev,shape,loc,scale'.split(','))
+        bins_bm,hist_bm,ccdf_bm,ccdf_bm_lower_cpi,ccdf_bm_upper_cpi,ccdf_bm_lower_bsi,ccdf_bm_upper_bsi = (extstats[v] for v in 'bins_bm,hist_bm,ccdf_bm,ccdf_bm_lower_cpi,ccdf_bm_upper_cpi,ccdf_bm_lower_bsi,ccdf_bm_upper_bsi'.split(','))
+        print(f'{ccdf_bm = }')
+        print(f'{ccdf_bm_lower_cpi = }')
+        print(f'{ccdf_bm_upper_cpi = }')
+        print(f'{ccdf_bm_lower_bsi = }')
+        print(f'{ccdf_bm_upper_bsi = }')
         bin_width = bin_lows[1] - bin_lows[0]
         # Plot 
         bin_mids = bin_lows + 0.5*(bin_lows[1]-bin_lows[0])
@@ -187,11 +177,22 @@ def measure_plot_extreme_stats(config_analysis, alg, dirdict, overwrite_extstats
         ax.set_yscale('log')
         ax = axes[1]
         handles = []
-        hemp, = ax.plot(rtime,rlev,color='black',marker='.',label='Empirical')
+        hemp, = ax.plot(rtime*tu,rlev,color='black',marker='.',label='Empirical')
         handles.append(hemp)
         if plot_gev:
-            hgev, = ax.plot(rtime_gev,rlev,color='cyan',marker='.',label='GEV fit')
+            hgev, = ax.plot(rtime_gev*tu,rlev,color='cyan',marker='.',label='GEV fit')
             handles.append(hgev)
+
+        # ----- Now plot the CIs etc ------
+        sf2rt = lambda sf: utils.convert_sf_to_rtime(sf, time_block_size)
+        for c in [ccdf_bm_lower_cpi,ccdf_bm_upper_cpi]:
+            hcpi, = ax.plot(sf2rt(c)*tu, bins_bm[:-1], linestyle='--', color='black', label='Clopper-Pearson')
+        for c in [ccdf_bm_lower_bsi,ccdf_bm_upper_bsi]:
+            hbsi, = ax.plot(sf2rt(c)*tu, bins_bm[:-1], linestyle='--', color='red', label='Bootstrap')
+        handles += [hcpi,hbsi]
+
+
+        # ---------------------------------
         ax.legend(handles=handles)
         print(f'{rtime_gev = }')
         ax.set_ylim([rlev[np.argmax(rtime>0)],2*rlev[-1]-rlev[-2]])
@@ -202,19 +203,35 @@ def measure_plot_extreme_stats(config_analysis, alg, dirdict, overwrite_extstats
         plt.close(fig)
     return
 
-
-def plot_dns(config_analysis,alg,dirdict):
-    obs_names = list(filedict['return_stats'].keys())
-    obsprop = Lorenz96ODE.observable_props()
-    if tododict['basic_vis']:
-        alg = pickle.load(open(filedict['alg'],'rb'))
-        alg.plot_dns_segment(filedict['basic_vis']['dns_segment'])
-    if tododict['return_stats']:
-        for obs_name in obs_names:
-            L96SDEDNS.plot_return_stats(filedict['return_stats'][obs_name]['analysis'], filedict['return_stats'][obs_name]['plots'], obsprop[obs_name])
+def compare_extreme_stats(workflows,config_meta_analysis, dirdict):
+    # Pot the two curves on top of each other 
+    fig,axes = plt.subplots(ncols=2, figsize=(12,6))
+    # Left: PDFs of x 
+    num_expts = len(workflows['dirdicts'])
+    print(f'{num_expts = }')
+    print(f'{workflows["expt_labels"] = }')
+    handles = []
+    for i_expt in range(num_expts):
+        extstats_x0 = np.load(join(workflows['dirdicts'][i_expt]['analysis'],r'extstats_rotsym_xk.npz'))
+        extstats_E0 = np.load(join(workflows['dirdicts'][i_expt]['analysis'],r'extstats_rotsym_Ek.npz'))
+        color = plt.cm.coolwarm(i_expt/num_expts)
+        ax = axes[0]
+        bin_mids = extstats_x0['bin_lows']
+        bin_mids += (bin_mids[1]-bin_mids[0])/2
+        h, = ax.plot(bin_mids, extstats_x0['hist']/np.sum(extstats_x0['hist'])/(bin_mids[1]-bin_mids[0]), color=color, label=workflows['expt_labels'][i_expt])
+        handles.append(h)
+        ax = axes[1]
+        ax.plot(extstats_E0['rtime'],extstats_E0['rlev'], color=color)
+    axes[0].set_yscale('log')
+    axes[0].set_xlabel(r'$x_0$')
+    axes[0].set_ylabel(r'Prob. dens.')
+    axes[1].set_xscale('log')
+    axes[1].set_xlabel(r'Return time')
+    axes[1].set_ylabel(r'$\frac{1}{2}x_0^2$ Return level')
+    fig.savefig(join(dirdict['plots'],'returnstats_x0_E0.png'),**pltkwargs)
+    plt.close(fig)
     return
 
-# TODO make functions to do all these things meta-wise, across dif
 
 
 def dns_single_procedure(i_expt):
@@ -238,10 +255,7 @@ def dns_single_procedure(i_expt):
         alg.plot_dns_segment(outfile, tspan_phys=[500,515])
     if tododict['return_stats']:
         print(f'About to compute extreme stats')
-        memusage_GB = psutil.Process().memory_info().rss / 1e9
-        print(f'Using {memusage_GB} GB')
-        measure_plot_extreme_stats(config_analysis,alg,dirdict,overwrite_extstats=False)
-        #L96SDEDNS.plot_return_stats(filedict['return_stats'][obs_name]['analysis'], filedict['return_stats'][obs_name]['plots'], obsprop[obs_name])
+        measure_plot_extreme_stats(config_analysis,alg,dirdict,overwrite_extstats=True)
     return
 
 if __name__ == "__main__":
@@ -251,4 +265,4 @@ if __name__ == "__main__":
         for i_expt in idx_expt:
             dns_single_procedure(i_expt)
     elif procedure == 'meta':
-        meta_dns_procedure(idx_expt)
+        dns_meta_procedure(idx_expt)
