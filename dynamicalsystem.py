@@ -105,7 +105,7 @@ class ODESystem(DynamicalSystem):
     @staticmethod
     def load_trajectory(metadata, root_dir, tspan=None):
         traj = np.load(join(root_dir,metadata['filename']))
-        t,x = traj['t'].copy(),traj['x'].copy()
+        t,x = traj['t'],traj['x']
         traj.close()
         if tspan is not None:
             idx0 = np.where(t == tspan[0])[0][0]

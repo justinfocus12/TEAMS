@@ -60,6 +60,15 @@ def pmf2ccdf(hist,bin_edges,return_errbars=False,alpha=0.05,N_errbars=None):
     lower,upper = clopper_pearson_confidence_interval(ccdf*N_errbars/N, N_errbars, alpha)
     return ccdf_norm,lower,upper
 
+def ccdf2rlev_of_rtime(rlev,ccdf_norm,lower,upper):
+    # Also invert to find return level as a function of return period
+    logsf_grid = np.linspace(np.log(ccdf_norm[1]), np.log(ccdf_norm[-1]), 30) # decreasing
+    rlev_inverted = np.interp(logsf_grid[::-1], np.log(ccdf_norm[::-1]), rlev[::-1])[::-1]
+    rlev_inverted_upper = np.interp(logsf_grid[::-1], np.log(lower[::-1]), rlev[::-1])[::-1]
+    rlev_inverted_lower = np.interp(logsf_grid[::-1], np.log(upper[::-1]), rlev[::-1])[::-1]
+    return logsf_grid,rlev_inverted,rlev_inverted_lower,rlev_inverted_upper
+
+
 def compute_ccdf_errbars_bootstrap(x,bin_edges,boot_size=None,n_boot=5000,seed=91830):
     hist,_ = np.histogram(x,bins=bin_edges)
     N = np.sum(hist)
@@ -78,10 +87,11 @@ def compute_ccdf_errbars_bootstrap(x,bin_edges,boot_size=None,n_boot=5000,seed=9
 
 
 def compute_block_maxima(x,T):
-    # T should be an integer, and x is a timeseries
-    nx = len(x)
-    nb = int(nx/T) # number of blocks
-    m = np.max(x[:(nb*T)].reshape((nb,T)), axis=1)
+    # T should be an integer, and x is an nd-array where time is the first dimension
+    shp = x.shape
+    nt = shp[0]
+    nb = int(nt/T) # number of blocks
+    m = np.max(x[:(nb*T)].reshape((nb,T) + shp[1:]), axis=1)
     return m
 
 def fit_gev_distn(block_maxima):

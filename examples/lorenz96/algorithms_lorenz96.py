@@ -7,6 +7,7 @@ from os import makedirs
 import sys
 import copy as copylib
 import psutil
+import time as timelib
 import matplotlib
 import matplotlib.pyplot as plt
 matplotlib.rcParams.update({
@@ -102,14 +103,27 @@ class Lorenz96SDEDirectNumericalSimulation(algorithms.SDEDirectNumericalSimulati
         plt.close(fig)
         return
     def compute_extreme_stats_rotsym(self, obs_fun, spinup, time_block_size, returnstats_file):
+        tu = self.ens.dynsys.dt_save
         all_starts,all_ends = self.ens.get_all_timespans()
-        mems2summarize = np.where(all_starts >= spinup)[0]
+        mems2summarize = np.where((all_starts >= spinup)*(all_ends*tu <= 2.56e6/40))[0]
+        print(f'{len(mems2summarize) = }; {all_starts[-1] = }; {all_ends[-1] = }; {np.min(all_ends - all_starts)*tu = }; {np.max(all_ends - all_starts)*tu = }')
         blocks_per_k = int((all_ends[mems2summarize[-1]] - all_starts[mems2summarize[0]])/time_block_size)
         K = self.ens.dynsys.ode.K
-        block_maxima = np.nan*np.ones((K, blocks_per_k))
+        block_maxima = np.nan*np.ones((blocks_per_k,K))
         i_block = 0
+        time_comp_obs = 0.0
+        time_block_max = 0.0
+        time_hist = 0.0
+        time_minmax = 0.0
         for i_mem,mem in enumerate(mems2summarize):
+            now0 = timelib.time()
             fk = self.ens.compute_observables([obs_fun], mem)[0]
+            now1 = timelib.time()
+            time_comp_obs += now1 - now0
+            now0 = timelib.time()
+            fkmax,fkmin = np.max(fk),np.min(fk)
+            now1 = timelib.time()
+            time_minmax += now1 - now0
             if i_mem == 0:
                 # Initialize a histogram, might have to extend it 
                 bin_edges = np.linspace(np.min(fk)-1e-10,np.max(fk)+1e-10,40)
@@ -124,19 +138,26 @@ class Lorenz96SDEDirectNumericalSimulation(algorithms.SDEDirectNumericalSimulati
                 bin_edges = np.concatenate((bin_edges[0]-bin_width*np.arange(1,num_new_bins+1)[::-1], bin_edges))
                 hist = np.concatenate((np.zeros(num_new_bins,dtype=int), hist))
 
-            hist_new,_ = np.histogram(fk.flat, bins=bin_edges)
-            hist += hist_new
-
-            for k in range(K):
-                block_maxima_mem_k = utils.compute_block_maxima(fk[:,k],time_block_size)
-                block_maxima[k,i_block:i_block+len(block_maxima_mem_k)] = block_maxima_mem_k
-            i_block += len(block_maxima_mem_k)
+            if all_ends[i_mem] < 10*spinup:
+                now0 = timelib.time()
+                hist_new,_ = np.histogram(fk.flat, bins=bin_edges)
+                now1 = timelib.time()
+                time_hist += now1 - now0
+                hist += hist_new
+            now0 = timelib.time()
+            block_maxima_mem = utils.compute_block_maxima(fk,time_block_size)
+            now1 = timelib.time()
+            time_block_max += now1 - now0
+            block_maxima[i_block:i_block+len(block_maxima_mem)] = block_maxima_mem
+            i_block += len(block_maxima_mem)
 
             if mem % 100 == 0: 
                 print(f'{mem = }')
                 memusage_GB = psutil.Process().memory_info().rss / 1e9
                 print(f'Using {memusage_GB} GB')
-        block_maxima = np.concatenate(block_maxima[:,:i_block])
+                print(f'{time_comp_obs = }; {time_block_max = }; {time_hist = }')
+                print(f'{time_minmax = }')
+        block_maxima = block_maxima[:i_block].flatten()
         rlev,rtime,logsf,rtime_gev,logsf_gev,shape,loc,scale = utils.compute_returnstats_preblocked(block_maxima, time_block_size)
         bin_lows = bin_edges[:-1]
         # Now the block maxima-centric method, with error bars

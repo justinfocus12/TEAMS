@@ -33,7 +33,7 @@ def dns_paramset(i_expt):
     idx_multiparam = np.unravel_index(i_expt, tuple(len(mp) for mp in multiparams))
     seed_inc,F4 = (multiparams[i][i_param] for (i,i_param) in enumerate(idx_multiparam))
     # Minimal labels to differentiate them 
-    expt_label = r'$F_4=%g$, seed %d'%(F4,seed_inc)
+    expt_label = r'$F_4=%g$'%(F4)
     expt_abbrv = (r'F%g'%(F4)).replace('.','p') 
     config_dynsys = Lorenz96SDE.default_config()
     config_dynsys['frc']['white']['wavenumber_magnitudes'][0] = F4
@@ -112,7 +112,7 @@ def dns_meta_workflow(idx_param):
         meta_dirdict[subdir] = join(meta_dirdict['meta'],subdir)
         makedirs(meta_dirdict[subdir],exist_ok=True)
     config_meta_analysis = dict()
-    for key in ['observables_rotsym']:
+    for key in ['observables_rotsym','spinup_phys','time_block_size_phys']:
         config_meta_analysis[key] = workflows['configs_analysis'][0][key]
     return workflows,config_meta_analysis,meta_dirdict
 
@@ -205,12 +205,17 @@ def measure_plot_extreme_stats(config_analysis, alg, dirdict, overwrite_extstats
 
 def compare_extreme_stats(workflows,config_meta_analysis, dirdict):
     # Pot the two curves on top of each other 
-    fig,axes = plt.subplots(ncols=2, figsize=(12,6))
+    fig,axes = plt.subplots(ncols=3, figsize=(24,4), gridspec_kw={'wspace': 0.25})
     # Left: PDFs of x 
     num_expts = len(workflows['dirdicts'])
     print(f'{num_expts = }')
     print(f'{workflows["expt_labels"] = }')
     handles = []
+    time_block_size_phys = config_meta_analysis['time_block_size_phys']
+    tu = workflows['configs_dynsys'][0]['ode']['dt_save']
+    time_block_size = int(round(time_block_size_phys/tu))
+    sf2rt = lambda sf: utils.convert_sf_to_rtime(sf, time_block_size)
+    logsf2rt = lambda logsf: utils.convert_logsf_to_rtime(logsf, time_block_size)
     for i_expt in range(num_expts):
         extstats_x0 = np.load(join(workflows['dirdicts'][i_expt]['analysis'],r'extstats_rotsym_xk.npz'))
         extstats_E0 = np.load(join(workflows['dirdicts'][i_expt]['analysis'],r'extstats_rotsym_Ek.npz'))
@@ -220,14 +225,33 @@ def compare_extreme_stats(workflows,config_meta_analysis, dirdict):
         bin_mids += (bin_mids[1]-bin_mids[0])/2
         h, = ax.plot(bin_mids, extstats_x0['hist']/np.sum(extstats_x0['hist'])/(bin_mids[1]-bin_mids[0]), color=color, label=workflows['expt_labels'][i_expt])
         handles.append(h)
+
+        # Return levels for energy
         ax = axes[1]
-        ax.plot(extstats_E0['rtime'],extstats_E0['rlev'], color=color)
+        ax.plot(sf2rt(extstats_E0['ccdf_bm'])*tu, extstats_E0['bins_bm'][:-1], color=color, linewidth=2.5)
+        ax.fill_betweenx(extstats_E0['bins_bm'][:-1], sf2rt(extstats_E0['ccdf_bm_lower_cpi'])*tu, sf2rt(extstats_E0['ccdf_bm_upper_cpi'])*tu, fc=color, ec='none', zorder=-1, alpha=0.3)
+        ax.plot(sf2rt(extstats_E0['ccdf_bm_lower_bsi'])*tu, extstats_E0['bins_bm'][:-1], color=color, linestyle='dotted')
+        ax.plot(sf2rt(extstats_E0['ccdf_bm_upper_bsi'])*tu, extstats_E0['bins_bm'][:-1], color=color, linestyle='dotted')
+        # GEV fits
+        #ax.plot(extstats_E0['rtime_gev']*tu, extstats_E0['rlev'], color=color, linestyle='--')
+        # Invert for return period as function of return level
+        ax = axes[2]
+        logccdf_grid,rlev_inverted,rlev_inverted_lower,rlev_inverted_upper = utils.ccdf2rlev_of_rtime(extstats_E0['bins_bm'][:-1], extstats_E0['ccdf_bm'], extstats_E0['ccdf_bm_lower_cpi'], extstats_E0['ccdf_bm_upper_cpi'],) 
+        print(f'{logccdf_grid = }')
+        print(f'{logsf2rt(logccdf_grid) = }')
+        print(f'{rlev_inverted = }')
+        ax.plot(logsf2rt(logccdf_grid)*tu,rlev_inverted,color=color,linewidth=3)
+        ax.fill_between(logsf2rt(logccdf_grid)*tu,rlev_inverted_lower,rlev_inverted_upper,fc=color,ec='none',zorder=-1,alpha=0.3)
     axes[0].set_yscale('log')
     axes[0].set_xlabel(r'$x_0$')
     axes[0].set_ylabel(r'Prob. dens.')
+    axes[0].legend(handles=handles, bbox_to_anchor=(-0.25,0.5), loc='center right')
     axes[1].set_xscale('log')
-    axes[1].set_xlabel(r'Return time')
+    axes[1].set_xlabel(r'Return time $\pm0.95$ CI')
     axes[1].set_ylabel(r'$\frac{1}{2}x_0^2$ Return level')
+    axes[2].set_xscale('log')
+    axes[2].set_xlabel(r'Return time')
+    axes[2].set_ylabel(r'$\frac{1}{2}x_0^2$ Return level $\pm0.95$ CI')
     fig.savefig(join(dirdict['plots'],'returnstats_x0_E0.png'),**pltkwargs)
     plt.close(fig)
     return
