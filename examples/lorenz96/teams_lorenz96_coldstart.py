@@ -141,10 +141,20 @@ def plot_observable_spaghetti(config_analysis, config_algo, alg, dirdict, filedi
     tu = alg.ens.dynsys.dt_save
     desc_per_anc = np.array([len(list(nx.descendants(alg.ens.memgraph,ancestor))) for ancestor in range(alg.population_size)])
     anc_scores = alg.branching_state['scores_max'][:alg.population_size]
-    #order = np.argsort(desc_per_anc)[::-1]
-    order = np.argsort(anc_scores)[::-1]
-    ancs2plot = order[np.linspace(0,len(order)-1,6).astype(int)]
-    print(f'{desc_per_anc[order] = }')
+    # Select some ancestors to plot based on two criteria: (1) largest ancestral scores, (2) largest child scores
+    order_ancscores = np.argsort(anc_scores)[::-1]
+    descendants = [list(sorted(nx.descendants(alg.ens.memgraph, anc))) for anc in range(alg.population_size)]
+    print(f'{descendants[0] = }')
+    # Get the best score of the ultimate descendant
+    desc_scores = []
+    max_desc_scores = []
+    for anc in range(alg.population_size):
+        desc_scores_anc = [alg.branching_state['scores_max'][d] for d in descendants[anc]]
+        desc_scores.append(desc_scores_anc)
+        max_desc_scores.append(-np.inf if len(desc_scores_anc)==0 else max(desc_scores_anc))
+    order_descscores = np.argsort(max_desc_scores)[::-1]
+    ancs2plot = np.unique(np.concatenate((order_ancscores[:4], order_descscores[:4])))
+    # TODO finish
     for (obs_name,obs_props) in config_analysis['observables'].items():
         is_score = (obs_name == 'E0')
         obs_fun = lambda t,x: obs_props['fun'](t,x)
