@@ -137,33 +137,42 @@ def teams_single_workflow(i_expt):
 
     return config_sde,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict
 
-def plot_observable_spaghetti(config_analysis, config_algo, alg, dirdict, filedict):
+def plot_observable_spaghetti(config_analysis, config_sde, config_algo, alg, dirdict, filedict):
     tu = alg.ens.dynsys.dt_save
-    desc_per_anc = np.array([len(list(nx.descendants(alg.ens.memgraph,ancestor))) for ancestor in range(alg.population_size)])
-    anc_scores = alg.branching_state['scores_max'][:alg.population_size]
+    N = alg.population_size
+    all_scores = np.array(alg.branching_state['scores_max'])
+    B = alg.ens.construct_descent_matrix()[:N,:].toarray()
+    desc_per_anc = np.sum(B,axis=1)
+    anc_scores = all_scores[:N]
     # Select some ancestors to plot based on two criteria: (1) largest ancestral scores, (2) largest child scores
     order_ancscores = np.argsort(anc_scores)[::-1]
-    descendants = [list(sorted(nx.descendants(alg.ens.memgraph, anc))) for anc in range(alg.population_size)]
-    print(f'{descendants[0] = }')
+    descendants = [np.where(B[anc,:])[0] for anc in range(N)]
+    desc_scores = np.where(B==0, -np.inf, B*all_scores)
+    max_desc_scores = np.max(desc_scores, axis=1)
     # Get the best score of the ultimate descendant
-    desc_scores = []
-    max_desc_scores = []
-    for anc in range(alg.population_size):
-        desc_scores_anc = [alg.branching_state['scores_max'][d] for d in descendants[anc]]
-        desc_scores.append(desc_scores_anc)
-        max_desc_scores.append(-np.inf if len(desc_scores_anc)==0 else max(desc_scores_anc))
     order_descscores = np.argsort(max_desc_scores)[::-1]
     ancs2plot = np.unique(np.concatenate((order_ancscores[:4], order_descscores[:4])))
-    # TODO finish
+    rank_labels = [f'ancrank{i}' for i in range(4)] + [f'descrank{i}' for i in range(4)]
+    wavenum = config_sde['frc']['white']['wavenumbers'][0]
+    F_wavenum = config_sde['frc']['white']['wavenumber_magnitudes'][0]
     for (obs_name,obs_props) in config_analysis['observables'].items():
         is_score = (obs_name == 'E0')
         obs_fun = lambda t,x: obs_props['fun'](t,x)
-        for ancestor in ancs2plot:
-            outfile = join(dirdict['plots'], r'spaghetti_%s_anc%d.png'%(obs_props['abbrv'],ancestor))
-            title = r'%s ($\delta=%g$)'%(obs_props['label'],alg.advance_split_time*tu)
-            fig,axes = alg.plot_observable_spaghetti(obs_fun, ancestor, title=title, is_score=is_score, outfile=None)
+        for i_ancestor,ancestor in enumerate(ancs2plot):
+            outfile = join(dirdict['plots'], r'spaghetti_%s_%s_anc%d.png'%(obs_props['abbrv'],rank_labels[i_ancestor],ancestor))
+            ylabel = obs_props['label']
+            fig,axes = alg.plot_observable_spaghetti(obs_fun, ancestor, special_descendant=np.argmax(desc_scores[ancestor,:]), ylabel=ylabel, title='', is_score=is_score, outfile=None)
+            display = '\n'.join([
+                r'$F_{%d}=%g$'%(wavenum,F_wavenum),
+                r'$\delta=%g$'%(config_algo['advance_split_time_phys']),
+                r'',
+                r'Run %d'%(config_algo['seed_inc_init']),
+                r'Ancestor %d'%(ancestor),
+                ])
+            axes[0].text(-0.15,0.5,display,transform=axes[0].transAxes,ha='right',va='center')
             fig.savefig(outfile, **pltkwargs)
             plt.close(fig)
+            print(f'{outfile = }')
     return
 
 
@@ -239,7 +248,7 @@ def teams_single_procedure(i_expt):
     tododict = dict({
         'run':             0,
         'analysis': dict({
-            'observable_spaghetti':     0,
+            'observable_spaghetti':     1,
             'hovmoller':                0,
             }),
         })
@@ -248,7 +257,7 @@ def teams_single_procedure(i_expt):
         run_teams(dirdict,filedict,config_sde,config_algo)
     alg = pickle.load(open(filedict['alg'], 'rb'))
     if tododict['analysis']['observable_spaghetti']:
-        plot_observable_spaghetti(config_analysis, config_algo, alg, dirdict, filedict)
+        plot_observable_spaghetti(config_analysis, config_sde, config_algo, alg, dirdict, filedict)
         # TODO have another ancestor-wise version, and another that shows family lines improving in parallel and dropping out
     return
 

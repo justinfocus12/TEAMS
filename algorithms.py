@@ -1186,37 +1186,44 @@ class TEAMS(EnsembleAlgorithm):
         print(f'{termination_reasons = }')
         return
     # ----------------------- Plotting functions --------------------------------
-    def plot_observable_spaghetti(self, obs_fun, ancestor, outfile=None, ylabel='', title='', is_score=False):
-        print(f'******************* \n \t {self.branching_state["branch_times"] = } \n *************')
-        # Get all timespans
+    def plot_observable_spaghetti(self, obs_fun, ancestor, special_descendant=None, outfile=None, ylabel='', title='', is_score=False):
         tu = self.ens.dynsys.dt_save
         nmem = self.ens.get_nmem()
         N = self.population_size
         descendants = list(nx.descendants(self.ens.memgraph,ancestor))
+        lineage = list(sorted(nx.ancestors(self.ens.memgraph,special_descendant) | {special_descendant}))
+        if special_descendant is None:
+            mems2plot = [ancestor] + descendants
+        else:
+            mems2plot = lineage
         t0,_ = self.ens.get_member_timespan(ancestor)
-        fig,axes = plt.subplots(ncols=2,figsize=(20,5),width_ratios=[3,1],sharey=is_score)
-        ax = axes[0]
-        for i_mem,mem in enumerate([ancestor] + descendants):
+        fig,axes = plt.subplots(ncols=2,figsize=(12,3),width_ratios=[3,1],sharey=is_score)
+        for i_mem,mem in enumerate(mems2plot):
             tinit,tfin = self.ens.get_member_timespan(mem)
-            obs = self.ens.compute_observables([obs_fun], mem)[0]
-            assert tfin-tinit == len(obs)
+            #obs = self.ens.compute_observables([obs_fun], mem)[0]
+            obs = self.ens.compute_observables_along_lineage([obs_fun], mem, merge_as_scalars=True)[0]
+            print(f'{len(obs) = }')
+            assert tfin-t0 == len(obs)
             if mem == ancestor:
-                kwargs = {'color': 'black', 'linestyle': '--', 'linewidth': 2, 'zorder': 0}
+                linekwargs = {'color': 'black', 'linestyle': '--', 'linewidth': 2, 'zorder': 1}
             else:
-                kwargs = {'color': plt.cm.rainbow((i_mem-1)/len(descendants)), 'linestyle': '-', 'linewidth': 1, 'zorder': 1}
-            print(f'{tinit = }, {tfin = }, {obs.shape = }')
-            h, = ax.plot((np.arange(tinit+1,tfin+1)-t0)*tu, obs, **kwargs)
+                linekwargs = {'color': plt.cm.rainbow(i_mem/len(mems2plot)), 'linestyle': '-', 'linewidth': 1, 'zorder': 0}
+            ax = axes[0]
+            h, = ax.plot((np.arange(tinit+1,tfin+1)-t0)*tu, obs[tinit-t0:], **linekwargs)
             tbr = self.branching_state['branch_times'][mem]
             tmx = self.branching_state['scores_max_timing'][mem]
-            print(f'{tinit = }, {tbr = }, {tmx = }')
-            ax.plot((tbr-t0+1)*tu, obs[(tbr+1)-(tinit+1)], markerfacecolor="None", markeredgecolor=kwargs['color'], markeredgewidth=3, marker='o')
-            axes[1].scatter([max(0,mem-N)], [self.branching_state['scores_max'][mem]], color=kwargs['color'], marker='o')
-        ax.set_xlabel('time')
+            print(f'{t0 = }, {tinit = }, {tbr = }, {tmx = }, {tmx*tu = }')
+            ax.plot([(tbr-t0+1)*tu,(tmx-t0+1)*tu], [obs[tmx-t0-1]]*2, marker='o', **linekwargs)
+            #ax.plot((tbr-t0+1)*tu, obs[(tbr+1)-(tinit+1)], markerfacecolor="None", markeredgecolor=kwargs['color'], markeredgewidth=3, marker='o')
+            ax = axes[1]
+            ax.scatter([max(0,mem-N)], [self.branching_state['scores_max'][mem]], ec=linekwargs['color'], fc='none', marker='o', s=80)
+        ax = axes[0]
+        ax.set_xlabel('Time')
         ax.set_ylabel(ylabel)
         ax.set_title(title)
         ax = axes[1]
-        ax.scatter([0], self.branching_state['scores_max'][ancestor], c='black', marker='o')
         ax.plot(np.arange(nmem-N), self.branching_state['goals_at_birth'][N:], color='gray', linestyle='--')
+        ax.scatter([max(0,mem-N) for mem in mems2plot], [self.branching_state['scores_max'][mem] for mem in mems2plot], marker='.', color='gray')
         # TODO also overlay the full ascent of levels
         ax.set_xlabel('Generation')
         ax.set_ylabel('')

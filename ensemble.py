@@ -60,17 +60,20 @@ class Ensemble(ABC):
         return self.dynsys.compute_observables(obs_funs, metadata, self.root_dir, **kwargs)
 
     def compute_observables_along_lineage(self, obs_funs, mem_leaf, merge_as_scalars=False):
-        mems = sorted(nx.ancestors(self.memgraph, mem_leaf) | {mem_leaf})
-        obs = self.compute_observables(obs_funs, mems)
+        mems = list(sorted(nx.ancestors(self.memgraph, mem_leaf) | {mem_leaf}))
+        obs = [self.compute_observables(obs_funs, mem) for mem in mems]
         if not merge_as_scalars:
             return obs # leave the explicit concatenation to later
         t0,_ = self.get_member_timespan(mems[0])
-        _,tfin = self.ens.get_member_timespan(mem_leaf)
+        _,tfin = self.get_member_timespan(mem_leaf)
         obs_merged = [np.nan*np.ones(tfin-t0) for fun in obs_funs]
         for i_mem in range(len(mems)-1,-1,-1):
             tinit,_ = self.get_member_timespan(mems[i_mem])
-            for i_fun in range(len(funs)):
-                obs_merged[i_fun][(tinit-t0):(tfin-t0)] = obs[i_mem][len(obs[i_mem])-1-(tfin-tinit):]
+            print(f'{i_mem = }, {mems[i_mem] = }, {tinit = }, {tfin = }')
+            if tinit < tfin:
+                for i_fun in range(len(obs_funs)):
+                    obs_merged[i_fun][(tinit-t0):(tfin-t0)] = obs[i_mem][i_fun][len(obs[i_mem])-1-(tfin-tinit):]
+            tfin = tinit
         return obs_merged
     def construct_descent_matrix(self):
         A = nx.adjacency_matrix(self.memgraph, dtype=bool)
@@ -79,11 +82,6 @@ class Ensemble(ABC):
             B += A
             A = A @ A
         return B
-
-
-
-
-
     # --------------- Plotting methods ---------------
     def plot_observables(self, mems, ts, obsvals):
         # TODO also make an alternative method to compute observable functions

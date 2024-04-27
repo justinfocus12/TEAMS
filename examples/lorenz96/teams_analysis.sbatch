@@ -10,4 +10,4 @@
 
 module load anaconda3/2022.05-x86_64
 source activate teamsenv
-python -u teams_lorenz96_coldstart.py multiseed $SLURM_ARRAY_TASK_ID > /net/bstor002.ib/pog/001/ju26596/TEAMS/logs/progress_"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID".out
+python -u teams_lorenz96_coldstart.py single $SLURM_ARRAY_TASK_ID > /net/bstor002.ib/pog/001/ju26596/TEAMS/logs/progress_"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID".out
