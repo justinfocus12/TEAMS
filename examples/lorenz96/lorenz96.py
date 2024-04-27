@@ -167,8 +167,8 @@ class Lorenz96ODE(ODESystem): # TODO make a superclass Lorenz96, and a sibling s
         elif ax is None:
             raise Exception("You can't just give me a fig without an axis")
         return fig,ax
-    def plot_hovmoller(self, t, x, fig, ax):
-        im = ax.pcolormesh(t*self.dt_save, np.arange(self.K), x.T, shading='nearest', cmap='BrBG')
+    def plot_hovmoller(self, t, x, fig, ax, **kwargs):
+        im = ax.pcolormesh(t*self.dt_save, np.arange(self.K)-self.K//2, np.roll(x,self.K//2,axis=1).T, shading='nearest', cmap='BrBG', **kwargs)
         return im
     def plot_site_timeseries(self, t, x, k, linekw, fig=None, ax=None, ):
         fig,ax = self.check_fig_ax(fig,ax)

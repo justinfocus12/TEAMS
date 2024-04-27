@@ -137,31 +137,49 @@ def teams_single_workflow(i_expt):
 
     return config_sde,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict
 
-def plot_observable_spaghetti(config_analysis, config_sde, config_algo, alg, dirdict, filedict):
+def plot_observable_spaghetti(config_analysis, config_sde, config_algo, alg, dirdict, filedict, remove_old_plots=False):
     tu = alg.ens.dynsys.dt_save
     N = alg.population_size
     all_scores = np.array(alg.branching_state['scores_max'])
     B = alg.ens.construct_descent_matrix()[:N,:].toarray()
     desc_per_anc = np.sum(B,axis=1)
+    print(f'{desc_per_anc = }')
     anc_scores = all_scores[:N]
     # Select some ancestors to plot based on two criteria: (1) largest ancestral scores, (2) largest child scores
     order_ancscores = np.argsort(anc_scores)[::-1]
+    print(f'{order_ancscores[:3] = }')
+    print(f'{anc_scores[order_ancscores[:3]] = }')
     descendants = [np.where(B[anc,:])[0] for anc in range(N)]
     desc_scores = np.where(B==0, -np.inf, B*all_scores)
     max_desc_scores = np.max(desc_scores, axis=1)
     # Get the best score of the ultimate descendant
     order_descscores = np.argsort(max_desc_scores)[::-1]
-    ancs2plot = np.unique(np.concatenate((order_ancscores[:4], order_descscores[:4])))
-    rank_labels = [f'ancrank{i}' for i in range(4)] + [f'descrank{i}' for i in range(4)]
+    print(f'{order_descscores[:3] = }')
+    print(f'{max_desc_scores[order_descscores[:3]] = }')
+    # Get the most-split ancestors
+    order_famsize = np.argsort(desc_per_anc)[::-1]
+    print(f'{order_famsize[:3] = }')
+    print(f'{desc_per_anc[order_famsize[:3]] = }')
+    maxrank = 1
+    ancs2plot = np.concatenate(tuple(order[:maxrank] for order in (order_ancscores,order_descscores,order_famsize,)))
+    rank_labels = []
+    for ordername in ['ancscore','descscore','famsize']:
+        for r in range(maxrank):
+            rank_labels.append(f'{ordername}rank{r}')
     wavenum = config_sde['frc']['white']['wavenumbers'][0]
     F_wavenum = config_sde['frc']['white']['wavenumber_magnitudes'][0]
+    if remove_old_plots:
+        old_spaghetti_plots = glob.glob(join(dirdict['plots'],'spaghetti*.png'))
+        for fig in old_spaghetti_plots:
+            os.remove(fig)
     for (obs_name,obs_props) in config_analysis['observables'].items():
         is_score = (obs_name == 'E0')
         obs_fun = lambda t,x: obs_props['fun'](t,x)
         for i_ancestor,ancestor in enumerate(ancs2plot):
+            special_descendant = np.argmax(desc_scores[ancestor,:])
             outfile = join(dirdict['plots'], r'spaghetti_%s_%s_anc%d.png'%(obs_props['abbrv'],rank_labels[i_ancestor],ancestor))
             ylabel = obs_props['label']
-            fig,axes = alg.plot_observable_spaghetti(obs_fun, ancestor, special_descendant=np.argmax(desc_scores[ancestor,:]), ylabel=ylabel, title='', is_score=is_score, outfile=None)
+            fig,axes = alg.plot_observable_spaghetti(obs_fun, ancestor, special_descendant=special_descendant, ylabel=ylabel, title='', is_score=is_score, outfile=None)
             display = '\n'.join([
                 r'$F_{%d}=%g$'%(wavenum,F_wavenum),
                 r'$\delta=%g$'%(config_algo['advance_split_time_phys']),
@@ -173,6 +191,8 @@ def plot_observable_spaghetti(config_analysis, config_sde, config_algo, alg, dir
             fig.savefig(outfile, **pltkwargs)
             plt.close(fig)
             print(f'{outfile = }')
+            outfile = join(dirdict['plots'], r'hovmoller_%s_%s_anc%d.png'%(obs_props['abbrv'],rank_labels[i_ancestor],ancestor))
+            alg.plot_hovmoller_lineage(ancestor, special_descendant, outfile)
     return
 
 
@@ -450,7 +470,7 @@ if __name__ == "__main__":
                 np.ravel_multi_index((i_seed,i_F4,i_delta), (len(seed_incs),len(F4s),len(deltas_phys)))
                 for i_seed in range(len(seed_incs))
                 ]
-        for i_expt in idx_expt:
+        for i_expt in idx_expt[:1]:
             teams_single_procedure(i_expt)
     elif procedure == 'multiseed':
         idx_seed = list(range(nseeds))

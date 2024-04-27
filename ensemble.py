@@ -69,10 +69,10 @@ class Ensemble(ABC):
         obs_merged = [np.nan*np.ones(tfin-t0) for fun in obs_funs]
         for i_mem in range(len(mems)-1,-1,-1):
             tinit,_ = self.get_member_timespan(mems[i_mem])
-            print(f'{i_mem = }, {mems[i_mem] = }, {tinit = }, {tfin = }')
+            #print(f'{i_mem = }, {mems[i_mem] = }, {tinit = }, {tfin = }')
             if tinit < tfin:
                 for i_fun in range(len(obs_funs)):
-                    obs_merged[i_fun][(tinit-t0):(tfin-t0)] = obs[i_mem][i_fun][len(obs[i_mem])-1-(tfin-tinit):]
+                    obs_merged[i_fun][(tinit-t0):(tfin-t0)] = obs[i_mem][i_fun][:(tfin-tinit)]   # [len(obs[i_mem])-1-(tfin-tinit):]
             tfin = tinit
         return obs_merged
     def construct_descent_matrix(self):

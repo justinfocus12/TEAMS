@@ -1207,7 +1207,7 @@ class TEAMS(EnsembleAlgorithm):
             if mem == ancestor:
                 linekwargs = {'color': 'black', 'linestyle': '--', 'linewidth': 2, 'zorder': 1}
             else:
-                linekwargs = {'color': plt.cm.rainbow(i_mem/len(mems2plot)), 'linestyle': '-', 'linewidth': 1, 'zorder': 0}
+                linekwargs = {'color': plt.cm.turbo((i_mem+1)/len(mems2plot)), 'linestyle': '-', 'linewidth': 1.5, 'zorder': 0}
             ax = axes[0]
             h, = ax.plot((np.arange(tinit+1,tfin+1)-t0)*tu, obs[tinit-t0:], **linekwargs)
             tbr = self.branching_state['branch_times'][mem]
@@ -1216,14 +1216,14 @@ class TEAMS(EnsembleAlgorithm):
             ax.plot([(tbr-t0+1)*tu,(tmx-t0+1)*tu], [obs[tmx-t0-1]]*2, marker='o', **linekwargs)
             #ax.plot((tbr-t0+1)*tu, obs[(tbr+1)-(tinit+1)], markerfacecolor="None", markeredgecolor=kwargs['color'], markeredgewidth=3, marker='o')
             ax = axes[1]
-            ax.scatter([max(0,mem-N)], [self.branching_state['scores_max'][mem]], ec=linekwargs['color'], fc='none', marker='o', s=80)
+            ax.scatter([max(0,mem-N)], [self.branching_state['scores_max'][mem]], ec=linekwargs['color'], fc='none', marker='o', s=80, lw=2,)
         ax = axes[0]
         ax.set_xlabel('Time')
         ax.set_ylabel(ylabel)
         ax.set_title(title)
         ax = axes[1]
         ax.plot(np.arange(nmem-N), self.branching_state['goals_at_birth'][N:], color='gray', linestyle='--')
-        ax.scatter([max(0,mem-N) for mem in mems2plot], [self.branching_state['scores_max'][mem] for mem in mems2plot], marker='.', color='gray')
+        ax.scatter([max(0,mem-N) for mem in [ancestor]+descendants], [self.branching_state['scores_max'][mem] for mem in [ancestor]+descendants], marker='.', color='gray', )
         # TODO also overlay the full ascent of levels
         ax.set_xlabel('Generation')
         ax.set_ylabel('')

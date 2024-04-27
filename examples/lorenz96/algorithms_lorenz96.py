@@ -2,6 +2,7 @@ import numpy as np
 from numpy.random import default_rng
 import pickle
 from scipy import sparse as sps
+import networkx as nx
 from os.path import join, exists
 from os import makedirs
 import sys
@@ -310,6 +311,64 @@ class Lorenz96SDETEAMS(algorithms.SDETEAMS):
         abbrv = r'%s_%s_%s_%s'%(abbrv_population,abbrv_k,abbrv_t,abbrv_buick)
         abbrv = abbrv.replace('.','p')
         return abbrv,label_population
+    # ----------- post analysis ---------------
+    def plot_hovmoller_lineage(self, ancestor, special_descendant, outfile):
+        # For a single lineage from ancestor to descendant, plot the Hovmoller diagrams 
+        tu = self.ens.dynsys.dt_save
+        nmem = self.ens.get_nmem()
+        N = self.population_size
+        lineage = list(sorted(nx.ancestors(self.ens.memgraph,special_descendant) | {special_descendant}))
+        tinits,tfins = self.ens.get_all_timespans()
+        tinits = tinits[lineage]
+        tfins = tfins[lineage]
+        t0 = tinits[0]
+        obs_fun = lambda t,x: (t,x)
+        fig,axes = plt.subplots(ncols=2, nrows=len(lineage), figsize=(10,3*len(lineage)), gridspec_kw={'hspace': 0.2}, sharex=True, sharey=True)
+        xs = []
+        ts = []
+        vmin,vmax = np.inf,-np.inf
+        for i_mem,mem in enumerate(lineage):
+            t,x = self.ens.compute_observables([obs_fun], mem)[0]
+            xs.append(x)
+            ts.append(t)
+            vmin = min(vmin,np.min(x))
+            vmax = max(vmax,np.max(x))
+        vmax_abs = max(abs(vmin),abs(vmax))
+        for i_mem,mem in enumerate(lineage):
+            ax = axes[i_mem,0]
+            self.ens.dynsys.ode.plot_hovmoller(ts[i_mem]-t0,xs[i_mem],fig,ax,vmin=vmin,vmax=vmax)
+            tmx = self.branching_state['scores_max_timing'][mem]
+            ax.axvline((tmx-t0)*tu, color='black', linestyle='--')
+            ax.set_ylabel(r'Longitude $k$')
+            ax = axes[i_mem,1]
+            if i_mem > 0:
+                i_adopted_ancestor = 0 #np.where(tinits[:i_mem] <= tinits[i_mem])[0][-1]
+                overlap_duration = min(len(ts[i_mem]),len(ts[i_adopted_ancestor]))
+                if overlap_duration > 0:
+                    t_overlap = ts[i_mem][-overlap_duration:]
+                    diff = xs[i_mem][-overlap_duration:]-xs[i_adopted_ancestor][-overlap_duration:]
+                    # normalized
+                    diff = sps.diags(1/np.max(np.abs(diff),axis=1)) @ diff
+                    self.ens.dynsys.ode.plot_hovmoller(t_overlap-t0,diff,fig,ax)
+                    ax.axvline((tmx-t0)*tu, color='black', linestyle='--')
+
+        for i_row in range(axes.shape[0]):
+            axes[i_row,0].set_ylabel(r'Longitude $k$')
+        for i_col in range(axes.shape[1]):
+            axes[-1,i_col].set_xlabel(r'Time')
+        axes[0,1].axis('off')
+        axes[1,1].set_title('Norm. Diff.')
+        axes[0,0].set_title(r'$x_k(t)$')
+        if outfile is not None:
+            fig.savefig(outfile, **pltkwargs)
+            plt.close(fig)
+        return fig,axes
+
+
+
+
+
+
 
 
 
