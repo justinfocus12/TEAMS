@@ -1186,7 +1186,7 @@ class TEAMS(EnsembleAlgorithm):
         print(f'{termination_reasons = }')
         return
     # ----------------------- Plotting functions --------------------------------
-    def plot_observable_spaghetti(self, obs_fun, ancestor, special_descendant=None, outfile=None, ylabel='', title='', is_score=False):
+    def plot_observable_spaghetti(self, obs_fun, ancestor, special_descendant=None, outfile=None, obs_label='', title='', is_score=False):
         tu = self.ens.dynsys.dt_save
         nmem = self.ens.get_nmem()
         N = self.population_size
@@ -1213,12 +1213,17 @@ class TEAMS(EnsembleAlgorithm):
             tbr = self.branching_state['branch_times'][mem]
             tmx = self.branching_state['scores_max_timing'][mem]
             print(f'{t0 = }, {tinit = }, {tbr = }, {tmx = }, {tmx*tu = }')
-            ax.plot([(tbr-t0+1)*tu,(tmx-t0+1)*tu], [obs[tmx-t0-1]]*2, marker='o', **linekwargs)
+            if mem != ancestor:
+                ax.plot([(tbr-t0+1)*tu,(tmx-t0+1)*tu], [obs[tmx-t0-1]]*2, marker='o', **linekwargs)
             #ax.plot((tbr-t0+1)*tu, obs[(tbr+1)-(tinit+1)], markerfacecolor="None", markeredgecolor=kwargs['color'], markeredgewidth=3, marker='o')
             ax = axes[1]
             ax.scatter([max(0,mem-N)], [self.branching_state['scores_max'][mem]], ec=linekwargs['color'], fc='none', marker='o', s=80, lw=2,)
         ax = axes[0]
         ax.set_xlabel('Time')
+        if is_score:
+            ylabel = r'Score $R(X(t))=$%s'%(obs_label)
+        else:
+            ylabel = obs_label
         ax.set_ylabel(ylabel)
         ax.set_title(title)
         ax = axes[1]
@@ -1226,7 +1231,11 @@ class TEAMS(EnsembleAlgorithm):
         ax.scatter([max(0,mem-N) for mem in [ancestor]+descendants], [self.branching_state['scores_max'][mem] for mem in [ancestor]+descendants], marker='.', color='gray', )
         # TODO also overlay the full ascent of levels
         ax.set_xlabel('Generation')
-        ax.set_ylabel('')
+        if is_score:
+            ylabel = r'$\max_t\{$%s$\}$'%(obs_label)
+        else:
+            ylabel = r''
+        ax.set_ylabel(ylabel)
         #ax.set_xlim([time[0],time[-1]+1])
         if outfile is not None:
             fig.savefig(outfile, **pltkwargs)
@@ -1372,9 +1381,9 @@ class TEAMS(EnsembleAlgorithm):
         ccdf_fin_wted_lower = np.where(ccdf_fin_wted_lower==0, np.nan, ccdf_fin_wted_lower)
         ccdf_fin_wted_upper = np.where(ccdf_fin_wted_upper==0, np.nan, ccdf_fin_wted_upper)
         ccdf_fin_unif = utils.pmf2ccdf(hist_fin_unif,bin_edges)
-        # TODO put error bars on TEAMS by bootstrapping
+        # put error bars on TEAMS by bootstrapping
         rng_boot = default_rng(45839)
-        n_boot = 1000
+        n_boot = 5000
         idx_alg_boot = rng_boot.choice(np.arange(len(algs)), replace=True, size=(n_boot,len(algs)))
         ccdf_fin_wted_boot = np.nan*np.ones((n_boot,len(bin_edges)-1))
         for i_boot in range(n_boot):
@@ -1437,7 +1446,8 @@ class TEAMS(EnsembleAlgorithm):
 
         # ------------- Plot -------------------
         teams_abbrv = 'TEAMS' if algs[0].advance_split_time>0 else 'AMS'
-        fig,axes = plt.subplots(ncols=3, figsize=(18,4), sharex=False, sharey=True)
+        figh,axesh = plt.subplots(ncols=3, figsize=(18,4), sharex=False, sharey=True)
+        figv,axesv = plt.subplots(ncols=3, figsize=(18,4), sharex=False, sharey=True) # vertically oriented errbars
 
         # ++++ left-hand text label +++
         cost_display = '\n'.join([
@@ -1450,7 +1460,7 @@ class TEAMS(EnsembleAlgorithm):
             r'%.1E'%(cost_dns)
             ])
         display = '\n'.join([param_display,'',cost_display])
-        axes[0].text(-0.3,0.5,display,fontsize=15,transform=axes[0].transAxes,horizontalalignment='right',verticalalignment='center')
+        axesh[0].text(-0.3,0.5,display,fontsize=15,transform=axes[0].transAxes,horizontalalignment='right',verticalalignment='center')
 
         # ++++ Column 0: individual curves on the left ++++
         ax = axes[0]
@@ -1504,6 +1514,8 @@ class TEAMS(EnsembleAlgorithm):
 
         fig.savefig(figfile, **pltkwargs)
         plt.close(fig)
+
+
         return 
 
 

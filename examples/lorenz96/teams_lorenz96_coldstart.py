@@ -170,7 +170,8 @@ def plot_observable_spaghetti(config_analysis, config_sde, config_algo, alg, dir
     F_wavenum = config_sde['frc']['white']['wavenumber_magnitudes'][0]
     if remove_old_plots:
         old_spaghetti_plots = glob.glob(join(dirdict['plots'],'spaghetti*.png'))
-        for fig in old_spaghetti_plots:
+        old_hovmoller_plots = glob.glob(join(dirdict['plots'],'hovmoller*.png'))
+        for fig in old_spaghetti_plots + old_hovmoller_plots:
             os.remove(fig)
     for (obs_name,obs_props) in config_analysis['observables'].items():
         is_score = (obs_name == 'E0')
@@ -178,8 +179,7 @@ def plot_observable_spaghetti(config_analysis, config_sde, config_algo, alg, dir
         for i_ancestor,ancestor in enumerate(ancs2plot):
             special_descendant = np.argmax(desc_scores[ancestor,:])
             outfile = join(dirdict['plots'], r'spaghetti_%s_%s_anc%d.png'%(obs_props['abbrv'],rank_labels[i_ancestor],ancestor))
-            ylabel = obs_props['label']
-            fig,axes = alg.plot_observable_spaghetti(obs_fun, ancestor, special_descendant=special_descendant, ylabel=ylabel, title='', is_score=is_score, outfile=None)
+            fig,axes = alg.plot_observable_spaghetti(obs_fun, ancestor, special_descendant=special_descendant, obs_label=obs_props['label'], title='', is_score=is_score, outfile=None)
             display = '\n'.join([
                 r'$F_{%d}=%g$'%(wavenum,F_wavenum),
                 r'$\delta=%g$'%(config_algo['advance_split_time_phys']),
@@ -191,8 +191,11 @@ def plot_observable_spaghetti(config_analysis, config_sde, config_algo, alg, dir
             fig.savefig(outfile, **pltkwargs)
             plt.close(fig)
             print(f'{outfile = }')
-            outfile = join(dirdict['plots'], r'hovmoller_%s_%s_anc%d.png'%(obs_props['abbrv'],rank_labels[i_ancestor],ancestor))
-            alg.plot_hovmoller_lineage(ancestor, special_descendant, outfile)
+            if obs_name == 'x0':
+                outfile = join(dirdict['plots'], r'hovmoller_%s_%s_anc%d.png'%(obs_props['abbrv'],rank_labels[i_ancestor],ancestor))
+                fig,axes = alg.plot_hovmoller_lineage(ancestor, special_descendant, outfile=None)
+                axes[0,1].text(0.8,0.5,display,transform=axes[0,1].transAxes,ha='right',va='center')
+                fig.savefig(outfile, **pltkwargs)
     return
 
 
@@ -207,7 +210,7 @@ def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, param_
         print(f'About to compute DNS scores')
         dns = pickle.load(open(filedict['dns'], 'rb'))
         sccomp_dns = []
-        # TODO multi-thread this computation
+        # TODO multi-thread this computation, and build in rotational symmetry
         nmem_dns = dns.ens.get_nmem()
         for mem in range(nmem_dns):
             if mem % 100 == 0: print(f'Scoring member {mem} out of {nmem_dns}')
@@ -269,7 +272,6 @@ def teams_single_procedure(i_expt):
         'run':             0,
         'analysis': dict({
             'observable_spaghetti':     1,
-            'hovmoller':                0,
             }),
         })
     config_sde,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = teams_single_workflow(i_expt)
@@ -277,7 +279,7 @@ def teams_single_procedure(i_expt):
         run_teams(dirdict,filedict,config_sde,config_algo)
     alg = pickle.load(open(filedict['alg'], 'rb'))
     if tododict['analysis']['observable_spaghetti']:
-        plot_observable_spaghetti(config_analysis, config_sde, config_algo, alg, dirdict, filedict)
+        plot_observable_spaghetti(config_analysis, config_sde, config_algo, alg, dirdict, filedict, remove_old_plots=True)
         # TODO have another ancestor-wise version, and another that shows family lines improving in parallel and dropping out
     return
 
@@ -470,7 +472,7 @@ if __name__ == "__main__":
                 np.ravel_multi_index((i_seed,i_F4,i_delta), (len(seed_incs),len(F4s),len(deltas_phys)))
                 for i_seed in range(len(seed_incs))
                 ]
-        for i_expt in idx_expt[:1]:
+        for i_expt in idx_expt:
             teams_single_procedure(i_expt)
     elif procedure == 'multiseed':
         idx_seed = list(range(nseeds))

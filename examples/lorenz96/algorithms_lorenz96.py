@@ -318,6 +318,8 @@ class Lorenz96SDETEAMS(algorithms.SDETEAMS):
         nmem = self.ens.get_nmem()
         N = self.population_size
         lineage = list(sorted(nx.ancestors(self.ens.memgraph,special_descendant) | {special_descendant}))
+        if len(lineage) == 1:
+            return
         tinits,tfins = self.ens.get_all_timespans()
         tinits = tinits[lineage]
         tfins = tfins[lineage]
@@ -340,25 +342,24 @@ class Lorenz96SDETEAMS(algorithms.SDETEAMS):
             tmx = self.branching_state['scores_max_timing'][mem]
             ax.axvline((tmx-t0)*tu, color='black', linestyle='--')
             ax.set_ylabel(r'Longitude $k$')
+            ax.set_title(r'$\mathbf{x}^{(%d)}(t)$'%(mem))
             ax = axes[i_mem,1]
-            if i_mem > 0:
-                i_adopted_ancestor = 0 #np.where(tinits[:i_mem] <= tinits[i_mem])[0][-1]
+            if i_mem == 0:
+                ax.axis('off')
+            else:
+                i_adopted_ancestor = i_mem - 1 #np.where(tinits[:i_mem] <= tinits[i_mem])[0][-1]
                 overlap_duration = min(len(ts[i_mem]),len(ts[i_adopted_ancestor]))
                 if overlap_duration > 0:
                     t_overlap = ts[i_mem][-overlap_duration:]
                     diff = xs[i_mem][-overlap_duration:]-xs[i_adopted_ancestor][-overlap_duration:]
                     # normalized
-                    diff = sps.diags(1/np.max(np.abs(diff),axis=1)) @ diff
+                    diff = sps.diags(1/np.sqrt(np.sum(diff**2, axis=1))) @ diff
                     self.ens.dynsys.ode.plot_hovmoller(t_overlap-t0,diff,fig,ax)
                     ax.axvline((tmx-t0)*tu, color='black', linestyle='--')
+                ax.set_title(r'$\mathbf{x}^{(%d)}(t)-\mathbf{x}^{(%d)}(t)$ normalized'%(mem,lineage[i_adopted_ancestor]))
 
-        for i_row in range(axes.shape[0]):
-            axes[i_row,0].set_ylabel(r'Longitude $k$')
         for i_col in range(axes.shape[1]):
             axes[-1,i_col].set_xlabel(r'Time')
-        axes[0,1].axis('off')
-        axes[1,1].set_title('Norm. Diff.')
-        axes[0,0].set_title(r'$x_k(t)$')
         if outfile is not None:
             fig.savefig(outfile, **pltkwargs)
             plt.close(fig)
