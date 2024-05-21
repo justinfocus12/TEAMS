@@ -56,7 +56,7 @@ import algorithms_frierson; reload(algorithms_frierson)
 def teams_multiparams():
     seed_incs = list(range(16))
     sigmas = [0.3]
-    deltas_phys = [0.0,6.0,8.0,10.0]
+    deltas_phys = [0.0,4.0,5.0,6.0,7.0,8.0,10.0]
     split_landmarks = ['thx']
     return seed_incs,sigmas,deltas_phys,split_landmarks
 
@@ -190,56 +190,55 @@ def teams_single_workflow(i_expt):
         })
     config_analysis['observables'] = observables
     config_analysis['fields_2d'] = dict({
-        'area_ps_90x30': dict({
+        'area_ps_360x30': dict({
             'fun': lambda ds: frierson_gcm.FriersonGCM.sel_from_roi(
                 frierson_gcm.FriersonGCM.surface_pressure(ds)/1000,
                 dict(
                     lat=slice(config_analysis['target_location']['lat']-15,config_analysis['target_location']['lat']+15),
-                    lon=slice(config_analysis['target_location']['lon']-45,config_analysis['target_location']['lon']+45),
+                    lon=slice(config_analysis['target_location']['lon']-180,config_analysis['target_location']['lon']+180),
                     ),
                 ),
-            'abbrv': 'PS90x30',
-            'label': r'Surf. Pres. [kPa] $(\phi,\lambda)=(45\pm15,180\pm45)$',
+            'abbrv': 'PS360x30',
+            'label': r'Surf. Pres. [kPa] $(\phi,\lambda)=(45\pm15,180\pm180)$',
             'cmap': 'coolwarm',
             }),
-        'area_w500_90x30': dict({
+        'area_w500_360x30': dict({
             'fun': lambda ds: frierson_gcm.FriersonGCM.sel_from_roi(
                 frierson_gcm.FriersonGCM.vertical_velocity(ds),
                 dict(
                     lat=slice(config_analysis['target_location']['lat']-15,config_analysis['target_location']['lat']+15),
-                    lon=slice(config_analysis['target_location']['lon']-45,config_analysis['target_location']['lon']+45),
+                    lon=slice(config_analysis['target_location']['lon']-180,config_analysis['target_location']['lon']+180),
                     pfull=500,
                     ),
                 ),
-            'abbrv': 'W500_90x30',
-            'label': r'Vert. Vel. [Pa/s] $(\phi,\lambda)=(45\pm15,180\pm45)$',
+            'abbrv': 'W500_360x30',
+            'label': r'Vert. Vel. [Pa/s] $(\phi,\lambda)=(45\pm15,180\pm180)$',
             'cmap': 'coolwarm',
             }),
-        'area_rain_90x30': dict({
+        'area_rain_360x30': dict({
             'fun': lambda ds: frierson_gcm.FriersonGCM.rolling_time_mean(
                 frierson_gcm.FriersonGCM.sel_from_roi(
                     frierson_gcm.FriersonGCM.total_rain(ds),
-                    dict(
-                        lat=slice(config_analysis['target_location']['lat']-15,config_analysis['target_location']['lat']+15),
-                        lon=slice(config_analysis['target_location']['lon']-45,config_analysis['target_location']['lon']+45),
-                        ),
+                    dict({
+                        'lat': slice(config_analysis['target_location']['lat']-15,config_analysis['target_location']['lat']+15),
+                        }),
                     ),
                 config_gcm['outputs_per_day'],
                 ),
-            'abbrv':  'R1day90x30',
-            'label': '1-day rain [mm] $(\phi,\lambda)=(45\pm15,180\pm45)$',
+            'abbrv': 'R360x30',
+            'label': r'Rain rate $(\phi,\lambda)=(45\pm15,180\pm180)$',
             'cmap': 'Blues',
             }),
-        'area_cwv_90x30': dict({
+        'area_cwv_360x30': dict({
             'fun': lambda ds: frierson_gcm.FriersonGCM.sel_from_roi(
                 frierson_gcm.FriersonGCM.column_water_vapor(ds),
                 dict(
                     lat=slice(config_analysis['target_location']['lat']-15,config_analysis['target_location']['lat']+15),
-                    lon=slice(config_analysis['target_location']['lon']-45,config_analysis['target_location']['lon']+45),
+                    lon=slice(config_analysis['target_location']['lon']-180,config_analysis['target_location']['lon']+180),
                     ),
                 ),
-            'abbrv': 'CWV90x30',
-            'label': r'Column water vapor [kg/m$^2$] $(\phi,\lambda)=(45\pm15,180\pm45)$',
+            'abbrv': 'CWV360x30',
+            'label': r'Column water vapor [kg/m$^2$] $(\phi,\lambda)=(45\pm15,180\pm180)$',
             'cmap': 'Blues',
             }),
         })
@@ -274,32 +273,45 @@ def teams_single_workflow(i_expt):
 
     return config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict
 
-def plot_fields_2d(config_analysis, alg, dirdict, filedict, expt_label):
+def plot_fields_2d(config_analysis, alg, dirdict, filedict, expt_label, remove_old_plots=False):
     tu = alg.ens.dynsys.dt_save
-    desc_per_anc = np.array([len(list(nx.descendants(alg.ens.memgraph,ancestor))) for ancestor in range(alg.population_size)])
-    anc_scores = alg.branching_state['scores_max'][:alg.population_size]
-    # Select some ancestors to plot based on two criteria: (1) largest ancestral scores, (2) largest child scores
+    N = alg.population_size
+    all_scores = np.array(alg.branching_state['scores_max'])
+    B = alg.ens.construct_descent_matrix()[:N,:].toarray()
+    desc_per_anc = np.sum(B,axis=1)
+    anc_scores = all_scores[:N]
     order_ancscores = np.argsort(anc_scores)[::-1]
-    descendants = [list(sorted(nx.descendants(alg.ens.memgraph, anc))) for anc in range(alg.population_size)]
-    print(f'{descendants[0] = }')
+    descendants = [np.where(B[anc,:])[0] for anc in range(N)]
+    desc_scores = np.where(B==0, -np.inf, B*all_scores)
+    max_desc_scores = np.max(desc_scores, axis=1)
     # Get the best score of the ultimate descendant
-    desc_scores = []
-    max_desc_scores = []
-    for anc in range(alg.population_size):
-        desc_scores_anc = [alg.branching_state['scores_max'][d] for d in descendants[anc]]
-        desc_scores.append(desc_scores_anc)
-        max_desc_scores.append(-np.inf if len(desc_scores_anc)==0 else max(desc_scores_anc))
     order_descscores = np.argsort(max_desc_scores)[::-1]
+    # Get the most-split ancestors
+    order_famsize = np.argsort(desc_per_anc)[::-1]
+    # Select some ancestors to plot based on two criteria: (1) largest ancestral scores, (2) largest child scores
     ancs2plot = np.unique(np.concatenate((order_ancscores[:4], order_descscores[:4])))
     print(f'{ancs2plot = }')
+    if remove_old_plots:
+        old_plot_filenames = glob.glob(join(dirdict['plots'],'fields*.png'))
+        for f in old_plot_filenames:
+            os.remove(f)
     for i_ancestor,ancestor in enumerate(ancs2plot):
-        best_desc = descendants[ancestor][np.argmax(desc_scores[ancestor])]
+        if len(descendants[ancestor]) == 0:
+            continue
+        best_desc = np.argmax(desc_scores[ancestor,:])
         lineage = list(sorted(nx.ancestors(alg.ens.memgraph, best_desc) | {best_desc}))
         print(f'{lineage = }')
         obs_funs = [obs_props['fun'] for obs_props in config_analysis['fields_2d'].values()]
         f_anc_multiobs,f_desc_multiobs = tuple(alg.ens.compute_observables(obs_funs, mem, compute=True) for mem in [lineage[0],lineage[-1]])
+        print(f'Computed multiobs')
         for i_obs,(obs_name,obs_props) in enumerate(config_analysis['fields_2d'].items()):
             f_anc,f_desc = f_anc_multiobs[i_obs],f_desc_multiobs[i_obs]
+            # Interpoilate to 1-degree grid 
+            lon_hires = np.arange(f_anc.lon.min().item(), f_anc.lon.max().item(), step=1.0)
+            lat_hires = np.arange(f_anc.lat.min().item(), f_anc.lat.max().item(), step=1.0)
+            f_anc = f_anc.interp(lon=lon_hires, lat=lat_hires)
+            f_desc = f_desc.interp(lon=lon_hires, lat=lat_hires)
+
             vmin,vmax = min((f.min().item() for f in (f_anc,f_desc))),max((f.max().item() for f in (f_anc,f_desc)))
             score_lineage = tuple(alg.branching_state['scores_tdep'][mem] for mem in lineage)
             tmx = alg.branching_state['scores_max_timing'][ancestor]
@@ -307,7 +319,7 @@ def plot_fields_2d(config_analysis, alg, dirdict, filedict, expt_label):
             tinit,tfin = alg.ens.get_member_timespan(ancestor)
 
             for time2plot in range(max(tmx-int(4/tu),tinit+1),tmx+int(3/tu)):
-                fig = plt.figure(tight_layout=True, figsize=(12,12))
+                fig = plt.figure(tight_layout=True, figsize=(12,6))
                 gs = gridspec.GridSpec(3,2)
                 ax0 = fig.add_subplot(gs[0,0]) # Ancestor 2D field
                 ax1 = fig.add_subplot(gs[1,0]) # Descendant 2D field
@@ -351,32 +363,56 @@ def plot_fields_2d(config_analysis, alg, dirdict, filedict, expt_label):
                 ax.set_ylabel(r'Target loc. value')
 
                 fig.suptitle(obs_props['label'])
-                fig.savefig(join(dirdict['plots'],r'fields_anc%d_%s_t%d'%(ancestor,obs_props['abbrv'],time2plot-tinit)), **pltkwargs)
+                filename = join(dirdict['plots'],r'fields_anc%d_%s_t%d'%(ancestor,obs_props['abbrv'],time2plot-tinit))
+                fig.savefig(filename, **pltkwargs)
 
                 plt.close(fig)
+                print(f'Just saved to {filename}')
     return
 
-def plot_observable_spaghetti(config_analysis, alg, dirdict, filedict):
+def plot_observable_spaghetti(config_analysis, alg, dirdict, filedict, remove_old_plots=False):
     tu = alg.ens.dynsys.dt_save
-    desc_per_anc = np.array([len(list(nx.descendants(alg.ens.memgraph,ancestor))) for ancestor in range(alg.population_size)])
-    anc_scores = alg.branching_state['scores_max'][:alg.population_size]
+    N = alg.population_size
+    all_scores = np.array(alg.branching_state['scores_max'])
+    B = alg.ens.construct_descent_matrix()[:N,:].toarray()
+    desc_per_anc = np.sum(B,axis=1)
+    anc_scores = all_scores[:N]
     # Select some ancestors to plot based on two criteria: (1) largest ancestral scores, (2) largest child scores
     order_ancscores = np.argsort(anc_scores)[::-1]
-    A = nx.adjacency_matrix(alg.ens.memgraph)[:alg.population_size,:].toarray()
-    desc_scores = A * alg.branching_state['scores_max']
-    order_descscores = np.argsort(np.max(desc_scores,axis=1))[::-1]
-    ancs2plot = np.concatenate((order_ancscores[:4], order_descscores[:4]))
-    rank_labels = [f'ancrank{i}' for i in range(4)] + [f'descrank{i}' for i in range(4)]
+    print(f'{order_ancscores[:3] = }')
+    print(f'{anc_scores[order_ancscores[:3]] = }')
+    descendants = [np.where(B[anc,:])[0] for anc in range(N)]
+    desc_scores = np.where(B==0, -np.inf, B*all_scores)
+    max_desc_scores = np.max(desc_scores, axis=1)
+    # Get the best score of the ultimate descendant
+    order_descscores = np.argsort(max_desc_scores)[::-1]
+    print(f'{order_descscores[:3] = }')
+    print(f'{max_desc_scores[order_descscores[:3]] = }')
+    # Get the most-split ancestors
+    order_famsize = np.argsort(desc_per_anc)[::-1]
+    print(f'{order_famsize[:3] = }')
+    print(f'{desc_per_anc[order_famsize[:3]] = }')
+    maxrank = 3
+    ancs2plot = np.concatenate(tuple(order[:maxrank] for order in (order_ancscores,order_descscores,order_famsize,)))
+    rank_labels = []
+    for ordername in ['ancscore','descscore','famsize']:
+        for r in range(maxrank):
+            rank_labels.append(f'{ordername}rank{r}')
+    if remove_old_plots:
+        old_spaghetti_plots = glob.glob(join(dirdict['plots'],'spaghetti*.png'))
+        for fig in old_spaghetti_plots:
+            os.remove(fig)
     angel = pickle.load(open(filedict['angel'],'rb'))
     for (obs_name,obs_props) in config_analysis['observables'].items():
         is_score = (obs_name == 'local_dayavg_rain')
-        if True or is_score:
+        if is_score:
             obs_fun = lambda ds: obs_props['fun'](ds, **obs_props['kwargs'])
             for i_ancestor,ancestor in enumerate(ancs2plot):
+                special_descendant = np.argmax(desc_scores[ancestor,:])
                 outfile = join(dirdict['plots'], r'spaghetti_%s_%s_anc%d.png'%(obs_props['abbrv'],rank_labels[i_ancestor],ancestor))
                 landmark_label = {'lmx': 'local max', 'gmx': 'global max', 'thx': 'threshold crossing'}[alg.split_landmark]
                 title = r'%s ($\delta=%g$ before %s)'%(obs_props['label'],alg.advance_split_time*tu,landmark_label)
-                fig,axes = alg.plot_observable_spaghetti(obs_fun, ancestor, outfile=None, title=title, is_score=is_score)
+                fig,axes = alg.plot_observable_spaghetti(obs_fun, ancestor, special_descendant=special_descendant, obs_label='', title=obs_props['label'], is_score=is_score, outfile=None)
                 if False:
                     # Add a line for the Buick
                     mem_buick = next(angel.ens.memgraph.successors(angel.branching_state['generation_0'][ancestor]))
@@ -600,7 +636,7 @@ def teams_single_procedure(i_expt):
         'analysis': dict({
             'observable_spaghetti':     1,
             'scorrelation':             0,
-            'fields_2d':                0,
+            'fields_2d':                1,
             }),
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = teams_single_workflow(i_expt)
@@ -608,12 +644,12 @@ def teams_single_procedure(i_expt):
         run_teams(dirdict,filedict,config_gcm,config_algo)
     alg = pickle.load(open(filedict['alg'], 'rb'))
     if tododict['analysis']['observable_spaghetti']:
-        plot_observable_spaghetti(config_analysis, alg, dirdict, filedict)
+        plot_observable_spaghetti(config_analysis, alg, dirdict, filedict, remove_old_plots=True)
         # TODO have another ancestor-wise version, and another that shows family lines improving in parallel and dropping out
     if tododict['analysis']['scorrelation']:
         plot_scorrelations(config_analysis, alg, dirdict, filedict, expt_label)
     if tododict['analysis']['fields_2d']:
-        plot_fields_2d(config_analysis, alg, dirdict, filedict, expt_label)
+        plot_fields_2d(config_analysis, alg, dirdict, filedict, expt_label, remove_old_plots=True)
     return
 
 if __name__ == "__main__":

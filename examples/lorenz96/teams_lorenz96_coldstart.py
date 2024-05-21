@@ -477,7 +477,7 @@ if __name__ == "__main__":
     elif procedure == 'multiseed':
         idx_seed = list(range(nseeds))
         i_F4,i_delta = np.unravel_index(int(sys.argv[2]),(nFs,ndeltas))
-        teams_multiseed_procedure(i_F4,i_delta,idx_seed,overwrite_dns=False)
+        teams_multiseed_procedure(i_F4,i_delta,idx_seed,overwrite_dns=True)
     elif procedure == 'multidelta':
         i_F4 = int(sys.argv[2])
         idx_delta = list(range(len(deltas_phys)))

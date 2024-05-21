@@ -61,6 +61,7 @@ def dns_single_workflow(i_expt):
     config_analysis = dict({
         'k_roll_step': 4, # step size for augmenting Lorenz96 with rotational symmetry 
         'spinup_phys': 50,
+        'dns_duration_phys': 5.12e7, # TODO increase 
         'time_block_size_phys': 6,
         'observables_rotsym': dict({
             'xk': dict({
@@ -150,13 +151,14 @@ def measure_plot_extreme_stats(config_analysis, alg, dirdict, overwrite_extstats
     nmem = alg.ens.get_nmem()
     tu = alg.ens.dynsys.dt_save
     spinup = int(config_analysis['spinup_phys']/tu)
+    duration = int(config_analysis['dns_duration_phys']/tu)
     time_block_size = int(config_analysis['time_block_size_phys']/tu)
     # TODO need to distribute the block maxima method
     for obs_name,obs_props in config_analysis['observables_rotsym'].items():
         print(f'About to compute extreme stats for {obs_name}')
         returnstats_file = join(dirdict['analysis'],r'extstats_rotsym_%s.npz'%(obs_props['abbrv']))
         if overwrite_extstats or (not exists(returnstats_file)):
-            alg.compute_extreme_stats_rotsym(obs_props['fun'], spinup, time_block_size, returnstats_file)
+            alg.compute_extreme_stats_rotsym(obs_props['fun'], spinup, duration, time_block_size, returnstats_file)
 
         extstats = np.load(returnstats_file)
         bin_lows,hist,rlev,rtime,logsf,rtime_gev,logsf_gev,shape,loc,scale = (extstats[v] for v in 'bin_lows,hist,rlev,rtime,logsf,rtime_gev,logsf_gev,shape,loc,scale'.split(','))

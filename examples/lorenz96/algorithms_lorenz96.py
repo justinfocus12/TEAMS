@@ -103,13 +103,13 @@ class Lorenz96SDEDirectNumericalSimulation(algorithms.SDEDirectNumericalSimulati
         fig.savefig(outfile, **pltkwargs)
         plt.close(fig)
         return
-    def compute_extreme_stats_rotsym(self, obs_fun, spinup, time_block_size, returnstats_file):
+    def compute_extreme_stats_rotsym(self, obs_fun, spinup, duration, time_block_size, returnstats_file):
         tu = self.ens.dynsys.dt_save
+        K = self.ens.dynsys.ode.K
         all_starts,all_ends = self.ens.get_all_timespans()
-        mems2summarize = np.where((all_starts >= spinup)*(all_ends*tu <= 2.56e6/40))[0]
+        mems2summarize = np.where((all_starts >= spinup)*(all_ends <= spinup + duration/K))[0]
         print(f'{len(mems2summarize) = }; {all_starts[-1] = }; {all_ends[-1] = }; {np.min(all_ends - all_starts)*tu = }; {np.max(all_ends - all_starts)*tu = }')
         blocks_per_k = int((all_ends[mems2summarize[-1]] - all_starts[mems2summarize[0]])/time_block_size)
-        K = self.ens.dynsys.ode.K
         block_maxima = np.nan*np.ones((blocks_per_k,K))
         i_block = 0
         time_comp_obs = 0.0
@@ -172,6 +172,8 @@ class Lorenz96SDEDirectNumericalSimulation(algorithms.SDEDirectNumericalSimulati
         ccdf_bm_lower_bsi = np.quantile(ccdf_bm_boot,alpha/2,axis=0)
         ccdf_bm_upper_bsi = np.quantile(ccdf_bm_boot,1-alpha/2,axis=0)
         extstats = dict({
+            'block_maxima': block_maxima,
+            'time_block_size': time_block_size,
             'bin_lows': bin_lows, 
             'hist': hist, 
             'rlev': rlev, 
@@ -294,6 +296,11 @@ class Lorenz96SDETEAMS(algorithms.SDETEAMS):
         sccp = self.branching_state['score_components_tdep'][parent]
         nsteps2prepend = len(sccp[0]) - len(score_components_leaf[0])
         return [np.concatenate((c0[:nsteps2prepend], c1)) for (c0,c1) in zip(sccp,score_components_leaf)]
+    def get_block_maxima_from_dns_rotsym(self, t_dns, x_dns, time_block_size):
+        # NOTE this is specific to the version of the score used in Finkel & O'Gorman 2024, namely x0**2/2
+        pass
+
+
     @staticmethod
     def label_from_config(config):
         abbrv_population,label_population = algorithms.TEAMS.label_from_config(config)

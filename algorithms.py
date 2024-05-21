@@ -1214,14 +1214,14 @@ class TEAMS(EnsembleAlgorithm):
             tmx = self.branching_state['scores_max_timing'][mem]
             print(f'{t0 = }, {tinit = }, {tbr = }, {tmx = }, {tmx*tu = }')
             if mem != ancestor:
-                ax.plot([(tbr-t0+1)*tu,(tmx-t0+1)*tu], [obs[tmx-t0-1]]*2, marker='o', **linekwargs)
+                ax.plot([(tbr-t0)*tu,(tmx-t0)*tu], [obs[tmx-t0-1]]*2, marker='o', **linekwargs)
             #ax.plot((tbr-t0+1)*tu, obs[(tbr+1)-(tinit+1)], markerfacecolor="None", markeredgecolor=kwargs['color'], markeredgewidth=3, marker='o')
             ax = axes[1]
             ax.scatter([max(0,mem-N)], [self.branching_state['scores_max'][mem]], ec=linekwargs['color'], fc='none', marker='o', s=80, lw=2,)
         ax = axes[0]
         ax.set_xlabel('Time')
         if is_score:
-            ylabel = r'Score $R(X(t))=$%s'%(obs_label)
+            ylabel = r'Score $R(X(t))$'
         else:
             ylabel = obs_label
         ax.set_ylabel(ylabel)
@@ -1231,10 +1231,7 @@ class TEAMS(EnsembleAlgorithm):
         ax.scatter([max(0,mem-N) for mem in [ancestor]+descendants], [self.branching_state['scores_max'][mem] for mem in [ancestor]+descendants], marker='.', color='gray', )
         # TODO also overlay the full ascent of levels
         ax.set_xlabel('Generation')
-        if is_score:
-            ylabel = r'$\max_t\{$%s$\}$'%(obs_label)
-        else:
-            ylabel = r''
+        ylabel = r'$\max_t\{R(X(t))\}$'
         ax.set_ylabel(ylabel)
         #ax.set_xlim([time[0],time[-1]+1])
         if outfile is not None:
@@ -1460,10 +1457,10 @@ class TEAMS(EnsembleAlgorithm):
             r'%.1E'%(cost_dns)
             ])
         display = '\n'.join([param_display,'',cost_display])
-        axesh[0].text(-0.3,0.5,display,fontsize=15,transform=axes[0].transAxes,horizontalalignment='right',verticalalignment='center')
+        axesh[0].text(-0.3,0.5,display,fontsize=15,transform=axesh[0].transAxes,horizontalalignment='right',verticalalignment='center')
 
         # ++++ Column 0: individual curves on the left ++++
-        ax = axes[0]
+        ax = axesh[0]
         # DNS, with equal-cost errorbars to compare to single DNS runs
         sf2rt = lambda sf: utils.convert_sf_to_rtime(sf, returnstats['time_horizon_effective'])
         hdns, = ax.plot(sf2rt(ccdf_dns), bin_edges[:-1], marker='.', color='black', label=r'DNS (cost %.1E)'%(cost_dns))
@@ -1477,7 +1474,7 @@ class TEAMS(EnsembleAlgorithm):
         ax.set_title(r'Single %s runs'%(teams_abbrv))
 
         # ++++ Column 1: pooled curves ++++
-        ax = axes[1]
+        ax = axesh[1]
         # DNS again, this time accounting for total cost 
         hdns, = ax.plot(sf2rt(ccdf_dns), bin_edges[:-1], color='black', label=r'DNS')
         ax.fill_betweenx(bin_edges[:-1], sf2rt(ccdf_dns_pooled_lower), sf2rt(ccdf_dns_pooled_upper), fc='gray', ec='none', zorder=-1, alpha=0.5)
@@ -1494,7 +1491,7 @@ class TEAMS(EnsembleAlgorithm):
 
         xlim = [returnstats['time_horizon_effective'],5*sf2rt(min(np.nanmin(ccdf_dns),np.nanmin(ccdf_fin_wted)))]
         ylim = [bin_edges[np.argmax(sf2rt(ccdf_dns) > xlim[0])],bin_edges[-1]]
-        for ax in axes[:2]:
+        for ax in axesh[:2]:
             ax.set_xscale('log')
             print(f'{xlim = }')
             ax.set_xlim(xlim)
@@ -1502,7 +1499,7 @@ class TEAMS(EnsembleAlgorithm):
             ax.set_xlabel(r'Return time')
 
         # ++++ Column 2: Histograms ++++
-        ax = axes[2]
+        ax = axesh[2]
         ax.plot(hist_dns, bin_edges[:-1], color='black')
         ax.plot(hist_init, bin_edges[:-1], color='dodgerblue')
         ax.plot(hist_fin_unif, bin_edges[:-1], color='red')
@@ -1512,8 +1509,10 @@ class TEAMS(EnsembleAlgorithm):
         ax.set_xlabel('Counts')
         ax.set_title('Score histograms')
 
-        fig.savefig(figfile, **pltkwargs)
-        plt.close(fig)
+        figh.savefig(figfile, **pltkwargs)
+        plt.close(figh)
+
+        plt.close(figv)
 
 
         return 
