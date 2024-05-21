@@ -226,7 +226,7 @@ def teams_single_workflow(i_expt):
                 config_gcm['outputs_per_day'],
                 ),
             'abbrv': 'R360x30',
-            'label': r'Rain rate $(\phi,\lambda)=(45\pm15,180\pm180)$',
+            'label': r'1-day avg rain $(\phi,\lambda)=(45\pm15,180\pm180)$',
             'cmap': 'Blues',
             }),
         'area_cwv_360x30': dict({
@@ -305,6 +305,7 @@ def plot_fields_2d(config_analysis, alg, dirdict, filedict, expt_label, remove_o
         f_anc_multiobs,f_desc_multiobs = tuple(alg.ens.compute_observables(obs_funs, mem, compute=True) for mem in [lineage[0],lineage[-1]])
         print(f'Computed multiobs')
         for i_obs,(obs_name,obs_props) in enumerate(config_analysis['fields_2d'].items()):
+            print(f'Starting to plot field {obs_name = }')
             f_anc,f_desc = f_anc_multiobs[i_obs],f_desc_multiobs[i_obs]
             # Interpoilate to 1-degree grid 
             lon_hires = np.arange(f_anc.lon.min().item(), f_anc.lon.max().item(), step=1.0)
@@ -313,6 +314,7 @@ def plot_fields_2d(config_analysis, alg, dirdict, filedict, expt_label, remove_o
             f_desc = f_desc.interp(lon=lon_hires, lat=lat_hires)
 
             vmin,vmax = min((f.min().item() for f in (f_anc,f_desc))),max((f.max().item() for f in (f_anc,f_desc)))
+            vmax_diff = np.abs(f_desc - f_anc).max().item() 
             score_lineage = tuple(alg.branching_state['scores_tdep'][mem] for mem in lineage)
             tmx = alg.branching_state['scores_max_timing'][ancestor]
             tbr = alg.branching_state['branch_times'][best_desc]
@@ -342,7 +344,7 @@ def plot_fields_2d(config_analysis, alg, dirdict, filedict, expt_label, remove_o
 
                 # Difference
                 ax = ax2
-                xr.plot.pcolormesh(f_desc.isel(time=time2plot-tinit-1)-f_anc.isel(time=time2plot-tinit-1), x='lon', y='lat', cmap=obs_props['cmap'], cbar_kwargs={'label': None}, ax=ax)
+                xr.plot.pcolormesh(f_desc.isel(time=time2plot-tinit-1)-f_anc.isel(time=time2plot-tinit-1), x='lon', y='lat', cmap=obs_props['cmap'], cbar_kwargs={'label': None}, ax=ax, vmin=-vmax_diff, vmax=vmax_diff)
                 ax.set_xlabel('Lon')
                 ax.set_ylabel('Lat')
                 ax.set_title('Descendant $-$ Ancestor')
@@ -360,7 +362,7 @@ def plot_fields_2d(config_analysis, alg, dirdict, filedict, expt_label, remove_o
                     #ax.scatter([tmx_mem*tu], score_lineage[i_mem][tmx_mem-tinit-1], marker='o', color=linespecs['color'])
                 ax.axvline(tbr*tu, color='gray', linestyle='--')
                 ax.axvline(time2plot*tu, color='gray')
-                ax.set_ylabel(r'Target loc. value')
+                ax.set_ylabel(r'')
 
                 fig.suptitle(obs_props['label'])
                 filename = join(dirdict['plots'],r'fields_anc%d_%s_t%d'%(ancestor,obs_props['abbrv'],time2plot-tinit))
@@ -477,7 +479,6 @@ def plot_scorrelations(config_analysis, alg, dirdict, filedict, expt_label):
 
 
 def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, reference='dns', param_suffix='', overwrite_reference=False):
-    # Three histograms: initial population, weighted, and unweighted
     tu = algs[0].ens.dynsys.dt_save
     if reference == 'buick':
         scmax_buick_file = join(dirdict['analysis'],'scmax_buick.npz')
@@ -632,9 +633,9 @@ def teams_multiseed_procedure(i_sigma,i_delta,i_slm,idx_seed,overwrite_reference
 def teams_single_procedure(i_expt):
 
     tododict = dict({
-        'run':             1,
+        'run':             0,
         'analysis': dict({
-            'observable_spaghetti':     1,
+            'observable_spaghetti':     0,
             'scorrelation':             0,
             'fields_2d':                1,
             }),
@@ -651,6 +652,117 @@ def teams_single_procedure(i_expt):
     if tododict['analysis']['fields_2d']:
         plot_fields_2d(config_analysis, alg, dirdict, filedict, expt_label, remove_old_plots=True)
     return
+
+def teams_multidelta_procedure(i_sigma,idx_delta,idx_seed):
+    scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
+    date_str = "2024-04-04"
+    sub_date_str = "1"
+    multiparams = teams_multiparams()
+    seed_incs,sigmas,deltas_phys,split_landmarks = multiparams
+    kldiv_pooled = np.zeros(len(idx_delta))
+    x2div_pooled = np.zeros(len(idx_delta))
+    kldiv_sep = np.zeros((len(idx_seed),len(idx_delta)))
+    x2div_sep = np.zeros((len(idx_seed),len(idx_delta)))
+    boost_family_mean = np.zeros((len(idx_seed),len(idx_delta)))
+    for i_delta in idx_delta:
+        param_suffix = (r'std%g_ast%g'%(sigmas[i_sigma],deltas_phys[i_delta])).replace('.','p')
+        idx_multiparam = [(i_seed,i_sigma,i_delta) for i_seed in idx_seed]
+        idx_expt = []
+        for i_multiparam in idx_multiparam:
+            i_expt = np.ravel_multi_index(i_multiparam,tuple(len(mp) for mp in multiparams))
+            idx_expt.append(i_expt) #list(range(1,21))
+        workflows = tuple(teams_single_workflow(i_expt) for i_expt in idx_expt)
+        configs_gcm,configs_algo,configs_analysis,expt_labels,expt_abbrvs,dirdicts,filedicts = tuple(
+            tuple(workflows[i][j] for i in range(len(workflows)))
+            for j in range(len(workflows[0])))
+        config_gcm = configs_gcm[0]
+        config_algo = configs_algo[0]
+        param_abbrv_gcm,param_label_gcm = frierson_gcm.FriersonGCM.label_from_config(config_gcm)
+        returnstats_file = join(scratch_dir,date_str,sub_date_str,param_abbrv_gcm,'meta','analysis','returnstats_%s.npz'%(param_suffix))
+        print(f'{returnstats_file = }')
+        returnstats = np.load(returnstats_file)
+        print(f'{returnstats["hist_fin_wted"] = }')
+        # Calculate the integrated error metrics 
+        kldiv_pooled[i_delta],kldiv_sep[:,i_delta],x2div_pooled[i_delta],x2div_sep[:,i_delta] = compute_integrated_returnstats_error_metrics(returnstats)
+        # Load the max-gains metrics
+        boost_family_mean[:,i_delta] = returnstats['boost_family_mean']
+
+    plot_dir = join(
+            '/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/2024-04-12/2',
+            param_abbrv_sde,
+            'meta',
+            'plots')
+
+    # Plot 
+    alphas = [0.5] # Sets the width of the band for KL divergence
+    transparencies = [0.5,0.2]
+    deltas = np.array([multiparams[2][i] for i in idx_delta])
+    print(f'{x2div_sep[:,2] = }')
+
+    # ------------ Plot X2-divergence ------------
+    fig,ax = plt.subplots(figsize=(6,2))
+    handles = []
+    h, = ax.plot(deltas,np.median(x2div_sep,axis=0),color='red',marker='.',label='Runwise median')
+    handles.append(h)
+    h, = ax.plot(deltas,np.mean(x2div_sep,axis=0),color='black',marker='.',label='Runwise mean')
+    handles.append(h)
+    print(f'{np.mean(x2div_sep,axis=0) = }')
+    for i_alpha,alpha in enumerate(alphas):
+        lo,hi = np.quantile(x2div_sep, [alpha/2,1-alpha/2], axis=0)
+        print(f'{alpha = }')
+        print(f'{lo = }')
+        print(f'{hi = }')
+        h = ax.fill_between(deltas, lo, hi, fc='red', ec='none', alpha=transparencies[i_alpha], zorder=-i_alpha-1, label=r'{:d}% CI'.format(int(round((1-alpha)*100))))
+        handles.append(h)
+    ax.set_xlabel(r'$\delta$')
+    ax.legend(handles=handles, bbox_to_anchor=(0.0,1.01), loc='lower left', title=r'$\chi^2$-divergence')
+    ax.text(-0.15,0.5,r'$F_4=%g$'%(F4s[i_F4]),ha='right',va='center',transform=ax.transAxes)
+    fig.savefig(join(plot_dir,'x2div.png'),**pltkwargs)
+    plt.close(fig)
+
+    # -------- Plot family gains ------------
+    fig,ax = plt.subplots(figsize=(6,2))
+    handles = []
+    h, = ax.plot(deltas,np.median(boost_family_mean,axis=0),color='red',marker='.',label='Runwise median')
+    handles.append(h)
+    h, = ax.plot(deltas,np.mean(boost_family_mean,axis=0),color='black',marker='.',label='Runwise mean')
+    handles.append(h)
+    print(f'{np.mean(boost_family_mean,axis=0) = }')
+    for i_alpha,alpha in enumerate(alphas):
+        lo,hi = np.quantile(boost_family_mean, [alpha/2,1-alpha/2], axis=0)
+        print(f'{alpha = }')
+        print(f'{lo = }')
+        print(f'{hi = }')
+        h = ax.fill_between(deltas, lo, hi, fc='red', ec='none', alpha=transparencies[i_alpha], zorder=-i_alpha-1, label=r'{:d}% CI'.format(int(round((1-alpha)*100))))
+        handles.append(h)
+    ax.set_xlabel(r'$\delta$')
+    ax.legend(handles=handles, bbox_to_anchor=(0.0,1.01), loc='lower left', title=r'Mean family boost')
+    ax.text(-0.15,0.5,r'$F_4=%g$'%(F4s[i_F4]),ha='right',va='center',transform=ax.transAxes)
+    fig.savefig(join(plot_dir,'mean_family_boost.png'),**pltkwargs)
+
+    return
+
+def compute_integrated_returnstats_error_metrics(returnstats):
+    # -------- F-divergences --------
+    hist_dns = returnstats['hist_dns'] / np.sum(returnstats['hist_dns'])
+    hist_teams = returnstats['hist_fin_wted'] / np.sum(returnstats['hist_fin_wted'])
+    hists_teams = np.diag(1/np.sum(returnstats['hists_fin_wted'], axis=1)) @ returnstats['hists_fin_wted'] 
+    nalgs = len(hists_teams)
+    nzidx_dns = np.where(hist_dns > 0)[0]
+    # Pooled
+    nzidx_teams = np.where(hist_teams > 0)[0]
+    nzidx_both = np.intersect1d(nzidx_dns, nzidx_teams)
+    kldiv_pooled = np.sum(hist_dns[nzidx_both] * np.log(hist_dns[nzidx_both] / hist_teams[nzidx_both]))
+    x2div_pooled = np.sum((hist_dns[nzidx_dns] - hist_teams[nzidx_dns])**2 / hist_dns[nzidx_dns])
+    # Separate
+    kldiv_sep = np.zeros(nalgs)
+    x2div_sep = np.zeros(nalgs)
+    for i_alg in range(nalgs):
+        nzidx_teams = np.where(hists_teams[i_alg] > 0)[0]
+        nzidx_both = np.intersect1d(nzidx_dns, nzidx_teams)
+        kldiv_sep[i_alg] = np.sum(hist_dns[nzidx_both] * np.log(hist_dns[nzidx_both] / hists_teams[i_alg,nzidx_both]))
+        x2div_sep[i_alg] = np.sum((hist_dns[nzidx_dns] - hists_teams[i_alg,nzidx_dns])**2 / hist_dns[nzidx_dns])
+    return kldiv_pooled,kldiv_sep,x2div_pooled,x2div_sep
 
 if __name__ == "__main__":
     print(f'Got into Main')

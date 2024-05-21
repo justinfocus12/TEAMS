@@ -1475,12 +1475,14 @@ class TEAMS(EnsembleAlgorithm):
 
         # ++++ Column 1: pooled curves ++++
         ax = axesh[1]
+        errbars_init_flag = False
         # DNS again, this time accounting for total cost 
         hdns, = ax.plot(sf2rt(ccdf_dns), bin_edges[:-1], color='black', label=r'DNS')
         ax.fill_betweenx(bin_edges[:-1], sf2rt(ccdf_dns_pooled_lower), sf2rt(ccdf_dns_pooled_upper), fc='gray', ec='none', zorder=-1, alpha=0.5)
         # Initialization
         hinit, = ax.plot(sf2rt(ccdf_init), bin_edges[:-1], marker='.', color='dodgerblue', label=r'Init.')
-        ax.fill_betweenx(bin_edges[:-1],sf2rt(ccdf_init_lower),sf2rt(ccdf_init_upper),fc='dodgerblue',ec='none',zorder=-1,alpha=0.5)
+        if errbars_init_flag:
+            ax.fill_betweenx(bin_edges[:-1],sf2rt(ccdf_init_lower),sf2rt(ccdf_init_upper),fc='dodgerblue',ec='none',zorder=-1,alpha=0.5)
         # Final TEAMS (weighted)
         hfin_wted, = ax.plot(sf2rt(ccdf_fin_wted), bin_edges[:-1], marker='.', color='red', label=teams_abbrv)
         ax.fill_betweenx(bin_edges[:-1],sf2rt(ccdf_fin_wted_pooled_lower),sf2rt(ccdf_fin_wted_pooled_upper),fc='red',ec='none',zorder=-1,alpha=0.5)
