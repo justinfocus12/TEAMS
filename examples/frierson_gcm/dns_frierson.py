@@ -85,8 +85,8 @@ def dns_paramset(i_expt):
         'seed_min': 1000,
         'seed_max': 100000,
         'seed_inc_init': seed_inc, # will be added to seed_min
-        'max_member_duration_phys': 100.0,
-        'num_chunks_max': 300,
+        'max_member_duration_phys': 30.0,
+        'num_chunks_max': 250,
         })
 
     return config_gcm,config_algo,expt_label,expt_abbrv
@@ -96,8 +96,8 @@ def dns_single_workflow(i_expt):
     param_abbrv_gcm,param_label_gcm = frierson_gcm.FriersonGCM.label_from_config(config_gcm)
     param_abbrv_algo,param_label_algo = algorithms_frierson.FriersonGCMDirectNumericalSimulation.label_from_config(config_algo)
     config_analysis = dict()
-    config_analysis['spinup_phys'] = 700 # at what time to start computing statistics
-    config_analysis['time_block_size_phys'] = 30 # size of block for method of block maxima
+    config_analysis['spinup_phys'] = 500 # at what time to start computing statistics
+    config_analysis['time_block_size_phys'] = 20 # size of block for method of block maxima
     config_analysis['lon_roll_step'] = 30 # size of longitudinal shift for purposes of zonal symmetry augmentation in method of block maxima
     # Basic statistics to compute
     config_analysis['basic_stats'] = dict({
@@ -286,7 +286,7 @@ def dns_single_workflow(i_expt):
             }),
         })
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
-    date_str = "2024-04-04"
+    date_str = "2024-06-07"
     sub_date_str = "0"
     dirdict = dict()
     dirdict['expt'] = join(scratch_dir,date_str,sub_date_str,param_abbrv_gcm,param_abbrv_algo)
@@ -307,12 +307,15 @@ def run_dns(dirdict,filedict,config_gcm,config_algo):
     root_dir = dirdict['data']
     obs_fun = lambda t,x: None
 
+    if recompile:
+        gcm_dummy = frierson_gcm.FriersonGCM(config_gcm, recompile=True)
     if exists(filedict['alg']):
         alg = pickle.load(open(filedict['alg'], 'rb'))
         alg.ens.set_root_dir(root_dir)
+        print(f'{alg.ens.get_nmem()}')
         alg.set_capacity(config_algo['num_chunks_max'], config_algo['max_member_duration_phys'])
     else:
-        gcm = frierson_gcm.FriersonGCM(config_gcm, recompile=recompile)
+        gcm =  frierson_gcm.FriersonGCM(config_gcm, recompile=recompile)
         ens = Ensemble(gcm, root_dir=root_dir)
         alg = algorithms_frierson.FriersonGCMDirectNumericalSimulation(config_algo, ens)
     alg.ens.dynsys.set_nproc(nproc)
@@ -321,6 +324,7 @@ def run_dns(dirdict,filedict,config_gcm,config_algo):
         print(f'----------- Starting member {mem} ----------------')
         saveinfo = dict({
             'temp_dir': f'mem{mem}',
+            'final_dir': f'mem{mem}',
             'filename_traj': f'mem{mem}.nc',
             'filename_restart': f'restart_mem{mem}.cpio',
             })
@@ -618,7 +622,7 @@ def dns_meta_procedure(idx_expt):
 def dns_single_procedure(i_expt):
     tododict = dict({
         'run':                            1,
-        'plot_snapshots':                 0,
+        'plot_snapshots':                 1,
         'plot_timeseries':                1,
         'compute_basic_stats':            1,
         'compute_extreme_stats':          1,

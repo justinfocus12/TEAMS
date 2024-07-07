@@ -334,6 +334,7 @@ class FriersonGCM(DynamicalSystem):
         self.setup_directories(join(root_dir,saveinfo['temp_dir']))
         wd = join(root_dir,saveinfo['temp_dir'],'work')
         od = join(root_dir,saveinfo['temp_dir'],'output')
+        fd = join(root_dir,saveinfo['final_dir'])
 
         nml = self.nml_const.copy()
         if icandf['init_cond'] is not None:
@@ -444,24 +445,25 @@ class FriersonGCM(DynamicalSystem):
             ds = xr.merge([ds[1],ds[4]], compat='override')
         else:
             ds = ds[4]
-        ds.to_netcdf(join(root_dir,saveinfo['filename_traj']))
+        ds.to_netcdf(join(root_dir,saveinfo['final_dir'],saveinfo['filename_traj']))
 
         # Compute any observables of interest
         observables = obs_fun(ds.time, ds)
 
         ds.close()
         # Save the single restart
-        shutil.move(join(od,'restart',compressed_restart_tail),join(root_dir,saveinfo['filename_restart']))
+        shutil.move(join(od,'restart',compressed_restart_tail),join(root_dir,saveinfo['final_dir'],saveinfo['filename_restart']))
 
         # Clean up the directories
         if self.remove_temp:
             shutil.rmtree(join(root_dir,saveinfo['temp_dir']))
         
         # TODO evaluate observable functions ...
+        makedirs(saveinfo['final_dir'])
         metadata = dict({
             'icandf': icandf, 
-            'filename_traj': saveinfo['filename_traj'],
-            'filename_restart': saveinfo['filename_restart'],
+            'filename_traj': join(savinfo['final_dir'],saveinfo['filename_traj']),
+            'filename_restart': join(saveinfo['final_dir'],saveinfo['filename_restart']),
             })
         return metadata, observables
     @staticmethod

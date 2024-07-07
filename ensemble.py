@@ -14,7 +14,6 @@ pltkwargs = dict(bbox_inches="tight",pad_inches=0.2)
 
 
 class Ensemble(ABC): 
-    # TODO decide how to handle trajectory reloading, etc. Should this be implemented in inherited Ensemble objects, or in Manager objects?
     def __init__(self, dynsys, root_dir):
         self.dynsys = dynsys
         self.memgraph = nx.DiGraph() 
