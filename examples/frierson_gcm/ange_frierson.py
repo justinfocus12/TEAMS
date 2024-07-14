@@ -87,7 +87,7 @@ def ange_paramset(i_param):
         'burnin_time_phys': 50, # should be about 100; start small for testing 
         'time_horizon_phys': 30,
         # mutable parameters below 
-        'num_buicks': 512,
+        'num_buicks': 128,
         'branches_per_buick': 1, 
         })
     return config_gcm,config_algo,expt_label,expt_abbrv
@@ -186,7 +186,7 @@ def ange_single_workflow(i_param):
     obs_names = list(config_analysis['observables'].keys())
     # Set up directories
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
-    date_str = "2024-04-04"
+    date_str = "2024-07-07"
     sub_date_str = "0"
     dirdict = dict()
     dirdict['expt'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_gcm, param_abbrv_algo)
@@ -194,15 +194,15 @@ def ange_single_workflow(i_param):
     dirdict['analysis'] = join(dirdict['expt'], 'analysis')
     dirdict['plots'] = join(dirdict['expt'], 'plots')
     dirdict['init_cond'] = join(
-            f'/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/2024-03-26/0/',
-            param_abbrv_gcm, 'DNS_si0', 'data')
+            f'/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/2024-07-07/0/',
+            param_abbrv_gcm, 'DNS_si0', 'data', 'mem255')
     for dirname in ('data','analysis','plots'):
         makedirs(dirdict[dirname], exist_ok=True)
     filedict = dict()
     # Initial conditions
     filedict['init_cond'] = dict()
-    filedict['init_cond']['restart'] = join(dirdict['init_cond'],'restart_mem20.cpio')
-    filedict['init_cond']['trajectory'] = join(dirdict['init_cond'],'mem20.nc')
+    filedict['init_cond']['restart'] = join(dirdict['init_cond'],'restart_mem255.cpio')
+    filedict['init_cond']['trajectory'] = join(dirdict['init_cond'],'mem255.nc')
     print(f'{filedict["init_cond"] = }')
     # Algorithm manager
     filedict['alg'] = join(dirdict['data'], 'alg.pickle')
@@ -255,12 +255,13 @@ def run_ange(dirdict,filedict,config_gcm,config_algo):
         mem = alg.ens.get_nmem()
         print(f'----------- Starting member {mem} ----------------')
         saveinfo = dict({
-            # Temporary folder
-            'temp_dir': f'mem{mem}',
-            # Ultimate resulting filenames
-            'filename_traj': f'mem{mem}.nc',
-            'filename_restart': f'restart_mem{mem}.cpio',
+            'temp_dir': f'mem{mem}_temp',
+            'final_dir': f'mem{mem}',
             })
+        saveinfo.update(dict({
+            'filename_traj': join(saveinfo['final_dir'],f'history_mem{mem}.nc'),
+            'filename_restart': join(saveinfo['final_dir'],f'restart_mem{mem}.cpio'),
+            }))
         alg.take_next_step(saveinfo)
         if exists(filedict['alg']):
             os.rename(filedict['alg'], filedict['alg_backup'])

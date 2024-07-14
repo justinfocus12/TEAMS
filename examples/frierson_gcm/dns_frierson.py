@@ -86,7 +86,7 @@ def dns_paramset(i_expt):
         'seed_max': 100000,
         'seed_inc_init': seed_inc, # will be added to seed_min
         'max_member_duration_phys': 30.0,
-        'num_chunks_max': 250,
+        'num_chunks_max': 256,
         })
 
     return config_gcm,config_algo,expt_label,expt_abbrv
@@ -286,7 +286,7 @@ def dns_single_workflow(i_expt):
             }),
         })
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
-    date_str = "2024-06-07"
+    date_str = "2024-07-07"
     sub_date_str = "0"
     dirdict = dict()
     dirdict['expt'] = join(scratch_dir,date_str,sub_date_str,param_abbrv_gcm,param_abbrv_algo)
@@ -323,12 +323,14 @@ def run_dns(dirdict,filedict,config_gcm,config_algo):
         mem = alg.ens.get_nmem()
         print(f'----------- Starting member {mem} ----------------')
         saveinfo = dict({
-            'temp_dir': f'mem{mem}',
+            'temp_dir': f'mem{mem}_temp',
             'final_dir': f'mem{mem}',
-            'filename_traj': f'mem{mem}.nc',
-            'filename_restart': f'restart_mem{mem}.cpio',
             })
-        alg.take_next_step(saveinfo)
+        saveinfo.update(dict({
+            'filename_traj': join(saveinfo['final_dir'],f'history_mem{mem}.nc'),
+            'filename_restart': join(saveinfo['final_dir'],f'restart_mem{mem}.cpio'),
+            }))
+        alg.take_next_step(saveinfo) 
         if exists(filedict['alg']):
             os.rename(filedict['alg'], filedict['alg_backup'])
         pickle.dump(alg, open(filedict['alg'], 'wb'))
@@ -364,13 +366,15 @@ def plot_timeseries(config_analysis, alg, dirdict):
     time_block_size = int(config_analysis['time_block_size_phys']/tu)
     duration = 3*time_block_size
     all_starts,all_ends = alg.ens.get_all_timespans()
+    print(f'{all_starts[:3] = }, {all_ends[:3] = }')
     mem_first = np.where(all_starts >= spinup)[0][0]
     mem_last = np.where(all_ends >= all_starts[mem_first] + duration)[0][0]
+    print(f'{mem_first = }, {mem_last = }')
     for (obs_name,obs_props) in config_analysis['observables'].items():
         fun = lambda ds: obs_props['fun'](ds, **obs_props['kwargs'])
         obs_val = xr.concat(tuple(
             alg.ens.compute_observables([fun], mem)[0] for mem in range(mem_first,mem_last+1)), dim='time')
-        obs_val = obs_val.isel(time=slice(spinup-all_starts[mem_first], spinup+duration-all_starts[mem_first]))
+        obs_val = obs_val.isel(time=slice(None, duration))
         fig,ax = plt.subplots(figsize=(18,3))
         xr.plot.plot(obs_val, x='time', ax=ax)
         ax.set_xlabel('Time')
@@ -621,8 +625,8 @@ def dns_meta_procedure(idx_expt):
 
 def dns_single_procedure(i_expt):
     tododict = dict({
-        'run':                            1,
-        'plot_snapshots':                 1,
+        'run':                            0,
+        'plot_snapshots':                 0,
         'plot_timeseries':                1,
         'compute_basic_stats':            1,
         'compute_extreme_stats':          1,
