@@ -16,10 +16,10 @@ matplotlib.rcParams.update({
 })
 pltkwargs = dict(bbox_inches="tight",pad_inches=0.2)
 sys.path.append('../..')
-from crommelin2004 import Crommelin2004ODE,Crommelin2004SDE
+from crommelin2004 import Crommelin2004ODE
 from ensemble import Ensemble
 import forcing
-from algorithms_crommelin2004 import Crommelin2004ODEDirectNumericalSimulation as L96ODEDNS, Crommelin2004SDEDirectNumericalSimulation as L96SDEDNS
+from algorithms_crommelin2004 import Crommelin2004ODEDirectNumericalSimulation as C04ODEDNS 
 import utils
 
 def dns_multiparams():
@@ -56,8 +56,8 @@ def dns_single_workflow(i_expt):
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/crommelin2004"
     date_str = "2024-07-16"
     sub_date_str = "0"
-    param_abbrv_dynsys,param_label_dynsys = Crommelin2004SDE.label_from_config(config_dynsys)
-    param_abbrv_algo,param_label_algo = L96SDEDNS.label_from_config(config_algo)
+    param_abbrv_dynsys,param_label_dynsys = Crommelin2004ODE.label_from_config(config_dynsys)
+    param_abbrv_algo,param_label_algo = C04ODEDNS.label_from_config(config_algo)
     config_analysis = dict({
         'k_roll_step': 4, # step size for augmenting Crommelin2004 with rotational symmetry 
         'spinup_phys': 50,
@@ -137,9 +137,9 @@ def run_dns(dirdict,filedict,config_dynsys,config_algo):
         alg.ens.set_root_dir(root_dir)
         alg.set_capacity(config_algo['num_chunks_max'], config_algo['max_member_duration_phys'])
     else:
-        sde = Crommelin2004SDE(config_dynsys)
+        sde = Crommelin2004ODE(config_dynsys)
         ens = Ensemble(sde,root_dir=root_dir)
-        alg = L96SDEDNS(config_algo, ens)
+        alg = C04ODEDNS(config_algo, ens)
     nmem = alg.ens.get_nmem()
     print(f'{nmem = }')
     while not (alg.terminate):

@@ -17,13 +17,13 @@ matplotlib.rcParams.update({
 })
 pltkwargs = dict(bbox_inches="tight",pad_inches=0.2)
 sys.path.append('../..')
-from lorenz96 import Lorenz96ODE,Lorenz96SDE
+from crommelin2004 import Crommelin2004ODE
 from ensemble import Ensemble
 import forcing
 import algorithms
 import utils
 
-class Lorenz96ODEPeriodicBranching(algorithms.ODEPeriodicBranching):
+class Crommelin2004ODEPeriodicBranching(algorithms.ODEPeriodicBranching):
     def obs_dict_names(self):
         return ['x0','E0','E','Emax']
     def obs_fun(self, t, x):
@@ -33,7 +33,7 @@ class Lorenz96ODEPeriodicBranching(algorithms.ODEPeriodicBranching):
             })
         return obs_dict
 
-class Lorenz96SDEPeriodicBranching(algorithms.SDEPeriodicBranching):
+class Crommelin2004SDEPeriodicBranching(algorithms.SDEPeriodicBranching):
     def obs_dict_names(self):
         return ['x0','E0','E','Emax']
     def obs_fun(self, t, x):
@@ -43,7 +43,7 @@ class Lorenz96SDEPeriodicBranching(algorithms.SDEPeriodicBranching):
             })
         return obs_dict
 
-class Lorenz96ODEDirectNumericalSimulation(algorithms.ODEDirectNumericalSimulation):
+class Crommelin2004ODEDirectNumericalSimulation(algorithms.ODEDirectNumericalSimulation):
     def obs_dict_names(self):
         return ['x0','E0','E','Emax']
     def obs_fun(self, t, x):
@@ -52,8 +52,33 @@ class Lorenz96ODEDirectNumericalSimulation(algorithms.ODEDirectNumericalSimulati
             for name in self.obs_dict_names()
             })
         return obs_dict
+    def plot_dns_segment(self, outfile, tspan_phys=None):
+        tu = self.ens.dynsys.dt_save
+        nmem = self.ens.get_nmem()
+        if tspan_phys is None:
+            _,fin_time = self.ens.get_member_timespan(nmem-1)
+            tspan = [fin_time-int(50/tu),fin_time]
+        else:
+            tspan = [int(t/tu) for t in tspan_phys]
+        print(f'{tspan = }')
+        fig,axes = plt.subplots(ncols=1, figsize=(6,6))
+        ax = axes
+        handles = []
+        ks = [1,2]
+        colors = ['red','blue']
+        for i_k,k in enumerate(ks):
+            obs_fun = lambda t,x: x[:,i_k]
+            h = self.plot_obs_segment(obs_fun, tspan, fig, ax, label=r'$x_{%g}(t)$'%(k),color=colors[i_k])
+            handles.append(h)
+        ax.set_xlabel('Time')
+        ax.legend(handles=handles)
 
-class Lorenz96SDEDirectNumericalSimulation(algorithms.SDEDirectNumericalSimulation):
+        fig.savefig(outfile, **pltkwargs)
+        plt.close(fig)
+        return
+
+
+class Crommelin2004SDEDirectNumericalSimulation(algorithms.SDEDirectNumericalSimulation):
     def obs_dict_names(self):
         return ['x0','E0','E','Emax']
     def obs_fun(self, t, x):
@@ -232,12 +257,12 @@ class Lorenz96SDEDirectNumericalSimulation(algorithms.SDEDirectNumericalSimulati
         plt.close(fig)
         return
 
-class Lorenz96AncestorGenerator(algorithms.SDEAncestorGenerator):
+class Crommelin2004AncestorGenerator(algorithms.SDEAncestorGenerator):
     def do_something():
         return
 
 
-class Lorenz96SDEITEAMS(algorithms.SDEITEAMS):
+class Crommelin2004SDEITEAMS(algorithms.SDEITEAMS):
     def derive_parameters(self, config):
         sc = config['score']
         self.score_params = dict({
@@ -269,7 +294,7 @@ class Lorenz96SDEITEAMS(algorithms.SDEITEAMS):
         return abbrv,label_population
 
 
-class Lorenz96SDETEAMS(algorithms.SDETEAMS):
+class Crommelin2004SDETEAMS(algorithms.SDETEAMS):
     def derive_parameters(self, config):
         sc = config['score']
         self.score_params = dict({

@@ -21,40 +21,40 @@ import utils
 
 
 class Crommelin2004ODE(ODESystem): 
-    def __init__(self, config):
-        self.state_dim = config['K']
-        super().__init__(config)
+    def __init__(self, cfg):
+        self.state_dim = 6
+        super().__init__(cfg)
     @staticmethod
     def default_config():
-        config = dict({
+        cfg = dict({
             "b": 0.5, "beta": 1.25, "gamma_limits": [0.2, 0.2], 
             "C": 0.1, "x1star": 0.95, "r": -0.801, "year_length": 400.0,
             })
-        config['t_burnin_phys'] = 10.0
-        config['dt_step'] = 0.1
-        config['dt_save'] = 0.5
-        config['frc'] = dict({
+        cfg['t_burnin_phys'] = 10.0
+        cfg['dt_step'] = 0.1
+        cfg['dt_save'] = 0.5
+        cfg['frc'] = dict({
             'type': 'impulsive',
             'impulsive': dict({
                 'modes': [0],
                 'magnitudes': [0.01],
                 }),
             })
-        return config
+        return cfg
     @staticmethod
-    def label_from_config(config):
-        abbrv_x1star = (r"x1st%g_r%g"%(config['x1star'],config['r'])).replace(".","p")
-        abbrv_gamma = (r'gam%gto%g'%(config['gamma_limits'][0],config['gamma_limits'][1])).replace('.','p')
+    def label_from_config(cfg):
+        abbrv_x1star = (r"x1st%g_r%g"%(cfg['x1star'],cfg['r'])).replace(".","p")
+        abbrv_gamma = (r'gam%gto%g'%(cfg['gamma_limits'][0],cfg['gamma_limits'][1])).replace('.','p')
         label_physpar = r"$x_1^*=%g,\ r=%g \n \gamma\in[%g,%g],\ \beta=%g$"%(
-                config['x1star'],
-                config['r'],
-                config['gamma_limits'][0],config['gamma_limits'][1],
-                config['beta']
+                cfg['x1star'],
+                cfg['r'],
+                cfg['gamma_limits'][0],cfg['gamma_limits'][1],
+                cfg['beta']
                 )
-        if config['frc']['type'] == 'impulsive':
+        if cfg['frc']['type'] == 'impulsive':
             abbrv_noise_type = "frcimp"
             label_noise_type = "Impulse: "
-        w = config['frc'][config['frc']['type']]
+        w = cfg['frc'][cfg['frc']['type']]
         abbrv_noise_mode = ""
         label_noise_mode = ""
         if len(w['modes']) > 0:
@@ -63,16 +63,16 @@ class Crommelin2004ODE(ODESystem):
         else:
             abbrv_noise_mode= "modenil"
         abbrv = "_".join([abbrv_x1star,abbrv_gamma,abbrv_noise_type,abbrv_noise_mode]).replace('.','p')
-        label = "\n".join([label_physpar,label_noise_dypt,label_noise_mode])
+        label = "\n".join([label_physpar,label_noise_type,label_noise_mode])
 
         return abbrv,label
-    def derive_parameters(cls, cfg):
+    def derive_parameters(self, cfg):
         n_max = 1
         m_max = 2
         xdim = 6
-        self.dt_step = config['dt_step']
-        self.dt_save = config['dt_save'] 
-        self.t_burnin = int(config['t_burnin_phys']/self.dt_save) # depends on whether to use a pre-seeded initial condition 
+        self.dt_step = cfg['dt_step']
+        self.dt_save = cfg['dt_save'] 
+        self.t_burnin = int(cfg['t_burnin_phys']/self.dt_save) # depends on whether to use a pre-seeded initial condition 
         q = dict({"cfg": cfg})
         q["year_length"] = cfg["year_length"]
         q["epsilon"] = 16*np.sqrt(2)/(5*np.pi)
@@ -97,7 +97,7 @@ class Crommelin2004ODE(ODESystem):
         # 1. Constant term
         F = q["C"]*q["xstar"]
         # 2. Matrix for linear term
-        L = -q["C"]*np.eye(xdim-1)
+        L = -q["C"]*np.eye(xdim)
         #L[0,2] = q["gamma_tilde"][0]
         L[1,2] = q["beta"][0]
         #L[2,0] = -q["gamma"][0]
@@ -107,7 +107,7 @@ class Crommelin2004ODE(ODESystem):
         L[5,4] = -q["beta"][1]
         #L[5,3] = -q["gamma"][1]
         # 3. Matrix for bilinear term
-        B = np.zeros((xdim-1,xdim-1,xdim-1))
+        B = np.zeros((xdim,xdim,xdim))
         B[1,0,2] = -q["alpha"][0]
         B[1,3,5] = -q["delta"][0]
         B[2,0,1] = q["alpha"][0]
@@ -121,15 +121,15 @@ class Crommelin2004ODE(ODESystem):
         q["forcing_term"] = F
         q["linear_term"] = L
         q["bilinear_term"] = B
-        q["state_dim"] = 6
+        q["state_dim"] = xdim
         self.timestep_constants = q
         # Impulse matrix
         imp_modes = cfg['frc']['impulsive']['modes']
         imp_mags = cfg['frc']['impulsive']['magnitudes']
-        self.impulse_dim = length(imp_modes)
-        self.impulse_matrix = np.zeros((self.xdim,self.xdim))
+        self.impulse_dim = len(imp_modes)
+        self.impulse_matrix = np.zeros((xdim,xdim))
         for i,mode in enumerate(imp_modes):
-            self.impulse_matrix[mode,mode] += imp_mmags[i]
+            self.impulse_matrix[mode,mode] += imp_mags[i]
         return 
     @classmethod
     def default_init(cls, expt_dir, model_params_patch, ensemble_size_limit):
@@ -148,13 +148,36 @@ class Crommelin2004ODE(ODESystem):
         ensemble_size_limit = ensemble_size_limit
         ens = cls(dirs_ens, model_params, ensemble_size_limit)
         return ens
-                
+    def orography_cycle(self,t_abs):
+        """
+        Parameters
+        ----------
+        t_abs: numpy.ndarray
+            The absolute time. Shape should be (Nx,) where Nx is the number of ensemble members running in parallel. 
+
+        Returns 
+        -------
+        gamma_t: numpy.ndarray
+            The gamma parameter corresponding to the given time of year. It varies sinusoidaly. Same is (Nx,m_max) where m_max is the maximum zonal wavenumber.
+        gamma_tilde_t: numpy.ndarray
+            The gamma_tilde parameter corresponding to the given time of year. Same shape as gamma_t.
+        """
+        q = self.timestep_constants
+        cosine = np.cos(2*np.pi*t_abs/q["year_length"])
+        sine = np.sin(2*np.pi*t_abs/q["year_length"])
+        gamma_t = cosine * (q["gamma_limits"][1,:] - q["gamma_limits"][0,:])/2 + (q["gamma_limits"][0,:] + q["gamma_limits"][1,:])/2
+        gammadot_t = -sine * (q["gamma_limits"][1,:] - q["gamma_limits"][0,:])/2
+        gamma_tilde_t = cosine * (q["gamma_tilde_limits"][1,:] - q["gamma_tilde_limits"][0,:])/2 + (q["gamma_tilde_limits"][0,:] + q["gamma_tilde_limits"][1,:])/2
+        gammadot_tilde_t = -sine * (q["gamma_tilde_limits"][1,:] - q["gamma_tilde_limits"][0,:])/2 + (q["gamma_tilde_limits"][0,:] + q["gamma_tilde_limits"][1,:])/2
+        gamma_cfg_t = cosine * (q["gamma_limits_cfg"][1] - q["gamma_limits_cfg"][0])/2 
+        gammadot_cfg_t = -sine * (q["gamma_limits_cfg"][1] - q["gamma_limits_cfg"][0])/2
+        return gamma_t,gamma_tilde_t,gamma_cfg_t,gammadot_t,gammadot_tilde_t,gammadot_cfg_t
     def tendency_forcing(self,t,x):
         return self.timestep_constants["forcing_term"]
     def tendency_dissipation(self,t,x):
         diss = self.timestep_constants["linear_term"] @ x
         # Modify the time-dependent components
-        gamma_t,gamma_tilde_t,gamma_fpd_t,gammadot_t,gammadot_tilde_t,gammadot_fpd_t = self.orography_cycle(t)
+        gamma_t,gamma_tilde_t,gamma_cfg_t,gammadot_t,gammadot_tilde_t,gammadot_cfg_t = self.orography_cycle(t)
         diss[0] += gamma_tilde_t[0]*x[2]
         diss[2] -= gamma_t[0]*x[0]
         diss[3] += gamma_tilde_t[1]*x[5]
@@ -164,8 +187,9 @@ class Crommelin2004ODE(ODESystem):
         """
         Compute the tendency according to only the nonlinear terms, in order to check conservation of energy and enstrophy.
         """
-        adv = np.zeros(len(self.xdim))
-        for j in range(self.xdim):
+        xdim = self.timestep_constants["state_dim"]
+        adv = np.zeros(xdim)
+        for j in range(xdim):
             adv[j] += np.sum(x * (self.timestep_constants["bilinear_term"][j] @ x))
         return adv
     def tendency(self, t, x):
@@ -176,6 +200,42 @@ class Crommelin2004ODE(ODESystem):
                 )
     def generate_default_init_cond(self, init_time):
         return self.timestep_constants["xstar"]
+    def compute_observables(self, obs_funs, metadata, root_dir):
+        t,x = Crommelin2004ODE.load_trajectory(metadata, root_dir)
+        obs = []
+        for i_fun,fun in enumerate(obs_funs):
+            obs.append(fun(t,x))
+        return obs
+    def compute_pairwise_observables(self, pairwise_funs, md0, md1list, root_dir):
+        # Compute distances between one trajectory and many others
+        pairwise_fun_vals = [[] for pwf in pairwise_funs] # List of lists
+        t0,x0 = self.load_trajectory(md0, root_dir)
+        for i_md1,md1 in enumerate(md1list):
+            t1,x1 = self.load_trajectory(md1, root_dir)
+            for i_pwf,pwf in enumerate(pairwise_funs):
+                pairwise_fun_vals[i_pwf].append(pwf(t0,x0,t1,x1))
+        return pairwise_fun_vals
+    def compute_observables(self, obs_funs, metadata, root_dir):
+        t,x = Crommelin2004ODE.load_trajectory(metadata, root_dir)
+        obs = []
+        for i_fun,fun in enumerate(obs_funs):
+            obs.append(fun(t,x))
+        return obs
+    @staticmethod
+    def observable_props():
+        obslib = dict({
+            'x1': dict({
+                'abbrv': 'x1',
+                'label': r'$x_1$',
+                'cmap': 'coolwarm',
+                }),
+            'x4': dict({
+                'abbrv': 'x4',
+                'label': r'$x_4$',
+                'cmap': 'coolwarm',
+                }),
+            })
+        return obslib
     # --------------- plotting functions -----------------
     def check_fig_ax(self, fig=None, ax=None):
         if fig is None:
