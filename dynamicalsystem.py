@@ -190,6 +190,7 @@ class ODESystem(DynamicalSystem):
         print(f'{x[0] = }\n{x[-1] = }')
         # save full state out to saveinfo
         np.savez(join(root_dir, saveinfo['filename']), t=t, x=x)
+        # TODO save in a more efficient format, maybe 
         return metadata,observables
 
 

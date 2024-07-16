@@ -194,7 +194,7 @@ def ange_single_workflow(i_param):
     dirdict['analysis'] = join(dirdict['expt'], 'analysis')
     dirdict['plots'] = join(dirdict['expt'], 'plots')
     dirdict['init_cond'] = join(
-            f'/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/2024-07-07/0/',
+            f'/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/2024-07-07/0',
             param_abbrv_gcm, 'DNS_si0', 'data', 'mem255')
     for dirname in ('data','analysis','plots'):
         makedirs(dirdict[dirname], exist_ok=True)
@@ -202,7 +202,7 @@ def ange_single_workflow(i_param):
     # Initial conditions
     filedict['init_cond'] = dict()
     filedict['init_cond']['restart'] = join(dirdict['init_cond'],'restart_mem255.cpio')
-    filedict['init_cond']['trajectory'] = join(dirdict['init_cond'],'mem255.nc')
+    filedict['init_cond']['trajectory'] = join(dirdict['init_cond'],'history_mem255.nc')
     print(f'{filedict["init_cond"] = }')
     # Algorithm manager
     filedict['alg'] = join(dirdict['data'], 'alg.pickle')
