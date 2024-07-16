@@ -127,9 +127,11 @@ class Crommelin2004ODE(ODESystem):
         imp_modes = cfg['frc']['impulsive']['modes']
         imp_mags = cfg['frc']['impulsive']['magnitudes']
         self.impulse_dim = len(imp_modes)
-        self.impulse_matrix = np.zeros((xdim,xdim))
+        print(f'{imp_mags = }')
+        print(f'{imp_modes = }')
+        self.impulse_matrix = np.zeros((xdim,self.impulse_dim))
         for i,mode in enumerate(imp_modes):
-            self.impulse_matrix[mode,mode] += imp_mags[i]
+            self.impulse_matrix[mode,0] += imp_mags[i]
         return 
     @classmethod
     def default_init(cls, expt_dir, model_params_patch, ensemble_size_limit):

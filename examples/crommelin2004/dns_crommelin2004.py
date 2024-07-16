@@ -46,7 +46,7 @@ def dns_paramset(i_expt):
         'seed_max': 100000,
         'seed_inc_init': seed_inc,
         'max_member_duration_phys': 1000.0,
-        'num_chunks_max': 1,
+        'num_chunks_max': 4,
         })
     return config_dynsys,config_algo,expt_label,expt_abbrv
 
@@ -137,8 +137,8 @@ def run_dns(dirdict,filedict,config_dynsys,config_algo):
         alg.ens.set_root_dir(root_dir)
         alg.set_capacity(config_algo['num_chunks_max'], config_algo['max_member_duration_phys'])
     else:
-        sde = Crommelin2004ODE(config_dynsys)
-        ens = Ensemble(sde,root_dir=root_dir)
+        ode = Crommelin2004ODE(config_dynsys)
+        ens = Ensemble(ode,root_dir=root_dir)
         alg = C04ODEDNS(config_algo, ens)
     nmem = alg.ens.get_nmem()
     print(f'{nmem = }')
@@ -273,6 +273,7 @@ def dns_single_procedure(i_expt):
     # Quantities of interest for statistics. These should be registered as observables under the system.
     print(f'Workflow setup...',end='')
     config_dynsys,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = dns_single_workflow(i_expt)
+    print(f'{config_dynsys["frc"] = }')
     print('done')
 
     if tododict['run']:
@@ -281,7 +282,7 @@ def dns_single_procedure(i_expt):
     alg = pickle.load(open(filedict['alg'],'rb'))
     if tododict['plot_segment']:
         outfile = join(dirdict['plots'],'dns_segment.png')
-        alg.plot_dns_segment(outfile, tspan_phys=[0,1000])
+        alg.plot_dns_segment(outfile, tspan_phys=[1000,3000])
     if tododict['return_stats']:
         print(f'About to compute extreme stats')
         measure_plot_extreme_stats(config_analysis,alg,dirdict,overwrite_extstats=True)

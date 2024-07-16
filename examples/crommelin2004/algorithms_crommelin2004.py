@@ -57,7 +57,7 @@ class Crommelin2004ODEDirectNumericalSimulation(algorithms.ODEDirectNumericalSim
         nmem = self.ens.get_nmem()
         if tspan_phys is None:
             _,fin_time = self.ens.get_member_timespan(nmem-1)
-            tspan = [fin_time-int(50/tu),fin_time]
+            tspan = [fin_time-int(1000/tu),fin_time]
         else:
             tspan = [int(t/tu) for t in tspan_phys]
         print(f'{tspan = }')
