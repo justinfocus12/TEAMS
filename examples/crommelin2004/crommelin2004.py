@@ -70,10 +70,11 @@ class Crommelin2004ODE(ODESystem):
         n_max = 1
         m_max = 2
         xdim = 6
+        self.config = cfg
         self.dt_step = cfg['dt_step']
         self.dt_save = cfg['dt_save'] 
         self.t_burnin = int(cfg['t_burnin_phys']/self.dt_save) # depends on whether to use a pre-seeded initial condition 
-        q = dict({"cfg": cfg})
+        q = dict()
         q["year_length"] = cfg["year_length"]
         q["epsilon"] = 16*np.sqrt(2)/(5*np.pi)
         q["C"] = cfg["C"]
@@ -133,6 +134,40 @@ class Crommelin2004ODE(ODESystem):
         for i,mode in enumerate(imp_modes):
             self.impulse_matrix[mode,0] += imp_mags[i]
         return 
+    def basis_functions(self, Nx, Ny):
+        b = self.config['b']
+        xspat_e = np.linspace(0,2*np.pi,Nx+1)
+        xspat = xspat_e[:-1]
+        yspat_e = np.linspace(0,np.pi*b,Ny+1)
+        yspat = yspat_e[:-1]
+        sqrt2 = np.sqrt(2)
+        c1x = np.cos(xspat)
+        s1x = np.sin(xspat)
+        c1y = np.cos(yspat/b)
+        c2y = np.cos(2*yspat/b)
+        s1y = np.sin(yspat/b)
+        s2y = np.sin(2*yspat/b)
+        comps = np.zeros((6,Nx,Ny))
+        comps[0,:,:] = b*sqrt2 * np.outer(np.ones(Nx), c1y)
+        comps[3,:,:] = b*sqrt2 * np.outer(np.ones(Nx), c2y)
+        comps[1,:,:] = 2*b*np.outer(c1x, s1y)
+        comps[2,:,:] = 2*b*np.outer(s1x, s1y)
+        comps[4,:,:] = 2*b*np.outer(c1x, s2y)
+        comps[5,:,:] = 2*b*np.outer(s1x, s2y)
+        return comps,xspat,yspat,xspat_e,yspat_e
+    def streamfunction_from_coefs(self, t, x, xspat, yspat):
+        # Don't confuse xspat (a spatial position between 0 and 2pi) with x
+        sqrt2 = np.sqrt(2)
+        b = self.config['b']
+        c1x = np.cos(xspat)
+        s1x = np.sin(xspat)
+        c1y = np.cos(yspat/b)
+        s1y = np.sin(yspat/b)
+        s2y = np.sin(2*yspat/b)
+        psi = b*sqrt2  *        (x[:,0]*c1y + x[:,3]*c2y)
+        psi += 2*b     *  s1y * (x[:,1]*c1x + x[:,2]*s1x)
+        psi += 2*b     *  s2y * (x[:,1]*c1x + x[:,2]*s1x)
+        return psi
     @classmethod
     def default_init(cls, expt_dir, model_params_patch, ensemble_size_limit):
         dirs_ens = dict({
@@ -217,27 +252,60 @@ class Crommelin2004ODE(ODESystem):
             for i_pwf,pwf in enumerate(pairwise_funs):
                 pairwise_fun_vals[i_pwf].append(pwf(t0,x0,t1,x1))
         return pairwise_fun_vals
-    def compute_observables(self, obs_funs, metadata, root_dir):
-        t,x = Crommelin2004ODE.load_trajectory(metadata, root_dir)
-        obs = []
-        for i_fun,fun in enumerate(obs_funs):
-            obs.append(fun(t,x))
-        return obs
     @staticmethod
     def observable_props():
         obslib = dict({
-            'x1': dict({
-                'abbrv': 'x1',
-                'label': r'$x_1$',
+            'c1y': dict({
+                'abbrv': 'c1y',
+                'label': r'$\langle\psi,\cos(y/b)\rangle$',
                 'cmap': 'coolwarm',
                 }),
-            'x4': dict({
-                'abbrv': 'x4',
-                'label': r'$x_4$',
+            'c2y': dict({
+                'abbrv': 'c2y',
+                'label': r'$\langle\psi,\cos(2y/b)\rangle$',
+                'cmap': 'coolwarm',
+                }),
+            'c1xs1y': dict({
+                'abbrv': 'c1xs1y',
+                'label': r'$\langle\psi,\cos(x)\sin(y/b)\rangle$',
+                'cmap': 'coolwarm',
+                }),
+            's1xs1y': dict({
+                'abbrv': 's1xs1y',
+                'label': r'$\langle\psi,\sin(x)\sin(y/b)\rangle$',
+                'cmap': 'coolwarm',
+                }),
+            'c1xs2y': dict({
+                'abbrv': 'c1xs2y',
+                'label': r'$\langle\psi,\cos(x)\sin(2y/b)\rangle$',
+                'cmap': 'coolwarm',
+                }),
+            's1xs2y': dict({
+                'abbrv': 's1xs2y',
+                'label': r'$\langle\psi,\sin(x)\sin(2y/b)\rangle$',
                 'cmap': 'coolwarm',
                 }),
             })
         return obslib
+    @staticmethod
+    def c1y(t, x):
+        return x[:,0]
+    @staticmethod
+    def c2y(t, x):
+        return x[:,3]
+    @staticmethod
+    def c1xs1y(t,x):
+        return x[:,1]
+    @staticmethod
+    def s1xs1y(t,x):
+        return x[:,2]
+    @staticmethod
+    def c1xs2y(t,x):
+        return x[:,4]
+    @staticmethod
+    def s1xs2y(t,x):
+        return x[:,5]
+
     # --------------- plotting functions -----------------
     def check_fig_ax(self, fig=None, ax=None):
         if fig is None:

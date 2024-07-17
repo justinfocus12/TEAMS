@@ -54,7 +54,7 @@ def dns_single_workflow(i_expt):
     config_dynsys,config_algo,expt_label,expt_abbrv = dns_paramset(i_expt)
     # Organize output directories
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/crommelin2004"
-    date_str = "2024-07-16"
+    date_str = "2024-07-17"
     sub_date_str = "0"
     param_abbrv_dynsys,param_label_dynsys = Crommelin2004ODE.label_from_config(config_dynsys)
     param_abbrv_algo,param_label_algo = C04ODEDNS.label_from_config(config_algo)
@@ -267,6 +267,7 @@ def dns_single_procedure(i_expt):
     tododict = dict({
         'run':                   1,
         'plot_segment':          1,
+        'animate_segment':       1,
         'return_stats':          0,
         })
 
@@ -281,8 +282,11 @@ def dns_single_procedure(i_expt):
         run_dns(dirdict,filedict,config_dynsys,config_algo)
     alg = pickle.load(open(filedict['alg'],'rb'))
     if tododict['plot_segment']:
-        outfile = join(dirdict['plots'],'dns_segment.png')
-        alg.plot_dns_segment(outfile, tspan_phys=[1000,3000])
+        outfile = join(dirdict['plots'],'dns_components.png')
+        alg.plot_dns_segment(outfile, tspan_phys=[2500,3000])
+    if tododict['animate_segment']:
+        outfile = join(dirdict['plots'],'dns_streamfunction.png')
+        alg.animate_dns_segment(outfile, tspan_phys=[2500,3000])
     if tododict['return_stats']:
         print(f'About to compute extreme stats')
         measure_plot_extreme_stats(config_analysis,alg,dirdict,overwrite_extstats=True)

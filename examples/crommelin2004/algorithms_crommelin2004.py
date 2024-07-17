@@ -54,28 +54,64 @@ class Crommelin2004ODEDirectNumericalSimulation(algorithms.ODEDirectNumericalSim
         return obs_dict
     def plot_dns_segment(self, outfile, tspan_phys=None):
         tu = self.ens.dynsys.dt_save
+        obsprops = self.ens.dynsys.observable_props()
         nmem = self.ens.get_nmem()
         if tspan_phys is None:
             _,fin_time = self.ens.get_member_timespan(nmem-1)
-            tspan = [fin_time-int(1000/tu),fin_time]
+            tspan = [fin_time-int(400/tu),fin_time]
         else:
             tspan = [int(t/tu) for t in tspan_phys]
         print(f'{tspan = }')
         fig,axes = plt.subplots(ncols=1, figsize=(6,6))
         ax = axes
         handles = []
-        ks = [1,2]
-        colors = ['red','blue']
-        for i_k,k in enumerate(ks):
-            obs_fun = lambda t,x: x[:,i_k]
-            h = self.plot_obs_segment(obs_fun, tspan, fig, ax, label=r'$x_{%g}(t)$'%(k),color=colors[i_k])
+        modes = ['c1y','c2y','c1xs1y','s1xs1y','c1xs2y','s1xs2y']
+        for i_mode,mode in enumerate(modes):
+            obs_fun = lambda t,x: getattr(self.ens.dynsys, mode)(t,x)
+            label = obsprops[mode]['label']
+            h = self.plot_obs_segment(obs_fun, tspan, fig, ax, label=obsprops[mode]['label'])
             handles.append(h)
         ax.set_xlabel('Time')
-        ax.legend(handles=handles)
+        ax.legend(handles=handles, bbox_to_anchor=(1,1), loc='upper left')
 
         fig.savefig(outfile, **pltkwargs)
         plt.close(fig)
         return
+    def animate_dns_segment(self, outfile, tspan_phys=None):
+        fig,ax = plt.subplots(figsize=(8,4))
+        b = self.ens.dynsys.config['b']
+        tu = self.ens.dynsys.dt_save
+
+        Nx = 64
+        Ny = 32
+        psi = np.zeros((Nx,Ny))
+        # Warmup: plot the first snapshot
+        comps,xspat,yspat,xspat_e,yspat_e = self.ens.dynsys.basis_functions(Nx, Ny)
+        def obs_fun(t,x):
+            Nt = len(t)
+            psi = np.zeros((Nt,Nx,Ny))
+            for i_comp in range(len(comps)):
+                for i_t in range(Nt):
+                    psi[i_t] += comps[i_comp,:,:]*x[i_t,i_comp]
+            return psi
+        nmem = self.ens.get_nmem()
+        if tspan_phys is None:
+            _,fin_time = self.ens.get_member_timespan(nmem-1)
+            tspan = [fin_time-int(400/tu),fin_time]
+        else:
+            tspan = [int(t/tu) for t in tspan_phys]
+        time,memset,tidx = self.get_member_subset(tspan)
+        psi = self.ens.compute_observables([obs_fun], memset[0])[0]
+        fig,ax = plt.subplots()
+        Xe,Ye = np.meshgrid(xspat_e,yspat_e,indexing='ij')
+        X,Y = np.meshgrid(xspat,yspat,indexing='ij')
+        ax.contourf(X,Y,psi[0],cmap='coolwarm')
+        ax.set_xlabel('x')
+        ax.set_ylabel('y')
+        ax.set_title(r'$\psi(t=%g)$'%(time[0]))
+        fig.savefig(outfile, **pltkwargs)
+        return
+
 
 
 class Crommelin2004SDEDirectNumericalSimulation(algorithms.SDEDirectNumericalSimulation):
@@ -102,10 +138,9 @@ class Crommelin2004SDEDirectNumericalSimulation(algorithms.SDEDirectNumericalSim
         # Left: timeseries
         ax = axes[0]
         handles = []
-        ks = [0,1]
-        colors = ['red','blue']
-        for i_k,k in enumerate(ks):
-            obs_fun = lambda t,x: x[:,k]
+        modes = ['c1y','c2y','c1xs1y','s1xs1y','c1xs2y','s1xs2y']
+        for i_mode,mode in enumerate(modes):
+            obs_fun = lambda t,x: getattr(self, mode)(t,x)
             h = self.plot_obs_segment(obs_fun, tspan, fig, ax, label=r'$x_{%g}(t)$'%(k),color=colors[i_k])
             handles.append(h)
         ax.set_xlabel('Time')
