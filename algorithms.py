@@ -127,9 +127,7 @@ class DirectNumericalSimulation(EnsembleAlgorithm):
     # ------------------ Plotting -----------------------------
     def plot_obs_segment(self, obs_fun, tspan, fig, ax, **linekwargs):
         time,memset,tidx = self.get_member_subset(tspan)
-        print(f'{time = }')
         print(f'{memset = }')
-        print(f'{tidx = }')
         tu = self.ens.dynsys.dt_save
         obs_seg = np.concatenate(tuple(self.ens.compute_observables([obs_fun], mem)[0] for mem in memset))[tidx]
         h, = ax.plot(time*tu, obs_seg, **linekwargs)

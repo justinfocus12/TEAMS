@@ -9,9 +9,8 @@ import sys
 import copy as copylib
 import psutil
 import time as timelib
-import matplotlib
-import matplotlib.pyplot as plt
-matplotlib.rcParams.update({
+from matplotlib import pyplot as plt, animation, rcParams
+rcParams.update({
     "font.family": "monospace",
     "font.size": 15
 })
@@ -77,10 +76,11 @@ class Crommelin2004ODEDirectNumericalSimulation(algorithms.ODEDirectNumericalSim
         fig.savefig(outfile, **pltkwargs)
         plt.close(fig)
         return
-    def animate_dns_segment(self, outfile, tspan_phys=None):
+    def animate_dns_segment(self, outfile_prefix, tspan_phys=None):
         fig,ax = plt.subplots(figsize=(8,4))
         b = self.ens.dynsys.config['b']
         tu = self.ens.dynsys.dt_save
+        dt_plot = 1.0 #self.ens.dynsys.dt_plot
 
         Nx = 64
         Ny = 32
@@ -102,14 +102,28 @@ class Crommelin2004ODEDirectNumericalSimulation(algorithms.ODEDirectNumericalSim
             tspan = [int(t/tu) for t in tspan_phys]
         time,memset,tidx = self.get_member_subset(tspan)
         psi = self.ens.compute_observables([obs_fun], memset[0])[0]
+        print(f'{time.shape = }')
+        print(f'{psi.shape = }')
         fig,ax = plt.subplots()
-        Xe,Ye = np.meshgrid(xspat_e,yspat_e,indexing='ij')
-        X,Y = np.meshgrid(xspat,yspat,indexing='ij')
-        ax.contourf(X,Y,psi[0],cmap='coolwarm')
         ax.set_xlabel('x')
         ax.set_ylabel('y')
-        ax.set_title(r'$\psi(t=%g)$'%(time[0]))
-        fig.savefig(outfile, **pltkwargs)
+        Xe,Ye = np.meshgrid(xspat_e,yspat_e,indexing='ij')
+        X,Y = np.meshgrid(xspat,yspat,indexing='ij')
+        levels_pos = np.linspace(0,np.max(np.abs(psi)),9)[1:]
+        levels_neg = np.linspace(-np.max(np.abs(psi)),0,9)[:-1]
+        print(f'{psi.shape = }')
+        print(f'{np.min(psi) = }, {np.max(psi) = }')
+        artists = []
+        for i in range(0,len(time),int(round(dt_plot/tu))):
+            contours_pos = ax.contour(X,Y,psi[i],levels=levels_pos,colors='black',linestyles='solid')
+            contours_neg = ax.contour(X,Y,psi[i],levels=levels_neg,colors='black',linestyles='dashed')
+            title = ax.set_title(r'$\psi(t=%g)$'%(time[i]))
+            artists.append([contours_pos,contours_neg,title])
+            if i == 0:
+                fig.savefig(outfile_prefix+'.png',**pltkwargs)
+        ani = animation.ArtistAnimation(fig, artists, interval=50, blit=True, repeat_delay=1000)
+        print(f'made the ani')
+        ani.save(outfile_prefix+'.gif', writer="pillow") #**pltkwargs)
         return
 
 

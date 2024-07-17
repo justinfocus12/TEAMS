@@ -33,6 +33,7 @@ class Crommelin2004ODE(ODESystem):
         cfg['t_burnin_phys'] = 10.0
         cfg['dt_step'] = 0.1
         cfg['dt_save'] = 0.5
+        cfg["dt_plot"] = 5.0
         cfg['frc'] = dict({
             'type': 'impulsive',
             'impulsive': dict({
@@ -73,6 +74,7 @@ class Crommelin2004ODE(ODESystem):
         self.config = cfg
         self.dt_step = cfg['dt_step']
         self.dt_save = cfg['dt_save'] 
+        self.dt_plot = cfg['dt_plot']
         self.t_burnin = int(cfg['t_burnin_phys']/self.dt_save) # depends on whether to use a pre-seeded initial condition 
         q = dict()
         q["year_length"] = cfg["year_length"]
@@ -180,6 +182,7 @@ class Crommelin2004ODE(ODESystem):
         model_params = cls.derive_parameters(fundamental_param_dict)
         model_params["dt_sim"] = 0.1
         model_params["dt_save"] = 0.5 
+        model_params["dt_plot"] = 5.0
         model_params["dt_print"] = 500.0
         model_params.update(model_params_patch)
         ensemble_size_limit = ensemble_size_limit

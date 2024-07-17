@@ -33,12 +33,13 @@ def dns_paramset(i_expt):
     multiparams = dns_multiparams()
     idx_multiparam = np.unravel_index(i_expt, tuple(len(mp) for mp in multiparams))
     seed_inc,r,gamma = (multiparams[i][i_param] for (i,i_param) in enumerate(idx_multiparam))
+    print(f'{seed_inc = }, {r = }, {gamma = }')
     # Minimal labels to differentiate them 
     expt_label = r'$r=%g,\gamma=%g$'%(r,gamma)
     expt_abbrv = (r'r%g_g%g'%(r,gamma)).replace('.','p') 
     config_dynsys = Crommelin2004ODE.default_config()
     config_dynsys['r'] = r
-    config_dynsys['gamma'] = gamma
+    config_dynsys['gamma_limits'] = [gamma,gamma]
 
 
     config_algo = dict({
@@ -55,7 +56,7 @@ def dns_single_workflow(i_expt):
     # Organize output directories
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/crommelin2004"
     date_str = "2024-07-17"
-    sub_date_str = "0"
+    sub_date_str = "1"
     param_abbrv_dynsys,param_label_dynsys = Crommelin2004ODE.label_from_config(config_dynsys)
     param_abbrv_algo,param_label_algo = C04ODEDNS.label_from_config(config_algo)
     config_analysis = dict({
@@ -86,6 +87,7 @@ def dns_single_workflow(i_expt):
     dirdict['plots'] = join(dirdict['expt'], 'plots')
     for dirname in list(dirdict.values()):
         makedirs(dirname, exist_ok=True)
+    print(f'{dirdict["expt"] = }')
 
     # List the quantities of interest
     obs_names = ['x1','x4'] # Maybe we can do multivariate stuff on the second
@@ -285,8 +287,8 @@ def dns_single_procedure(i_expt):
         outfile = join(dirdict['plots'],'dns_components.png')
         alg.plot_dns_segment(outfile, tspan_phys=[2500,3000])
     if tododict['animate_segment']:
-        outfile = join(dirdict['plots'],'dns_streamfunction.png')
-        alg.animate_dns_segment(outfile, tspan_phys=[2500,3000])
+        outfile_prefix = join(dirdict['plots'],'dns_streamfunction')
+        alg.animate_dns_segment(outfile_prefix, tspan_phys=[2500,3000])
     if tododict['return_stats']:
         print(f'About to compute extreme stats')
         measure_plot_extreme_stats(config_analysis,alg,dirdict,overwrite_extstats=True)
