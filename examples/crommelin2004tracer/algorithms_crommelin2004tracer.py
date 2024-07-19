@@ -111,8 +111,6 @@ class Crommelin2004TracerODEDirectNumericalSimulation(algorithms.ODEDirectNumeri
 
         Nx = 64
         Ny = 32
-        psi = np.zeros((Nx,Ny))
-        # Warmup: plot the first snapshot
         comps,xspat,yspat,xspat_e,yspat_e = self.ens.dynsys.basis_functions(Nx, Ny)
         def psi_fun(t,x):
             Nt = len(t)
@@ -149,19 +147,21 @@ class Crommelin2004TracerODEDirectNumericalSimulation(algorithms.ODEDirectNumeri
         levels_neg = np.linspace(-np.max(np.abs(psi)),0,9)[:-1]
         print(f'{psi.shape = }')
         print(f'{np.min(psi) = }, {np.max(psi) = }')
+
+        # ------------- ArtistAnimation -----------------
+
         artists = []
-        ntr2plot = 1
+        ntr2plot = self.ens.dynsys.config["Ntr"]
         for i in range(0,len(time),int(round(dt_plot/tu))):
             contours_pos = ax.contour(X,Y,psi[i],levels=levels_pos,colors='black',linestyles='solid')
             contours_neg = ax.contour(X,Y,psi[i],levels=levels_neg,colors='black',linestyles='dashed')
-            scat = ax.scatter(trposns[i,:ntr2plot,0],trposns[i,:ntr2plot,1],color='black',marker='o')
-            title = ax.text(0.5, 1.0, r'$\psi(t=%g)$'%(time[i]*tu), ha='center', va='top', transform=ax.transAxes)
+            scat = ax.scatter(trposns[i,:ntr2plot,0],trposns[i,:ntr2plot,1],color='red',marker='.')
+            title = ax.text(0.5, 1.0, r'$\psi(t=%.2f)$'%(time[i]*tu), ha='center', va='bottom', transform=ax.transAxes)
             artists.append([contours_pos,contours_neg,scat,title])
-            if i == 0:
-                fig.savefig(outfile_prefix+'.png',**pltkwargs)
-        ani = animation.ArtistAnimation(fig, artists, interval=200, blit=True, repeat=False) #repeat_delay=5000)
+        ani = animation.ArtistAnimation(fig, artists, interval=50, blit=True, repeat=False) #repeat_delay=5000)
         print(f'made the ani')
         ani.save(outfile_prefix+'.gif', writer="pillow") #**pltkwargs)
+
         return
 
 

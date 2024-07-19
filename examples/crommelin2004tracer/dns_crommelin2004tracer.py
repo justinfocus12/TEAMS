@@ -48,8 +48,8 @@ def dns_paramset(i_expt):
         'seed_min': 1000,
         'seed_max': 100000,
         'seed_inc_init': seed_inc,
-        'max_member_duration_phys': 100.0,
-        'num_chunks_max': 2,
+        'max_member_duration_phys': 1000.0,
+        'num_chunks_max': 4,
         })
     return config_dynsys,config_algo,expt_label,expt_abbrv
 
@@ -58,7 +58,7 @@ def dns_single_workflow(i_expt):
     # Organize output directories
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/crommelin2004tracer"
     date_str = "2024-07-19"
-    sub_date_str = "1"
+    sub_date_str = "2"
     param_abbrv_dynsys,param_label_dynsys = Crommelin2004TracerODE.label_from_config(config_dynsys)
     param_abbrv_algo,param_label_algo = C04ODEDNS.label_from_config(config_algo)
     config_analysis = dict({
@@ -284,13 +284,13 @@ def dns_single_procedure(i_expt):
     alg = pickle.load(open(filedict['alg'],'rb'))
     if tododict['plot_segment']:
         outfile = join(dirdict['plots'],'dns_components.png')
-        alg.plot_dns_segment(outfile, tspan_phys=[150,200])
+        alg.plot_dns_segment(outfile, tspan_phys=[1000,1050])
     if tododict['plot_tracer_traj']:
         outfile = join(dirdict['plots'],'dns_tracer_traj.png')
-        alg.plot_tracer_traj(outfile, tspan_phys=[150,200])
+        alg.plot_tracer_traj(outfile, tspan_phys=[1000,1050])
     if tododict['animate_segment']:
         outfile_prefix = join(dirdict['plots'],'dns_streamfunction')
-        alg.animate_dns_segment(outfile_prefix, tspan_phys=[150,200])
+        alg.animate_dns_segment(outfile_prefix, tspan_phys=[1000,1050])
     if tododict['return_stats']:
         print(f'About to compute extreme stats')
         measure_plot_extreme_stats(config_analysis,alg,dirdict,overwrite_extstats=True)
@@ -303,9 +303,9 @@ if __name__ == "__main__":
     else:
         procedure = 'single'
         i_seed_inc = 0
-        i_x1star = 0
-        i_r = 2
-        i_gamma = 3
+        i_x1star = 1
+        i_r = 3
+        i_gamma = 1
         multiparams = dns_multiparams()
         shp = tuple(len(mp) for mp in multiparams)
         print(f'{shp = }')

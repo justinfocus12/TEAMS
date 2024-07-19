@@ -29,7 +29,7 @@ class Crommelin2004TracerODE(ODESystem):
         cfg = dict({
             "b": 0.5, "beta": 1.25, "gamma_limits": [0.2, 0.2], 
             "C": 0.1, "x1star": 0.95, "r": -0.801, "year_length": 400.0,
-            "Ntr": 16, 
+            "Ntr": 64, 
             })
         cfg['t_burnin_phys'] = 10.0
         cfg['dt_step'] = 0.025
@@ -181,9 +181,9 @@ class Crommelin2004TracerODE(ODESystem):
         psi_x += 2*b   *  s1y * (x[1]*(-s1x) + x[2]*c1x)
         psi_y += 2*b   *  c1y/b * (x[1]*c1x + x[2]*s1x)
 
-        psi += 2*b     *  s2y * (x[1]*c1x + x[2]*s1x)
-        psi_x += 2*b   *  s2y * (x[1]*(-s1x) + x[2]*c1x)
-        psi_y += 2*b   *  c2y*(2/b) * (x[1]*c1x + x[2]*s1x)
+        psi += 2*b     *  s2y * (x[4]*c1x + x[5]*s1x)
+        psi_x += 2*b   *  s2y * (x[4]*(-s1x) + x[5]*c1x)
+        psi_y += 2*b   *  c2y*(2/b) * (x[4]*c1x + x[5]*s1x)
 
         return psi,psi_x,psi_y
     def orography_cycle(self,t_abs):
