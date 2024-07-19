@@ -32,9 +32,9 @@ class Crommelin2004TracerODE(ODESystem):
             "Ntr": 16, 
             })
         cfg['t_burnin_phys'] = 10.0
-        cfg['dt_step'] = 0.1
-        cfg['dt_save'] = 0.5
-        cfg["dt_plot"] = 5.0
+        cfg['dt_step'] = 0.025
+        cfg['dt_save'] = 0.05
+        cfg["dt_plot"] = 0.05
         cfg['frc'] = dict({
             'type': 'impulsive',
             'impulsive': dict({
@@ -244,10 +244,17 @@ class Crommelin2004TracerODE(ODESystem):
         psi,psi_x,psi_y = self.streamfunction_at_particles(t, x_flow, x_tr, y_tr)
         tendency = np.concatenate((tendency_flow, -psi_y, psi_x))
         return tendency
+    def correct_timestep(self, t, x):
+        flowdim = self.timestep_constants["flowdim"]
+        Ntr = self.config["Ntr"]
+        b = self.config["b"]
+        x[flowdim:flowdim+Ntr] = np.mod(x[flowdim:flowdim+Ntr], 2*np.pi)
+        x[flowdim+Ntr:flowdim+2*Ntr] = np.mod(x[flowdim+Ntr:flowdim+2*Ntr], np.pi*b)
+        return x
     def generate_default_init_cond(self, init_time):
         xstar = self.timestep_constants["xstar"]
         x_tr = np.linspace(0,2*np.pi,self.config["Ntr"]+1)[:-1]
-        y_tr = np.pi*self.config["b"]/2*np.ones(self.config["Ntr"])
+        y_tr = np.pi*self.config["b"] * np.random.rand(self.config["Ntr"])
         x_init = np.concatenate((xstar,x_tr,y_tr))
         return x_init
     def compute_observables(self, obs_funs, metadata, root_dir):

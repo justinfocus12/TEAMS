@@ -24,20 +24,22 @@ import utils
 
 def dns_multiparams():
     seed_incs = [0]
+    x1stars = [6.0, 0.95]
     rs = [0.0,-0.2,-0.4,-0.801]
-    gammas = [0.1,0.2,0.3]
-    return seed_incs,rs,gammas
+    gammas = [0.1,0.2,0.3,1.0]
+    return seed_incs,x1stars,rs,gammas
 
 def dns_paramset(i_expt):
     # Organize the array of parameters as well as the output files 
     multiparams = dns_multiparams()
     idx_multiparam = np.unravel_index(i_expt, tuple(len(mp) for mp in multiparams))
-    seed_inc,r,gamma = (multiparams[i][i_param] for (i,i_param) in enumerate(idx_multiparam))
+    seed_inc,x1star,r,gamma = (multiparams[i][i_param] for (i,i_param) in enumerate(idx_multiparam))
     print(f'{seed_inc = }, {r = }, {gamma = }')
     # Minimal labels to differentiate them 
-    expt_label = r'$r=%g,\gamma=%g$'%(r,gamma)
-    expt_abbrv = (r'r%g_g%g'%(r,gamma)).replace('.','p') 
+    expt_label = r'$x_1^*=%g$,$r=%g,\gamma=%g$'%(x1star,r,gamma)
+    expt_abbrv = (r'x1st%g_r%g_g%g'%(x1star,r,gamma)).replace('.','p') 
     config_dynsys = Crommelin2004TracerODE.default_config()
+    config_dynsys['x1star'] = x1star
     config_dynsys['r'] = r
     config_dynsys['gamma_limits'] = [gamma,gamma]
 
@@ -46,8 +48,8 @@ def dns_paramset(i_expt):
         'seed_min': 1000,
         'seed_max': 100000,
         'seed_inc_init': seed_inc,
-        'max_member_duration_phys': 1000.0,
-        'num_chunks_max': 4,
+        'max_member_duration_phys': 100.0,
+        'num_chunks_max': 2,
         })
     return config_dynsys,config_algo,expt_label,expt_abbrv
 
@@ -55,8 +57,8 @@ def dns_single_workflow(i_expt):
     config_dynsys,config_algo,expt_label,expt_abbrv = dns_paramset(i_expt)
     # Organize output directories
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/crommelin2004tracer"
-    date_str = "2024-07-18"
-    sub_date_str = "0"
+    date_str = "2024-07-19"
+    sub_date_str = "1"
     param_abbrv_dynsys,param_label_dynsys = Crommelin2004TracerODE.label_from_config(config_dynsys)
     param_abbrv_algo,param_label_algo = C04ODEDNS.label_from_config(config_algo)
     config_analysis = dict({
@@ -265,6 +267,7 @@ def dns_single_procedure(i_expt):
     tododict = dict({
         'run':                   1,
         'plot_segment':          1,
+        'plot_tracer_traj':      1,
         'animate_segment':       1,
         'return_stats':          0,
         })
@@ -281,18 +284,33 @@ def dns_single_procedure(i_expt):
     alg = pickle.load(open(filedict['alg'],'rb'))
     if tododict['plot_segment']:
         outfile = join(dirdict['plots'],'dns_components.png')
-        alg.plot_dns_segment(outfile, tspan_phys=[2500,3000])
+        alg.plot_dns_segment(outfile, tspan_phys=[150,200])
+    if tododict['plot_tracer_traj']:
+        outfile = join(dirdict['plots'],'dns_tracer_traj.png')
+        alg.plot_tracer_traj(outfile, tspan_phys=[150,200])
     if tododict['animate_segment']:
         outfile_prefix = join(dirdict['plots'],'dns_streamfunction')
-        alg.animate_dns_segment(outfile_prefix, tspan_phys=[2500,3000])
+        alg.animate_dns_segment(outfile_prefix, tspan_phys=[150,200])
     if tododict['return_stats']:
         print(f'About to compute extreme stats')
         measure_plot_extreme_stats(config_analysis,alg,dirdict,overwrite_extstats=True)
     return
 
 if __name__ == "__main__":
-    procedure = sys.argv[1]
-    idx_expt = [int(v) for v in sys.argv[2:]]
+    if len(sys.argv) > 1:
+        procedure = sys.argv[1]
+        idx_expt = [int(v) for v in sys.argv[2:]]
+    else:
+        procedure = 'single'
+        i_seed_inc = 0
+        i_x1star = 0
+        i_r = 2
+        i_gamma = 3
+        multiparams = dns_multiparams()
+        shp = tuple(len(mp) for mp in multiparams)
+        print(f'{shp = }')
+        idx_expt = [np.ravel_multi_index((i_seed_inc,i_x1star,i_r,i_gamma), shp)]
+        print
     if procedure == 'single':
         for i_expt in idx_expt:
             dns_single_procedure(i_expt)

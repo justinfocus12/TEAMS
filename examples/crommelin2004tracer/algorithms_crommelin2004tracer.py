@@ -51,6 +51,33 @@ class Crommelin2004TracerODEDirectNumericalSimulation(algorithms.ODEDirectNumeri
             for name in self.obs_dict_names()
             })
         return obs_dict
+    def plot_tracer_traj(self, outfile, tspan_phys=None):
+        tu = self.ens.dynsys.dt_save
+        obsprops = self.ens.dynsys.observable_props()
+        nmem = self.ens.get_nmem()
+        if tspan_phys is None:
+            _,fin_time = self.ens.get_member_timespan(nmem-1)
+            tspan = [fin_time-int(400/tu),fin_time]
+        else:
+            tspan = [int(t/tu) for t in tspan_phys]
+        print(f'{tspan = }')
+        fig,axes = plt.subplots(ncols=1, nrows=2, figsize=(12,12))
+        ax = axes
+        handles = []
+        ntr2plot = 1
+        flowdim = self.ens.dynsys.timestep_constants["flowdim"]
+        Ntr = self.ens.dynsys.config["Ntr"]
+        for i_tr,tr in enumerate(range(ntr2plot)):
+            x_tr_fun = lambda t,x: x[:,flowdim+i_tr]
+            self.plot_obs_segment(x_tr_fun, tspan, fig, axes[0], label=r'$x$')
+            y_tr_fun = lambda t,x: x[:,flowdim+Ntr+i_tr]
+            self.plot_obs_segment(y_tr_fun, tspan, fig, axes[1], label=r'$y$')
+        axes[1].set_xlabel('Time')
+        #ax.legend(handles=handles, bbox_to_anchor=(1,1), loc='upper left')
+
+        fig.savefig(outfile, **pltkwargs)
+        plt.close(fig)
+        return
     def plot_dns_segment(self, outfile, tspan_phys=None):
         tu = self.ens.dynsys.dt_save
         obsprops = self.ens.dynsys.observable_props()
@@ -80,7 +107,7 @@ class Crommelin2004TracerODEDirectNumericalSimulation(algorithms.ODEDirectNumeri
         fig,ax = plt.subplots(figsize=(8,4))
         b = self.ens.dynsys.config['b']
         tu = self.ens.dynsys.dt_save
-        dt_plot = 1.0 #self.ens.dynsys.dt_plot
+        dt_plot = self.ens.dynsys.dt_plot
 
         Nx = 64
         Ny = 32
@@ -123,15 +150,16 @@ class Crommelin2004TracerODEDirectNumericalSimulation(algorithms.ODEDirectNumeri
         print(f'{psi.shape = }')
         print(f'{np.min(psi) = }, {np.max(psi) = }')
         artists = []
+        ntr2plot = 1
         for i in range(0,len(time),int(round(dt_plot/tu))):
             contours_pos = ax.contour(X,Y,psi[i],levels=levels_pos,colors='black',linestyles='solid')
             contours_neg = ax.contour(X,Y,psi[i],levels=levels_neg,colors='black',linestyles='dashed')
-            scat = ax.scatter(trposns[i,:,0],trposns[i,:,1],color='black',marker='o')
-            title = ax.set_title(r'$\psi(t=%g)$'%(time[i]))
+            scat = ax.scatter(trposns[i,:ntr2plot,0],trposns[i,:ntr2plot,1],color='black',marker='o')
+            title = ax.text(0.5, 1.0, r'$\psi(t=%g)$'%(time[i]*tu), ha='center', va='top', transform=ax.transAxes)
             artists.append([contours_pos,contours_neg,scat,title])
             if i == 0:
                 fig.savefig(outfile_prefix+'.png',**pltkwargs)
-        ani = animation.ArtistAnimation(fig, artists, interval=50, blit=True, repeat_delay=1000)
+        ani = animation.ArtistAnimation(fig, artists, interval=200, blit=True, repeat=False) #repeat_delay=5000)
         print(f'made the ani')
         ani.save(outfile_prefix+'.gif', writer="pillow") #**pltkwargs)
         return
