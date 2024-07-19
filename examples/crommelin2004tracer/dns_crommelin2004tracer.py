@@ -16,10 +16,10 @@ matplotlib.rcParams.update({
 })
 pltkwargs = dict(bbox_inches="tight",pad_inches=0.2)
 sys.path.append('../..')
-from crommelin2004 import Crommelin2004ODE
+from crommelin2004tracer import Crommelin2004TracerODE
 from ensemble import Ensemble
 import forcing
-from algorithms_crommelin2004 import Crommelin2004ODEDirectNumericalSimulation as C04ODEDNS 
+from algorithms_crommelin2004tracer import Crommelin2004TracerODEDirectNumericalSimulation as C04ODEDNS 
 import utils
 
 def dns_multiparams():
@@ -37,7 +37,7 @@ def dns_paramset(i_expt):
     # Minimal labels to differentiate them 
     expt_label = r'$r=%g,\gamma=%g$'%(r,gamma)
     expt_abbrv = (r'r%g_g%g'%(r,gamma)).replace('.','p') 
-    config_dynsys = Crommelin2004ODE.default_config()
+    config_dynsys = Crommelin2004TracerODE.default_config()
     config_dynsys['r'] = r
     config_dynsys['gamma_limits'] = [gamma,gamma]
 
@@ -54,10 +54,10 @@ def dns_paramset(i_expt):
 def dns_single_workflow(i_expt):
     config_dynsys,config_algo,expt_label,expt_abbrv = dns_paramset(i_expt)
     # Organize output directories
-    scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/crommelin2004"
-    date_str = "2024-07-17"
-    sub_date_str = "1"
-    param_abbrv_dynsys,param_label_dynsys = Crommelin2004ODE.label_from_config(config_dynsys)
+    scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/crommelin2004tracer"
+    date_str = "2024-07-18"
+    sub_date_str = "0"
+    param_abbrv_dynsys,param_label_dynsys = Crommelin2004TracerODE.label_from_config(config_dynsys)
     param_abbrv_algo,param_label_algo = C04ODEDNS.label_from_config(config_algo)
     config_analysis = dict({
         'k_roll_step': 4, # step size for augmenting Crommelin2004 with rotational symmetry 
@@ -88,10 +88,6 @@ def dns_single_workflow(i_expt):
     for dirname in list(dirdict.values()):
         makedirs(dirname, exist_ok=True)
     print(f'{dirdict["expt"] = }')
-
-    # List the quantities of interest
-    obs_names = ['x1','x4'] # Maybe we can do multivariate stuff on the second
-
 
     filedict = dict()
     # Algorithm manager
@@ -139,7 +135,7 @@ def run_dns(dirdict,filedict,config_dynsys,config_algo):
         alg.ens.set_root_dir(root_dir)
         alg.set_capacity(config_algo['num_chunks_max'], config_algo['max_member_duration_phys'])
     else:
-        ode = Crommelin2004ODE(config_dynsys)
+        ode = Crommelin2004TracerODE(config_dynsys)
         ens = Ensemble(ode,root_dir=root_dir)
         alg = C04ODEDNS(config_algo, ens)
     nmem = alg.ens.get_nmem()

@@ -20,7 +20,7 @@ from ensemble import Ensemble
 import utils
 
 
-class Crommelin2004ODE(ODESystem): 
+class Crommelin2004TracerODE(ODESystem): 
     def __init__(self, cfg):
         self.state_dim = 6 + 2*cfg["Ntr"]
         super().__init__(cfg)
@@ -134,7 +134,7 @@ class Crommelin2004ODE(ODESystem):
         self.impulse_dim = len(imp_modes)
         print(f'{imp_mags = }')
         print(f'{imp_modes = }')
-        self.impulse_matrix = np.zeros((flowdim,self.impulse_dim))
+        self.impulse_matrix = np.zeros((q['state_dim'],self.impulse_dim))
         for i,mode in enumerate(imp_modes):
             self.impulse_matrix[mode,0] += imp_mags[i]
         return 
@@ -183,7 +183,7 @@ class Crommelin2004ODE(ODESystem):
 
         psi += 2*b     *  s2y * (x[1]*c1x + x[2]*s1x)
         psi_x += 2*b   *  s2y * (x[1]*(-s1x) + x[2]*c1x)
-        psi_y += 2*b   *  c2y*(2/b) * (x[1]*c1x + x[2]*s2x)
+        psi_y += 2*b   *  c2y*(2/b) * (x[1]*c1x + x[2]*s1x)
 
         return psi,psi_x,psi_y
     def orography_cycle(self,t_abs):
@@ -232,7 +232,7 @@ class Crommelin2004ODE(ODESystem):
         return adv
     def tendency(self, t, x):
         flowdim = self.timestep_constants["flowdim"]
-        Ntr = self.cfg["Ntr"]
+        Ntr = self.config["Ntr"]
         x_flow = x[:flowdim]
         x_tr = x[flowdim:flowdim+Ntr]
         y_tr = x[flowdim+Ntr:flowdim+2*Ntr]
@@ -241,17 +241,17 @@ class Crommelin2004ODE(ODESystem):
                 + self.tendency_dissipation(t,x_flow) 
                 + self.tendency_forcing(t,x_flow)
                 )
-        psi,psi_x,psi_y = streamfunction_at_particles(t, x_flow, x_tr, y_tr)
+        psi,psi_x,psi_y = self.streamfunction_at_particles(t, x_flow, x_tr, y_tr)
         tendency = np.concatenate((tendency_flow, -psi_y, psi_x))
         return tendency
     def generate_default_init_cond(self, init_time):
         xstar = self.timestep_constants["xstar"]
-        x_tr = np.linspace(0,2*np.pi,self.cfg["Ntr"]+1)[:-1]
-        y_tr = np.pi*self.cfg["b"]/2*np.ones(self.cfg["Ntr"])
-        x_init = np.concatenate((xstr,x_tr,y_tr))
+        x_tr = np.linspace(0,2*np.pi,self.config["Ntr"]+1)[:-1]
+        y_tr = np.pi*self.config["b"]/2*np.ones(self.config["Ntr"])
+        x_init = np.concatenate((xstar,x_tr,y_tr))
         return x_init
     def compute_observables(self, obs_funs, metadata, root_dir):
-        t,x = Crommelin2004ODE.load_trajectory(metadata, root_dir)
+        t,x = Crommelin2004TracerODE.load_trajectory(metadata, root_dir)
         obs = []
         for i_fun,fun in enumerate(obs_funs):
             obs.append(fun(t,x))

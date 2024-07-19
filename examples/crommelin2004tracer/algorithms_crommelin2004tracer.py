@@ -16,7 +16,7 @@ rcParams.update({
 })
 pltkwargs = dict(bbox_inches="tight",pad_inches=0.2)
 sys.path.append('../..')
-from crommelin2004 import Crommelin2004ODE
+from crommelin2004tracer import Crommelin2004TracerODE
 from ensemble import Ensemble
 import forcing
 import algorithms
@@ -42,7 +42,7 @@ class Crommelin2004SDEPeriodicBranching(algorithms.SDEPeriodicBranching):
             })
         return obs_dict
 
-class Crommelin2004ODEDirectNumericalSimulation(algorithms.ODEDirectNumericalSimulation):
+class Crommelin2004TracerODEDirectNumericalSimulation(algorithms.ODEDirectNumericalSimulation):
     def obs_dict_names(self):
         return ['x0','E0','E','Emax']
     def obs_fun(self, t, x):
@@ -87,13 +87,22 @@ class Crommelin2004ODEDirectNumericalSimulation(algorithms.ODEDirectNumericalSim
         psi = np.zeros((Nx,Ny))
         # Warmup: plot the first snapshot
         comps,xspat,yspat,xspat_e,yspat_e = self.ens.dynsys.basis_functions(Nx, Ny)
-        def obs_fun(t,x):
+        def psi_fun(t,x):
             Nt = len(t)
             psi = np.zeros((Nt,Nx,Ny))
             for i_comp in range(len(comps)):
                 for i_t in range(Nt):
                     psi[i_t] += comps[i_comp,:,:]*x[i_t,i_comp]
             return psi
+        def trposns_fun(t,x):
+            Nt = len(t)
+            Ntr = self.ens.dynsys.config["Ntr"]
+            b = self.ens.dynsys.config['b']
+            flowdim = self.ens.dynsys.timestep_constants["flowdim"]
+            trposns = np.zeros((Nt,Ntr,2))
+            trposns[:,:,0] = np.mod(x[:,flowdim:flowdim+Ntr], 2*np.pi)
+            trposns[:,:,1] = np.mod(x[:,flowdim+Ntr:flowdim+2*Ntr], np.pi*b)
+            return trposns
         nmem = self.ens.get_nmem()
         if tspan_phys is None:
             _,fin_time = self.ens.get_member_timespan(nmem-1)
@@ -101,7 +110,7 @@ class Crommelin2004ODEDirectNumericalSimulation(algorithms.ODEDirectNumericalSim
         else:
             tspan = [int(t/tu) for t in tspan_phys]
         time,memset,tidx = self.get_member_subset(tspan)
-        psi = self.ens.compute_observables([obs_fun], memset[0])[0]
+        psi,trposns = self.ens.compute_observables([psi_fun,trposns_fun], memset[0])
         print(f'{time.shape = }')
         print(f'{psi.shape = }')
         fig,ax = plt.subplots()
@@ -117,8 +126,9 @@ class Crommelin2004ODEDirectNumericalSimulation(algorithms.ODEDirectNumericalSim
         for i in range(0,len(time),int(round(dt_plot/tu))):
             contours_pos = ax.contour(X,Y,psi[i],levels=levels_pos,colors='black',linestyles='solid')
             contours_neg = ax.contour(X,Y,psi[i],levels=levels_neg,colors='black',linestyles='dashed')
+            scat = ax.scatter(trposns[i,:,0],trposns[i,:,1],color='black',marker='o')
             title = ax.set_title(r'$\psi(t=%g)$'%(time[i]))
-            artists.append([contours_pos,contours_neg,title])
+            artists.append([contours_pos,contours_neg,scat,title])
             if i == 0:
                 fig.savefig(outfile_prefix+'.png',**pltkwargs)
         ani = animation.ArtistAnimation(fig, artists, interval=50, blit=True, repeat_delay=1000)
