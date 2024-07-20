@@ -118,7 +118,13 @@ class DirectNumericalSimulation(EnsembleAlgorithm):
                 bin_lows=bin_lows,
                 hist=hist,
                 rtime=rtime,
-                logsf=logsf)
+                logsf=logsf,
+                rtime_gev=rtime_gev,
+                logsf_gev=logsf_gev,
+                shape=shape,
+                loc=loc,
+                scale=scale,
+                )
         if rtime[-1] == rtime[-2]:
             print(f'{hist = }')
             print(f'{rtime = }')

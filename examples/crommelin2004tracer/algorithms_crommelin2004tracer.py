@@ -78,9 +78,49 @@ class Crommelin2004TracerODEDirectNumericalSimulation(algorithms.ODEDirectNumeri
         fig.savefig(outfile, **pltkwargs)
         plt.close(fig)
         return
+    def plot_dns_concentrations(self, outfile, tspan_phys=None):
+        tu = self.ens.dynsys.dt_save
+        b = self.ens.dynsys.config['b']
+        flowdim = self.ens.dynsys.timestep_constants['flowdim']
+        Ntr = self.ens.dynsys.config['Ntr']
+        nmem = self.ens.get_nmem()
+        if tspan_phys is None:
+            _,fin_time = self.ens.get_member_timespan(nmem-1)
+            tspan = [fin_time-int(400/tu),fin_time]
+        else:
+            tspan = [int(t/tu) for t in tspan_phys]
+        print(f'{tspan = }')
+        ncells_x = 2
+        ncells_y = 2
+        Lx = 2*np.pi
+        Ly = np.pi*b
+        cell_size_x = Lx/ncells_x
+        cell_size_y = Ly/ncells_y
+        ncells = ncells_x * ncells_y
+        xlo = np.linspace(0,2*np.pi,ncells_x+1)[:-1]
+        ylo = np.linspace(0,np.pi*b,ncells_y+1)[:-1]
+        def conc_in_each_cell(t, x):
+            i_cell_x = np.floor(x[:,flowdim:flowdim+Ntr]/cell_size_x).astype(int)
+            i_cell_y = np.floor(x[:,flowdim+Ntr:flowdim+2*Ntr]/cell_size_y).astype(int)
+            i_cell_flat = np.ravel_multi_index((i_cell_x,i_cell_y), (ncells_x,ncells_y))
+            cell_counts = np.zeros((len(t),ncells))
+            for i_cell in range(ncells):
+                cell_counts[:,i_cell] = np.sum(i_cell_flat == i_cell, axis=1)
+            return cell_counts
+        time,memset,tidx = self.get_member_subset(tspan)
+        concs = np.concatenate(tuple(self.ens.compute_observables([conc_in_each_cell], mem)[0] for mem in memset), axis=0)[tidx]
+        fig,axes = plt.subplots(nrows=ncells_y, ncols=ncells_x, figsize=(12*ncells_x, 4*ncells_y), sharey=True)
+        for i_cell in range(ncells):
+            i_cell_x,i_cell_y = np.unravel_index(i_cell,(ncells_x,ncells_y))
+            ax = axes[ncells_x-1-i_cell_x,i_cell_y]
+            h, = ax.plot(time, concs[:,i_cell])
+            ax.set_xlabel('time')
+        fig.savefig(outfile, **pltkwargs)
+        plt.close(fig)
+        return
     def plot_dns_segment(self, outfile, tspan_phys=None):
         tu = self.ens.dynsys.dt_save
-        obsprops = self.ens.dynsys.observable_props()
+        obslib = self.ens.dynsys.observable_props()
         nmem = self.ens.get_nmem()
         if tspan_phys is None:
             _,fin_time = self.ens.get_member_timespan(nmem-1)
@@ -94,8 +134,8 @@ class Crommelin2004TracerODEDirectNumericalSimulation(algorithms.ODEDirectNumeri
         modes = ['c1y','c2y','c1xs1y','s1xs1y','c1xs2y','s1xs2y']
         for i_mode,mode in enumerate(modes):
             obs_fun = lambda t,x: getattr(self.ens.dynsys, mode)(t,x)
-            label = obsprops[mode]['label']
-            h = self.plot_obs_segment(obs_fun, tspan, fig, ax, label=obsprops[mode]['label'])
+            label = obslib[mode]['label']
+            h = self.plot_obs_segment(obs_fun, tspan, fig, ax, label=obslib[mode]['label'])
             handles.append(h)
         ax.set_xlabel('Time')
         ax.legend(handles=handles, bbox_to_anchor=(1,1), loc='upper left')

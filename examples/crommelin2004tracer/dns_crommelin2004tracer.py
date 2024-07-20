@@ -49,7 +49,7 @@ def dns_paramset(i_expt):
         'seed_max': 100000,
         'seed_inc_init': seed_inc,
         'max_member_duration_phys': 1000.0,
-        'num_chunks_max': 4,
+        'num_chunks_max': 100,
         })
     return config_dynsys,config_algo,expt_label,expt_abbrv
 
@@ -57,8 +57,8 @@ def dns_single_workflow(i_expt):
     config_dynsys,config_algo,expt_label,expt_abbrv = dns_paramset(i_expt)
     # Organize output directories
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/crommelin2004tracer"
-    date_str = "2024-07-19"
-    sub_date_str = "2"
+    date_str = "2024-07-20"
+    sub_date_str = "0"
     param_abbrv_dynsys,param_label_dynsys = Crommelin2004TracerODE.label_from_config(config_dynsys)
     param_abbrv_algo,param_label_algo = C04ODEDNS.label_from_config(config_algo)
     obslib = Crommelin2004TracerODE.observable_props()
@@ -67,13 +67,13 @@ def dns_single_workflow(i_expt):
         'dns_duration_phys': 4.0e3, 
         'time_block_size_phys': 300,
         'observables': dict({
-            'c1y': dict({
-                'fun': lambda t,x: Crommelin2004TracerODE.c1y(t,x),
-                'abbrv': obslib['c1y']['abbrv'],
-                'label': obslib['c1y']['label'],
+            '-c1y': dict({
+                'fun': lambda t,x: -Crommelin2004TracerODE.c1y(t,x),
+                'abbrv': '-'+obslib['c1y']['abbrv'],
+                'label': '-'+obslib['c1y']['label'],
                 }),
             'c2y': dict({
-                'fun': lambda t,x: Crommelin2004TracerODE.c1y(t,x),
+                'fun': lambda t,x: Crommelin2004TracerODE.c2y(t,x),
                 'abbrv': obslib['c2y']['abbrv'],
                 'label': obslib['c2y']['label'],
                 }),
@@ -164,13 +164,14 @@ def measure_plot_extreme_stats(config_analysis, alg, dirdict, overwrite_extstats
             alg.compute_return_stats([obs_props['fun']], time_block_size, spinup, returnstats_file)
 
         extstats = np.load(returnstats_file)
-        bin_lows,hist,rlev,rtime,logsf,rtime_gev,logsf_gev,shape,loc,scale = (extstats[v] for v in 'bin_lows,hist,rlev,rtime,logsf,rtime_gev,logsf_gev,shape,loc,scale'.split(','))
-        bins_bm,hist_bm,ccdf_bm,ccdf_bm_lower_cpi,ccdf_bm_upper_cpi,ccdf_bm_lower_bsi,ccdf_bm_upper_bsi = (extstats[v] for v in 'bins_bm,hist_bm,ccdf_bm,ccdf_bm_lower_cpi,ccdf_bm_upper_cpi,ccdf_bm_lower_bsi,ccdf_bm_upper_bsi'.split(','))
-        print(f'{ccdf_bm = }')
-        print(f'{ccdf_bm_lower_cpi = }')
-        print(f'{ccdf_bm_upper_cpi = }')
-        print(f'{ccdf_bm_lower_bsi = }')
-        print(f'{ccdf_bm_upper_bsi = }')
+        bin_lows,hist,rtime,logsf,rtime_gev,logsf_gev,shape,loc,scale = (extstats[v] for v in 'bin_lows,hist,rtime,logsf,rtime_gev,logsf_gev,shape,loc,scale'.split(','))
+        if False:
+            bins_bm,hist_bm,ccdf_bm,ccdf_bm_lower_cpi,ccdf_bm_upper_cpi,ccdf_bm_lower_bsi,ccdf_bm_upper_bsi = (extstats[v] for v in 'bins_bm,hist_bm,ccdf_bm,ccdf_bm_lower_cpi,ccdf_bm_upper_cpi,ccdf_bm_lower_bsi,ccdf_bm_upper_bsi'.split(','))
+            print(f'{ccdf_bm = }')
+            print(f'{ccdf_bm_lower_cpi = }')
+            print(f'{ccdf_bm_upper_cpi = }')
+            print(f'{ccdf_bm_lower_bsi = }')
+            print(f'{ccdf_bm_upper_bsi = }')
         bin_width = bin_lows[1] - bin_lows[0]
         # Plot 
         bin_mids = bin_lows + 0.5*(bin_lows[1]-bin_lows[0])
@@ -182,25 +183,26 @@ def measure_plot_extreme_stats(config_analysis, alg, dirdict, overwrite_extstats
         ax.set_yscale('log')
         ax = axes[1]
         handles = []
-        hemp, = ax.plot(rtime*tu,rlev,color='black',marker='.',label='Empirical')
+        hemp, = ax.plot(rtime*tu,bin_lows,color='black',marker='.',label='Empirical')
         handles.append(hemp)
         if plot_gev:
-            hgev, = ax.plot(rtime_gev*tu,rlev,color='cyan',marker='.',label='GEV fit')
+            hgev, = ax.plot(rtime_gev*tu,bin_lows,color='cyan',marker='.',label='GEV fit')
             handles.append(hgev)
 
         # ----- Now plot the CIs etc ------
-        sf2rt = lambda sf: utils.convert_sf_to_rtime(sf, time_block_size)
-        for c in [ccdf_bm_lower_cpi,ccdf_bm_upper_cpi]:
-            hcpi, = ax.plot(sf2rt(c)*tu, bins_bm[:-1], linestyle='--', color='black', label='Clopper-Pearson')
-        for c in [ccdf_bm_lower_bsi,ccdf_bm_upper_bsi]:
-            hbsi, = ax.plot(sf2rt(c)*tu, bins_bm[:-1], linestyle='--', color='red', label='Bootstrap')
-        handles += [hcpi,hbsi]
+        if False:
+            sf2rt = lambda sf: utils.convert_sf_to_rtime(sf, time_block_size)
+            for c in [ccdf_bm_lower_cpi,ccdf_bm_upper_cpi]:
+                hcpi, = ax.plot(sf2rt(c)*tu, bins_bm[:-1], linestyle='--', color='black', label='Clopper-Pearson')
+            for c in [ccdf_bm_lower_bsi,ccdf_bm_upper_bsi]:
+                hbsi, = ax.plot(sf2rt(c)*tu, bins_bm[:-1], linestyle='--', color='red', label='Bootstrap')
+            handles += [hcpi,hbsi]
 
 
         # ---------------------------------
         ax.legend(handles=handles)
         print(f'{rtime_gev = }')
-        ax.set_ylim([rlev[np.argmax(rtime>0)],2*rlev[-1]-rlev[-2]])
+        ax.set_ylim([bin_lows[np.argmax(rtime>0)],2*bin_lows[-1]-bin_lows[-2]])
         ax.set_xlabel('Return time')
         ax.set_ylabel('Return level %s'%(obs_props['label']))
         ax.set_xscale('log')
@@ -267,9 +269,10 @@ def dns_single_procedure(i_expt):
     tododict = dict({
         'run':                   0,
         'plot_segment':          0,
+        'plot_dns_concs':        1,
         'plot_tracer_traj':      0,
         'animate_segment':       0,
-        'return_stats':          1,
+        'return_stats':          0,
         })
 
     # Quantities of interest for statistics. These should be registered as observables under the system.
@@ -284,7 +287,10 @@ def dns_single_procedure(i_expt):
     alg = pickle.load(open(filedict['alg'],'rb'))
     if tododict['plot_segment']:
         outfile = join(dirdict['plots'],'dns_components.png')
-        alg.plot_dns_segment(outfile, tspan_phys=[1000,1050])
+        alg.plot_dns_segment(outfile, tspan_phys=[1000,2000])
+    if tododict['plot_dns_concs']:
+        outfile = join(dirdict['plots'],'dns_concentrations.png')
+        alg.plot_dns_concentrations(outfile, tspan_phys=[1000,1050])
     if tododict['plot_tracer_traj']:
         outfile = join(dirdict['plots'],'dns_tracer_traj.png')
         alg.plot_tracer_traj(outfile, tspan_phys=[1000,1050])
