@@ -61,21 +61,21 @@ def dns_single_workflow(i_expt):
     sub_date_str = "2"
     param_abbrv_dynsys,param_label_dynsys = Crommelin2004TracerODE.label_from_config(config_dynsys)
     param_abbrv_algo,param_label_algo = C04ODEDNS.label_from_config(config_algo)
+    obslib = Crommelin2004TracerODE.observable_props()
     config_analysis = dict({
-        'k_roll_step': 4, # step size for augmenting Crommelin2004 with rotational symmetry 
         'spinup_phys': 50,
-        'dns_duration_phys': 5.12e7, # TODO increase 
-        'time_block_size_phys': 6,
+        'dns_duration_phys': 4.0e3, 
+        'time_block_size_phys': 300,
         'observables': dict({
-            'x1': dict({
-                'fun': lambda t,x: x[:,0],
-                'abbrv': 'x1',
-                'label': r'$x_1$',
+            'c1y': dict({
+                'fun': lambda t,x: Crommelin2004TracerODE.c1y(t,x),
+                'abbrv': obslib['c1y']['abbrv'],
+                'label': obslib['c1y']['label'],
                 }),
-            'x4': dict({
-                'fun': lambda t,x: x[:,3],
-                'abbrv': 'x4',
-                'label': r'$x_4$',
+            'c2y': dict({
+                'fun': lambda t,x: Crommelin2004TracerODE.c1y(t,x),
+                'abbrv': obslib['c2y']['abbrv'],
+                'label': obslib['c2y']['label'],
                 }),
             })
         })
@@ -157,11 +157,11 @@ def measure_plot_extreme_stats(config_analysis, alg, dirdict, overwrite_extstats
     duration = int(config_analysis['dns_duration_phys']/tu)
     time_block_size = int(config_analysis['time_block_size_phys']/tu)
     # TODO need to distribute the block maxima method
-    for obs_name,obs_props in config_analysis['observables_rotsym'].items():
+    for obs_name,obs_props in config_analysis['observables'].items():
         print(f'About to compute extreme stats for {obs_name}')
-        returnstats_file = join(dirdict['analysis'],r'extstats_rotsym_%s.npz'%(obs_props['abbrv']))
+        returnstats_file = join(dirdict['analysis'],r'extstats_%s.npz'%(obs_props['abbrv']))
         if overwrite_extstats or (not exists(returnstats_file)):
-            alg.compute_extreme_stats_rotsym(obs_props['fun'], spinup, duration, time_block_size, returnstats_file)
+            alg.compute_return_stats([obs_props['fun']], time_block_size, spinup, returnstats_file)
 
         extstats = np.load(returnstats_file)
         bin_lows,hist,rlev,rtime,logsf,rtime_gev,logsf_gev,shape,loc,scale = (extstats[v] for v in 'bin_lows,hist,rlev,rtime,logsf,rtime_gev,logsf_gev,shape,loc,scale'.split(','))
@@ -265,11 +265,11 @@ def compare_extreme_stats(workflows,config_meta_analysis, dirdict):
 
 def dns_single_procedure(i_expt):
     tododict = dict({
-        'run':                   1,
-        'plot_segment':          1,
-        'plot_tracer_traj':      1,
-        'animate_segment':       1,
-        'return_stats':          0,
+        'run':                   0,
+        'plot_segment':          0,
+        'plot_tracer_traj':      0,
+        'animate_segment':       0,
+        'return_stats':          1,
         })
 
     # Quantities of interest for statistics. These should be registered as observables under the system.

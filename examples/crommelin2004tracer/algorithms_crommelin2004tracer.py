@@ -215,9 +215,8 @@ class Crommelin2004SDEDirectNumericalSimulation(algorithms.SDEDirectNumericalSim
         fig.savefig(outfile, **pltkwargs)
         plt.close(fig)
         return
-    def compute_extreme_stats_rotsym(self, obs_fun, spinup, duration, time_block_size, returnstats_file):
+    def compute_extreme_stats(self, obs_fun, spinup, duration, time_block_size, returnstats_file):
         tu = self.ens.dynsys.dt_save
-        K = self.ens.dynsys.ode.K
         all_starts,all_ends = self.ens.get_all_timespans()
         mems2summarize = np.where((all_starts >= spinup)*(all_ends <= spinup + duration/K))[0]
         print(f'{len(mems2summarize) = }; {all_starts[-1] = }; {all_ends[-1] = }; {np.min(all_ends - all_starts)*tu = }; {np.max(all_ends - all_starts)*tu = }')
@@ -408,7 +407,7 @@ class Crommelin2004SDETEAMS(algorithms.SDETEAMS):
         sccp = self.branching_state['score_components_tdep'][parent]
         nsteps2prepend = len(sccp[0]) - len(score_components_leaf[0])
         return [np.concatenate((c0[:nsteps2prepend], c1)) for (c0,c1) in zip(sccp,score_components_leaf)]
-    def get_block_maxima_from_dns_rotsym(self, t_dns, x_dns, time_block_size):
+    def get_block_maxima_from_dns(self, t_dns, x_dns, time_block_size):
         # NOTE this is specific to the version of the score used in Finkel & O'Gorman 2024, namely x0**2/2
         pass
 

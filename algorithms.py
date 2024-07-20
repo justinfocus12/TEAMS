@@ -112,7 +112,7 @@ class DirectNumericalSimulation(EnsembleAlgorithm):
         fconcat = np.concatenate(tuple(
             np.concatenate(tuple(f[i_fun][i_mem] for i_mem in range(len(memset))))
             for i_fun in range(len(obs_funs2concat))))
-        bin_lows,hist,rtime,logsf = utils.compute_returnstats_and_histogram(fconcat, time_block_size)
+        bin_lows,hist,rtime,logsf,rtime_gev,logsf_gev,shape,loc,scale = utils.compute_returnstats_and_histogram(fconcat, time_block_size)
         np.savez(
                 outfile, 
                 bin_lows=bin_lows,
