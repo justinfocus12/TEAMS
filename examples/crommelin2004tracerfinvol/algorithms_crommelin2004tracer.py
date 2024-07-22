@@ -103,6 +103,7 @@ class Crommelin2004TracerODEDirectNumericalSimulation(algorithms.ODEDirectNumeri
                 h, = ax.plot(time,concs[:,iflat],color=plt.cm.viridis(i_y/q['Ny']),label='$y=%.1f$'%(q['y_c'][i_y]))
         ax.plot(time,np.sum(concs,axis=1),color='black')
         ax.set_xlabel('time')
+        ax.set_yscale('log')
         fig.savefig(outfile, **pltkwargs)
         return
 
@@ -233,7 +234,7 @@ class Crommelin2004TracerODEDirectNumericalSimulation(algorithms.ODEDirectNumeri
         artists = []
         ntr2plot = self.ens.dynsys.config["Nparticles"]
         for i in range(0,len(time),int(round(dt_plot/tu))):
-            conc_pcm = ax.pcolormesh(Xe,Ye,concs[i]/concs.max(),cmap='viridis')
+            conc_pcm = ax.pcolormesh(Xe,Ye,concs[i],cmap='viridis',vmin=concs.min(),vmax=concs.max())
             contours_pos = ax.contour(Xe,Ye,psi[i],levels=levels_pos,colors='black',linestyles='solid')
             contours_neg = ax.contour(Xe,Ye,psi[i],levels=levels_neg,colors='black',linestyles='dashed')
             scat = ax.scatter(trposns[i,:ntr2plot,0],trposns[i,:ntr2plot,1],color='red',marker='.')

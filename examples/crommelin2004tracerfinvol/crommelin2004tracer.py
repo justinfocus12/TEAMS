@@ -166,7 +166,7 @@ class Crommelin2004TracerODE(ODESystem):
         strfn_next = strfn + (k1 + 2*(k2 + k3) + k4)/6
         # Finite-voloume step for tracer
         conc = state[flowdim:flowdim+(Nx*Ny)]
-        conc_next = np.zeros(Nx*Ny)
+        conc_next = np.copy(conc)
         u = np.zeros((Nx+1,Ny))
         v = np.zeros((Nx,Ny+1))
         for i in range(flowdim):
@@ -175,6 +175,7 @@ class Crommelin2004TracerODE(ODESystem):
         for iflat in range(Nx*Ny):
             ix,iy = np.unravel_index(iflat,(Nx,Ny))
             if q['source_flag'][ix,iy]:
+                conc_next[iflat] = q['source_conc'][ix,iy]
                 continue
             iflat_nbs = np.zeros(4,dtype=int)
             outflows = np.zeros(4)
@@ -220,19 +221,20 @@ class Crommelin2004TracerODE(ODESystem):
             iflat_nb = np.ravel_multi_index((ix_nb,iy_nb),(Nx,Ny))
             iflat_nbs[i_nb] = iflat_nb
             velocity = v[ix,iy]
-            if velocity > 0:
-                outflows[i_nb] = conc[iflat]*dx*self.dt_step*velocity
+            if velocity < 0:
+                outflows[i_nb] = conc[iflat]*dx*self.dt_step*(-velocity)
             elif q['source_flag'][ix_nb,iy_nb]:
-                inflows[i_nb] = q['source_conc'][ix_nb,iy_nb]*dx*self.dt_step*(-velocity)
+                inflows[i_nb] = q['source_conc'][ix_nb,iy_nb]*dx*self.dt_step*velocity
             # Sum up all in- and out-flows
-            conc_next[iflat] = np.sum(inflows)/(dx*dy)
+            conc_next[iflat] += np.sum(inflows)/(dx*dy)
             sum_outflows = np.sum(outflows)
             if sum_outflows > 0:
                 if sum_outflows > conc[iflat]*dx*dy:
                     outflows *= conc[iflat]*dx*dy/sum_outflows
                 conc_next[iflat] -= np.sum(outflows)/(dx*dy)
                 for i_nb in range(4):
-                    conc_next[iflat_nbs[i_nb]] += outflows[i_nb]/(dx*dy)
+                    if not q['source_flag'][np.unravel_index(iflat_nbs[i_nb],(Nx,Ny))]:
+                        conc_next[iflat_nbs[i_nb]] += outflows[i_nb]/(dx*dy)
         # Forward Euler for particles
         idx_x_part = flowdim + (Nx*Ny) + np.arange(q['Nparticles'], dtype=int)
         idx_y_part = idx_x_part + q['Nparticles']
@@ -394,15 +396,23 @@ class Crommelin2004TracerODE(ODESystem):
         x[flowdim+Nparticles:flowdim+2*Nparticles] = np.mod(x[flowdim+Nparticles:flowdim+2*Nparticles], np.pi*b)
         return x
     def generate_default_init_cond(self, init_time):
+        rng = default_rng(seed=49582)
         # Flow
         s_star = self.timestep_constants["xstar"]
         # Concentrations
-        Nx,Ny = self.config["Nxfv"],self.config["Nyfv"]
-        conc = np.zeros(Nx*Ny)
-        # Tracer positions
-        x_tr = np.linspace(0,2*np.pi,self.config["Nparticles"]+1)[:-1]
-        y_tr = np.pi*self.config["b"] * np.random.rand(self.config["Nparticles"])
-        state_init = np.concatenate((s_star,conc,x_tr,y_tr))
+        q = self.timestep_constants
+        Nx,Ny,dx,dy,Nparticles = (q[key] for key in ['Nx','Ny','dx','dy','Nparticles'])
+        conc = (q['source_flag'] * q['source_conc']).flatten()
+        idx_part_x,idx_part_y = np.unravel_index(rng.choice(np.arange(Nx*Ny), size=Nparticles, p=conc/np.sum(conc), replace=True), (Nx,Ny))
+        print(f'{idx_part_x = }')
+        print(f'{idx_part_y = }')
+        # Tracer positions (in general, draw from the sources)
+        x_part = np.zeros(Nparticles)
+        y_part = np.zeros(Nparticles)
+        for i_part in range(Nparticles):
+            x_part[i_part] = dx * (idx_part_x[i_part] + rng.uniform())
+            y_part[i_part] = dy * (idx_part_y[i_part] + rng.uniform())
+        state_init = np.concatenate((s_star,conc,x_part,y_part))
         return state_init
     def compute_observables(self, obs_funs, metadata, root_dir):
         t,x = Crommelin2004TracerODE.load_trajectory(metadata, root_dir)
