@@ -30,7 +30,7 @@ class Crommelin2004TracerODE(ODESystem):
             "b": 0.5, "beta": 1.25, "gamma_limits": [0.2, 0.2], 
             "C": 0.1, "x1star": 0.95, "r": -0.801, "year_length": 400.0,
             "Nparticles": 64,
-            "Nxfv": 12, "Nyfv": 6, 
+            "Nxfv": 18, "Nyfv": 9, 
             })
         cfg['t_burnin_phys'] = 10.0
         cfg['dt_step'] = 0.025
@@ -154,7 +154,7 @@ class Crommelin2004TracerODE(ODESystem):
         return 
     def timestep_finvol(self, t, state):
         q = self.timestep_constants
-        Nx,Ny,dx,dy = (q[key] for key in ('Nx','Ny','dx','dy'))
+        Nx,Ny,dx,dy,Lx,Ly = (q[key] for key in ('Nx','Ny','dx','dy','Lx','Ly'))
         Nparticles = self.config['Nparticles']
         # Runge-Kutta for flow field
         flowdim = self.timestep_constants["flowdim"]
@@ -227,30 +227,32 @@ class Crommelin2004TracerODE(ODESystem):
             # Sum up all in- and out-flows
             conc_next[iflat] = np.sum(inflows)/(dx*dy)
             sum_outflows = np.sum(outflows)
-            if np.sum(outflows) > conc[iflat]*dx*dy:
-                outflows *= conc[iflat]*dx*dy/sum_outflows
-            conc_next[iflat] -= np.sum(outflows)/(dx*dy)
-            for i_nb in range(4):
-                conc_next[iflat_nbs[i_nb]] += outflows[i_nb]/(dx*dy)
+            if sum_outflows > 0:
+                if sum_outflows > conc[iflat]*dx*dy:
+                    outflows *= conc[iflat]*dx*dy/sum_outflows
+                conc_next[iflat] -= np.sum(outflows)/(dx*dy)
+                for i_nb in range(4):
+                    conc_next[iflat_nbs[i_nb]] += outflows[i_nb]/(dx*dy)
         # Forward Euler for particles
-        idx_x_part = flowdim + (Nx*Ny) + np.arange(q['Nparticles'])
+        idx_x_part = flowdim + (Nx*Ny) + np.arange(q['Nparticles'], dtype=int)
         idx_y_part = idx_x_part + q['Nparticles']
-        x_part = state[flowdim+(Nx*Ny):flowdim+(Nx*Ny)+q['Nparticles']]
-        y_part = state[flowdim+(Nx*Ny)+q['Nparticles']:flowdim+(Nx*Ny)+2*q['Nparticles']]
+        x_part = state[idx_x_part]
+        y_part = state[idx_y_part]
 
-        s_part,s_x_part,s_y_part =  self.streamfunction_at_particles(t, strfn, x_part, y_part)
-        x_part_next = state[idx_x_part] - self.dt_step*s_y_part
+        s_part,s_x_part,s_y_part = self.streamfunction_at_particles(t, strfn, x_part, y_part)
+        x_part_next = np.mod(state[idx_x_part] - self.dt_step*s_y_part, Lx)
         y_part_next = state[idx_y_part] + self.dt_step*s_x_part
 
+        # Account for sources and sinks 
+        death_flag = np.logical_or(y_part_next < dy, y_part_next > Ly - dy) 
+        if np.any(death_flag):
+            death_idx = np.where(death_flag)[0]
+            y_part_next[death_idx] = dy
+            x_part_next[death_idx] = Lx * np.random.rand(len(death_idx))
+       
+
+
         return t+self.dt_step, np.concatenate((strfn_next, conc_next, x_part_next, y_part_next))
-
-
-
-
-                
-
-
-
 
     def basis_functions(self, Nx, Ny):
         # Compute streamfunction and derivatives at cell corners and face centers (C-grid)

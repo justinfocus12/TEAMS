@@ -148,7 +148,7 @@ class ODESystem(DynamicalSystem):
         timestep_fun = getattr(self, f'timestep_{timestepper}')
         while tp < tp_save[-1]:
             tpnew,xnew = timestep_fun(tp, x)
-            xnew = self.correct_timestep(tpnew,xnew)
+            #xnew = self.correct_timestep(tpnew,xnew)
             if tpnew > tp_save_next:
                 new_weight = (tp_save_next - tp)/self.dt_step 
                 # TODO: save out an observable instead of the full state? Depends on a specified frequency

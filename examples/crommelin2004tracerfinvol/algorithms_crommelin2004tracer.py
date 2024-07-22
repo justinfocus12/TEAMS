@@ -64,15 +64,18 @@ class Crommelin2004TracerODEDirectNumericalSimulation(algorithms.ODEDirectNumeri
         fig,axes = plt.subplots(ncols=1, nrows=2, figsize=(12,12))
         ax = axes
         handles = []
-        ntr2plot = 1
+        ntr2plot = 2
         flowdim = self.ens.dynsys.timestep_constants["flowdim"]
         Nparticles = self.ens.dynsys.config["Nparticles"]
+        Nx,Ny = (self.ens.dynsys.timestep_constants[key] for key in ['Nx','Ny'])
         for i_tr,tr in enumerate(range(ntr2plot)):
-            x_tr_fun = lambda t,x: x[:,flowdim+i_tr]
+            x_tr_fun = lambda t,x: x[:,flowdim+Nx*Ny+i_tr]
             self.plot_obs_segment(x_tr_fun, tspan, fig, axes[0], label=r'$x$')
-            y_tr_fun = lambda t,x: x[:,flowdim+Nparticles+i_tr]
+            y_tr_fun = lambda t,x: x[:,flowdim+Nx*Ny+Nparticles+i_tr]
             self.plot_obs_segment(y_tr_fun, tspan, fig, axes[1], label=r'$y$')
         axes[1].set_xlabel('Time')
+        axes[0].set_ylabel('x')
+        axes[1].set_ylabel('y')
         #ax.legend(handles=handles, bbox_to_anchor=(1,1), loc='upper left')
 
         fig.savefig(outfile, **pltkwargs)
@@ -107,7 +110,7 @@ class Crommelin2004TracerODEDirectNumericalSimulation(algorithms.ODEDirectNumeri
     def plot_dns_particle_counts(self, outfile, tspan_phys=None):
         tu = self.ens.dynsys.dt_save
         b = self.ens.dynsys.config['b']
-        flowdim = self.ens.dynsys.timestep_constants['flowdim']
+        flowdim,Nx,Ny = (self.ens.dynsys.timestep_constants[key] for key in ['flowdim','Nx','Ny'])
         Nparticles = self.ens.dynsys.config['Nparticles']
         nmem = self.ens.get_nmem()
         if tspan_phys is None:
@@ -125,9 +128,11 @@ class Crommelin2004TracerODEDirectNumericalSimulation(algorithms.ODEDirectNumeri
         ncells = ncells_x * ncells_y
         xlo = np.linspace(0,2*np.pi,ncells_x+1)[:-1]
         ylo = np.linspace(0,np.pi*b,ncells_y+1)[:-1]
+        idx_x_part = flowdim + Nx*Ny + np.arange(Nparticles, dtype=int)
+        idx_y_part = idx_x_part + Nparticles
         def conc_in_each_cell(t, x):
-            i_cell_x = np.floor(x[:,flowdim:flowdim+Nparticles]/cell_size_x).astype(int)
-            i_cell_y = np.floor(x[:,flowdim+Nparticles:flowdim+2*Nparticles]/cell_size_y).astype(int)
+            i_cell_x = np.floor(x[:,idx_x_part]/cell_size_x).astype(int)
+            i_cell_y = np.floor(x[:,idx_y_part]/cell_size_y).astype(int)
             i_cell_flat = np.ravel_multi_index((i_cell_x,i_cell_y), (ncells_x,ncells_y))
             cell_counts = np.zeros((len(t),ncells))
             for i_cell in range(ncells):
@@ -171,12 +176,11 @@ class Crommelin2004TracerODEDirectNumericalSimulation(algorithms.ODEDirectNumeri
         return
     def animate_dns_segment(self, outfile_prefix, tspan_phys=None):
         fig,ax = plt.subplots(figsize=(8,4))
+        Nx,Ny = (self.ens.dynsys.timestep_constants[key] for key in ('Nx','Ny'))
         b = self.ens.dynsys.config['b']
         tu = self.ens.dynsys.dt_save
         dt_plot = self.ens.dynsys.dt_plot
 
-        Nx = 64
-        Ny = 32
         x_s,y_s,basis_s,x_u,y_u,basis_u,x_v,y_v,basis_v,x_c,y_c = self.ens.dynsys.basis_functions(Nx, Ny)
         def psi_fun(t,x):
             Nt = len(t)
@@ -189,11 +193,19 @@ class Crommelin2004TracerODEDirectNumericalSimulation(algorithms.ODEDirectNumeri
             Nt = len(t)
             Nparticles = self.ens.dynsys.config["Nparticles"]
             b = self.ens.dynsys.config['b']
-            flowdim = self.ens.dynsys.timestep_constants["flowdim"]
+            flowdim,Nx,Ny,Lx,Ly = (self.ens.dynsys.timestep_constants[key] for key in ('flowdim','Nx','Ny','Lx','Ly'))
+            print(f'{Lx = }, {Ly = }')
+            idx_x_part = flowdim + (Nx*Ny) + np.arange(Nparticles, dtype=int)
+            idx_y_part = idx_x_part + Nparticles
             trposns = np.zeros((Nt,Nparticles,2))
-            trposns[:,:,0] = np.mod(x[:,flowdim:flowdim+Nparticles], 2*np.pi)
-            trposns[:,:,1] = np.mod(x[:,flowdim+Nparticles:flowdim+2*Nparticles], np.pi*b)
+            trposns[:,:,0] = np.mod(x[:,idx_x_part], Lx)
+            trposns[:,:,1] = np.mod(x[:,idx_y_part], Ly)
             return trposns
+        def conc_fun(t,x):
+            Nx,Ny,Nparticles,flowdim = (self.ens.dynsys.timestep_constants[key] for key in ['Nx','Ny','Nparticles','flowdim'])
+            Nt = len(t)
+            concs = x[:,flowdim:flowdim+(Nx*Ny)].reshape((Nt,Nx,Ny))
+            return concs
         nmem = self.ens.get_nmem()
         if tspan_phys is None:
             _,fin_time = self.ens.get_member_timespan(nmem-1)
@@ -201,14 +213,16 @@ class Crommelin2004TracerODEDirectNumericalSimulation(algorithms.ODEDirectNumeri
         else:
             tspan = [int(t/tu) for t in tspan_phys]
         time,memset,tidx = self.get_member_subset(tspan)
-        psi,trposns = self.ens.compute_observables([psi_fun,trposns_fun], memset[0])
+        psi,trposns,concs = self.ens.compute_observables([psi_fun,trposns_fun,conc_fun], memset[0])
         print(f'{time.shape = }')
         print(f'{psi.shape = }')
+        print(f'{concs.shape = }')
+        print(f'{concs.min() = }, {concs.max() = }')
         fig,ax = plt.subplots()
         ax.set_xlabel('x')
         ax.set_ylabel('y')
         Xe,Ye = np.meshgrid(x_s,y_s,indexing='ij')
-        X,Y = np.meshgrid(xspat,yspat,indexing='ij')
+        X,Y = np.meshgrid(x_c,y_c,indexing='ij')
         levels_pos = np.linspace(0,np.max(np.abs(psi)),9)[1:]
         levels_neg = np.linspace(-np.max(np.abs(psi)),0,9)[:-1]
         print(f'{psi.shape = }')
@@ -219,11 +233,12 @@ class Crommelin2004TracerODEDirectNumericalSimulation(algorithms.ODEDirectNumeri
         artists = []
         ntr2plot = self.ens.dynsys.config["Nparticles"]
         for i in range(0,len(time),int(round(dt_plot/tu))):
-            contours_pos = ax.contour(X,Y,psi[i],levels=levels_pos,colors='black',linestyles='solid')
-            contours_neg = ax.contour(X,Y,psi[i],levels=levels_neg,colors='black',linestyles='dashed')
+            conc_pcm = ax.pcolormesh(Xe,Ye,concs[i]/concs.max(),cmap='viridis')
+            contours_pos = ax.contour(Xe,Ye,psi[i],levels=levels_pos,colors='black',linestyles='solid')
+            contours_neg = ax.contour(Xe,Ye,psi[i],levels=levels_neg,colors='black',linestyles='dashed')
             scat = ax.scatter(trposns[i,:ntr2plot,0],trposns[i,:ntr2plot,1],color='red',marker='.')
             title = ax.text(0.5, 1.0, r'$\psi(t=%.2f)$'%(time[i]*tu), ha='center', va='bottom', transform=ax.transAxes)
-            artists.append([contours_pos,contours_neg,scat,title])
+            artists.append([conc_pcm,contours_pos,contours_neg,scat,title])
         ani = animation.ArtistAnimation(fig, artists, interval=50, blit=True, repeat=False) #repeat_delay=5000)
         print(f'made the ani')
         ani.save(outfile_prefix+'.gif', writer="pillow") #**pltkwargs)

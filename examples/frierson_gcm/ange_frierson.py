@@ -58,7 +58,7 @@ def ange_paramset(i_param):
 
     # Parameters to loop over
     pert_types = ['SPPT'] * 5
-    std_sppts = [0.01,0.05,0.1,0.3,0.5]
+    std_sppts = [0.01,0.1,0.3,0.5]
     tau_sppts = [6.0*3600] * 5
     L_sppts = [500.0*1000] * 5
     seed_incs = [0] * 5
@@ -88,7 +88,7 @@ def ange_paramset(i_param):
         'time_horizon_phys': 30,
         # mutable parameters below 
         'num_buicks': 128,
-        'branches_per_buick': 1, 
+        'branches_per_buick': 2, 
         })
     return config_gcm,config_algo,expt_label,expt_abbrv
 
