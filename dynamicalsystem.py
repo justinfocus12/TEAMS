@@ -56,7 +56,7 @@ class DynamicalSystem(ABC):
 class ODESystem(DynamicalSystem):
     # This is only SMALL systems --- small enough to fit a full-state trajectory in memory, avoiding the need for restart files. 
     def __init__(self, config):
-        self.config = config
+        self.config = config # should include the desired timestepping method 
         self.derive_parameters(config) # This includes both physical and simulation parameters
         return
     @staticmethod
@@ -72,7 +72,7 @@ class ODESystem(DynamicalSystem):
         varreq = super().list_required_instance_variables()
         varreq += ['dt_step','dt_save','impulse_matrix','impulse_dim']
         return varreq
-    @abstractmethod
+    #@abstractmethod
     def tendency(self, t, x): # aka 'drift' for an SDE
         pass
     @abstractmethod
@@ -97,10 +97,10 @@ class ODESystem(DynamicalSystem):
         f = self.generate_default_forcing_sequence(init_time,fin_time)
         icandf = dict({'init_cond': init_cond, 'frc': f})
         return icandf
-    def assemble_metadata(self, icandf, method, saveinfo):
+    def assemble_metadata(self, icandf, timestepper, saveinfo):
         md = dict({
             'icandf': icandf,
-            'method': method,
+            'timestepper': timestepper,
             'filename': saveinfo['filename'],
             })
         return md
@@ -133,7 +133,7 @@ class ODESystem(DynamicalSystem):
         k1 = self.dt_step * self.tendency(t,x)
         xnew = x + k1
         return t+self.dt_step, xnew
-    def run_trajectory_unperturbed(self, init_cond, init_time, fin_time, method):
+    def run_trajectory_unperturbed(self, init_cond, init_time, fin_time, timestepper):
         assert(isinstance(init_time,int) and isinstance(fin_time,int))
         t_save = np.arange(init_time+1, fin_time+1, 1) # unitless
         tp_save = t_save * self.dt_save # physical (unitful)
@@ -145,7 +145,7 @@ class ODESystem(DynamicalSystem):
         tp_save_next = tp_save[i_save]
         x = init_cond.copy()
         tp = init_time * self.dt_save # physical units
-        timestep_fun = getattr(self, f'timestep_{method}')
+        timestep_fun = getattr(self, f'timestep_{timestepper}')
         while tp < tp_save[-1]:
             tpnew,xnew = timestep_fun(tp, x)
             xnew = self.correct_timestep(tpnew,xnew)
@@ -166,7 +166,7 @@ class ODESystem(DynamicalSystem):
         Nt = len(t)
         x = np.zeros((Nt, self.state_dim))
         # Need to set up three things: init_time, init_cond, fin_time
-        method = 'rk4'
+        timestepper = self.config['timestepper']
         init_cond_temp = init_cond_nopert.copy()
         ftimes = f.get_forcing_times()
         nfrc = len(ftimes)
@@ -188,12 +188,12 @@ class ODESystem(DynamicalSystem):
                 print(f'Applying a forcing of \n{f.forces[i_frc]}')
                 init_cond_temp = self.apply_impulse(seg_starts[i_seg], init_cond_temp, f.forces[i_frc])
                 i_frc += 1
-            t_temp,x_temp = self.run_trajectory_unperturbed(init_cond_temp, seg_starts[i_seg], seg_ends[i_seg], method)
+            t_temp,x_temp = self.run_trajectory_unperturbed(init_cond_temp, seg_starts[i_seg], seg_ends[i_seg], timestepper)
             x[i_save:i_save+len(t_temp)] = x_temp
             init_cond_temp = x_temp[-1]
             i_save += len(t_temp) 
         # Return metadata and observables
-        metadata = self.assemble_metadata(icandf, method, saveinfo)
+        metadata = self.assemble_metadata(icandf, self.config['timestepper'], saveinfo)
         observables = obs_fun(t,x)
         print(f'{x[0] = }\n{x[-1] = }')
         # save full state out to saveinfo
@@ -225,7 +225,7 @@ class SDESystem(DynamicalSystem):
         k1 = self.ode.dt_step * self.ode.tendency(t,x)
         sdw = self.sqrt_dt_step * self.diffusion(t,x) @ rng.normal(size=(self.white_noise_dim,))
         return t+self.ode.dt_step, x+k1+sdw
-    def run_trajectory_unperturbed(self, init_cond, init_time, fin_time, method, rng):
+    def run_trajectory_unperturbed(self, init_cond, init_time, fin_time, timestepper, rng):
         print(f'{init_time = }, {fin_time = }')
         #assert(isinstance(init_time,int) and isinstance(fin_time,int))
         t_save = np.arange(init_time+1, fin_time+1, 1) # unitless
@@ -239,7 +239,7 @@ class SDESystem(DynamicalSystem):
         tp_save_next = tp_save[i_save]
         x = init_cond.copy()
         tp = init_time * self.ode.dt_save # physical units
-        timestep_fun = getattr(self, f'timestep_{method}')
+        timestep_fun = getattr(self, f'timestep_{timestepper}')
         while tp < tp_save[-1]:
             tpnew,xnew = timestep_fun(tp, x, rng)
             if tpnew > tp_save_next:
@@ -330,10 +330,10 @@ class SDESystem(DynamicalSystem):
             'frc': self.generate_default_forcing_sequence(init_time, fin_time),
             })
         return icandf
-    def assemble_metadata(self, icandf, method, rng, saveinfo):
+    def assemble_metadata(self, icandf, timestepper, rng, saveinfo):
         md = dict({
             'icandf': icandf,
-            'method': method,
+            'method': timestepper,
             'fin_rngstate': rng.bit_generator.state,
             'filename': saveinfo['filename'],
             })
