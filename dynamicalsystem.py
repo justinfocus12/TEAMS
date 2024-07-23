@@ -144,10 +144,13 @@ class ODESystem(DynamicalSystem):
         i_save = 0
         tp_save_next = tp_save[i_save]
         x = init_cond.copy()
+        x_next = x.copy()
         tp = init_time * self.dt_save # physical units
         timestep_fun = getattr(self, f'timestep_{timestepper}')
         while tp < tp_save[-1]:
-            tpnew,xnew = timestep_fun(tp, x)
+            timestep_fun(x_next, tp, x) # modify in place
+            tpnew = tp + self.dt_step
+
             #xnew = self.correct_timestep(tpnew,xnew)
             if tpnew > tp_save_next:
                 new_weight = (tp_save_next - tp)/self.dt_step 

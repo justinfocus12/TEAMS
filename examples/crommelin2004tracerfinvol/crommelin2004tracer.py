@@ -30,7 +30,7 @@ class Crommelin2004TracerODE(ODESystem):
             "b": 0.5, "beta": 1.25, "gamma_limits": [0.2, 0.2], 
             "C": 0.1, "x1star": 0.95, "r": -0.801, "year_length": 400.0,
             "Nparticles": 64,
-            "Nxfv": 18, "Nyfv": 9, 
+            "Nxfv": 64, "Nyfv": 16, 
             })
         cfg['t_burnin_phys'] = 10.0
         cfg['dt_step'] = 0.025
@@ -151,21 +151,39 @@ class Crommelin2004TracerODE(ODESystem):
         self.impulse_matrix = np.zeros((self.state_dim,self.impulse_dim))
         for i,mode in enumerate(imp_modes):
             self.impulse_matrix[mode,0] += imp_mags[i]
+
+        # Intermediate arrays allocated to store computations 
+        self.k1,self.k2,self.k3,self.k4 = (np.zeros(flowdim) for _ in range(4))
+        self.xdot_flow,self.xdot_advection,self.xdot_dissipation,self.xdot_forcing = (np.zeros(flowdim) for _ in range(5))
+        (self.x_temp, self.x_next_temp) = (np.zeros(flowdim) for _ in range(2))
+        self.conc_next = np.zeros(q['Nx']*q['Ny'])
         return 
-    def timestep_finvol(self, t, state):
+    def timestep_finvol(self, state_next, t, state):
         q = self.timestep_constants
         Nx,Ny,dx,dy,Lx,Ly = (q[key] for key in ('Nx','Ny','dx','dy','Lx','Ly'))
         Nparticles = self.config['Nparticles']
         # Runge-Kutta for flow field
         flowdim = self.timestep_constants["flowdim"]
-        strfn = state[:flowdim]
-        k1 = self.dt_step * self.tendency_flow(t,strfn)
-        k2 = self.dt_step * self.tendency_flow(t+self.dt_step/2, strfn+k1/2)
-        k3 = self.dt_step * self.tendency_flow(t+self.dt_step/2, strfn+k2/2)
-        k4 = self.dt_step * self.tendency_flow(t+self.dt_step, strfn+k3)
-        strfn_next = strfn + (k1 + 2*(k2 + k3) + k4)/6
+
+        self.tendency_flow(self.xdot_flow, t, state[:flowdim])
+        self.k1[:] = self.dt_step * self.xdot_flow
+
+        self.x_next_temp[:] = state[:flowdim] + self.k1/2
+        self.tendency_flow(self.xdot_flow, t+self.dt_step/2, self.x_next_temp)
+        self.k2[:] = self.dt_step * self.xdot_flow
+
+        self.x_next_temp[:] = state[:flowdim] + self.k2/2
+        self.tendency_flow(self.xdot_flow, t+self.dt_step/2, self.x_next_temp)
+        self.k3[:] = self.dt_step * self.xdot_flow
+
+        self.x_next_temp[:] = state[:flowdim] + self.k3
+        self.tendency_flow(self.xdot_flow, t+self.dt_step, self.x_next_temp)
+        self.k4[:] = self.dt_step * self.xdot_flow
+
+        state_next[:flowdim] = state[:flowdim] + (self.k1 + 2*(self.k2 + self.k3) + self.k4)/6
         # Finite-voloume step for tracer
-        conc = state[flowdim:flowdim+(Nx*Ny)]
+        self.con
+        self.conc_next = state[flowdim:flowdim+(Nx*Ny)]
         conc_next = np.copy(conc)
         u = np.zeros((Nx+1,Ny))
         v = np.zeros((Nx,Ny+1))
@@ -362,32 +380,33 @@ class Crommelin2004TracerODE(ODESystem):
         gamma_cfg_t = cosine * (q["gamma_limits_cfg"][1] - q["gamma_limits_cfg"][0])/2 
         gammadot_cfg_t = -sine * (q["gamma_limits_cfg"][1] - q["gamma_limits_cfg"][0])/2
         return gamma_t,gamma_tilde_t,gamma_cfg_t,gammadot_t,gammadot_tilde_t,gammadot_cfg_t
-    def tendency_forcing(self,t,x):
-        return self.timestep_constants["forcing_term"]
-    def tendency_dissipation(self,t,x_flow):
-        diss = self.timestep_constants["linear_term"] @ x_flow
+    def tendency_forcing(self,xdot_flow,t,x_flow):
+        xdot_flow[:] = self.timestep_constants["forcing_term"]
+        return
+    def tendency_dissipation(self,xdot_flow,t,x_flow):
+        xdot_flow[:] = self.timestep_constants["linear_term"] @ x_flow
         # Modify the time-dependent components
         gamma_t,gamma_tilde_t,gamma_cfg_t,gammadot_t,gammadot_tilde_t,gammadot_cfg_t = self.orography_cycle(t)
-        diss[0] += gamma_tilde_t[0]*x_flow[2]
-        diss[2] -= gamma_t[0]*x_flow[0]
-        diss[3] += gamma_tilde_t[1]*x_flow[5]
-        diss[5] -= gamma_t[1]*x_flow[3]
-        return diss
-    def tendency_advection(self,t,x_flow):
+        xdot_flow[0] += gamma_tilde_t[0]*x_flow[2]
+        xdot_flow[2] -= gamma_t[0]*x_flow[0]
+        xdot_flow[3] += gamma_tilde_t[1]*x_flow[5]
+        xdot_flow[5] -= gamma_t[1]*x_flow[3]
+        return 
+    def tendency_advection(self,xdot_flow,t,x_flow):
         """
         Compute the tendency according to only the nonlinear terms, in order to check conservation of energy and enstrophy.
         """
         flowdim = self.timestep_constants["flowdim"]
-        adv = np.zeros(flowdim)
+        xdot_flow[:] = 0
         for j in range(flowdim):
-            adv[j] += np.sum(x_flow * (self.timestep_constants["bilinear_term"][j] @ x_flow))
-        return adv
-    def tendency_flow(self, t, x_flow):
-        return (
-                self.tendency_advection(t,x_flow) 
-                + self.tendency_dissipation(t,x_flow) 
-                + self.tendency_forcing(t,x_flow)
-                )
+            xdot_flow[j] += np.sum(x_flow * (self.timestep_constants["bilinear_term"][j] @ x_flow))
+        return 
+    def tendency_flow(self, xdot_flow, t, x_flow):
+        self.tendency_advection(t,self.xdot_advection,x_flow)
+        self.tendency_dissipation(t,self.xdot_dissipation,x_flow)
+        self.tendency_forcing(t,self.xdot_forcing,x_flow)
+        xdot_flow[:] = self.xdot_advection + self.xdot_dissipation + self.xdot_forcing
+        return
     def correct_timestep(self, t, x):
         flowdim = self.timestep_constants["flowdim"]
         Nparticles = self.config["Nparticles"]

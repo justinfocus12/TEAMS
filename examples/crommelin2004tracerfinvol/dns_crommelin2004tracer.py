@@ -59,7 +59,7 @@ def dns_single_workflow(i_expt):
     # Organize output directories
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/crommelin2004tracer"
     date_str = "2024-07-22"
-    sub_date_str = "9"
+    sub_date_str = "10"
     param_abbrv_dynsys,param_label_dynsys = Crommelin2004TracerODE.label_from_config(config_dynsys)
     param_abbrv_algo,param_label_algo = C04ODEDNS.label_from_config(config_algo)
     obslib = Crommelin2004TracerODE.observable_props()
@@ -268,13 +268,13 @@ def compare_extreme_stats(workflows,config_meta_analysis, dirdict):
 
 def dns_single_procedure(i_expt):
     tododict = dict({
-        'run':                      0,
-        'plot_segment':             0,
-        'plot_dns_particle_counts': 0,
+        'run':                      1,
+        'plot_segment':             1,
+        'plot_dns_particle_counts': 1,
         'plot_dns_concs':           1,
-        'plot_tracer_traj':         0,
-        'animate_segment':          0,
-        'return_stats':             0,
+        'plot_tracer_traj':         1,
+        'animate_segment':          1,
+        'return_stats':             1,
         })
 
     # Quantities of interest for statistics. These should be registered as observables under the system.
