@@ -29,8 +29,8 @@ class Crommelin2004TracerODE(ODESystem):
         cfg = dict({
             "b": 0.5, "beta": 1.25, "gamma_limits": [0.2, 0.2], 
             "C": 0.1, "x1star": 0.95, "r": -0.801, "year_length": 400.0,
-            "Nparticles": 64,
-            "Nxfv": 64, "Nyfv": 16, 
+            "Nparticles": 128,
+            "Nxfv": 24, "Nyfv": 12, 
             })
         cfg['t_burnin_phys'] = 10.0
         cfg['dt_step'] = 0.025
@@ -79,6 +79,7 @@ class Crommelin2004TracerODE(ODESystem):
         self.t_burnin = int(cfg['t_burnin_phys']/self.dt_save) # depends on whether to use a pre-seeded initial condition 
         q = dict()
         flowdim = 6
+        Nparticles = cfg['Nparticles']
         q["flowdim"] = flowdim
         q["Nparticles"] = cfg['Nparticles']
         q["year_length"] = cfg["year_length"]
@@ -153,126 +154,147 @@ class Crommelin2004TracerODE(ODESystem):
             self.impulse_matrix[mode,0] += imp_mags[i]
 
         # Intermediate arrays allocated to store computations 
-        self.k1,self.k2,self.k3,self.k4 = (np.zeros(flowdim) for _ in range(4))
-        self.xdot_flow,self.xdot_advection,self.xdot_dissipation,self.xdot_forcing = (np.zeros(flowdim) for _ in range(5))
-        (self.x_temp, self.x_next_temp) = (np.zeros(flowdim) for _ in range(2))
-        self.conc_next = np.zeros(q['Nx']*q['Ny'])
+        # Runge-Kutta for streamfunction coefficients
+        self.s_rk4_1,self.s_rk4_2,self.s_rk4_3,self.s_rk4_4 = (np.zeros(flowdim) for _ in range(4))
+        self.s_tendency_total,self.s_tendency_advection,self.s_tendency_dissipation,self.s_tendency_forcing = (np.zeros(flowdim) for _ in range(4))
+        (self.s_temp, self.s_next_temp) = (np.zeros(flowdim) for _ in range(2))
+        # Finite-volume for concentration field 
+        self.conc_next_temp = np.zeros(q['Nx']*q['Ny'])
+        self.u_eul = np.zeros((q['Nx']+1,q['Ny']))
+        self.v_eul = np.zeros((q['Nx'],q['Ny']+1))
+        self.iflat_nbs = np.zeros(4, dtype=int)
+        self.outflows,self.inflows = (np.zeros(4, dtype=float) for _ in range(2))
+        # Forward Euler for particle positions
+        (self.c1x_lag,self.s1x_lag,self.c1y_lag,self.s1y_lag,self.c2y_lag,self.s2y_lag) = (np.zeros(Nparticles) for _ in range(6))
+        (self.s_lag,self.u_lag,self.v_lag) = (np.zeros(Nparticles) for _ in range(3))
         return 
     def timestep_finvol(self, state_next, t, state):
         q = self.timestep_constants
         Nx,Ny,dx,dy,Lx,Ly = (q[key] for key in ('Nx','Ny','dx','dy','Lx','Ly'))
         Nparticles = self.config['Nparticles']
-        # Runge-Kutta for flow field
         flowdim = self.timestep_constants["flowdim"]
+        # Make convenience aliases for the components of the state vector
+        s = state[0:flowdim]
+        s_next = state_next[0:flowdim]
+        conc = state[flowdim:flowdim+Nx*Ny]
+        conc_next = state_next[flowdim:flowdim+Nx*Ny]
+        x_lag = state[(flowdim+Nx*Ny):(flowdim+Nx*Ny+Nparticles)]
+        y_lag = state[(flowdim+Nx*Ny+Nparticles):(flowdim+Nx*Ny+2*Nparticles)]
+        x_lag_next = state_next[(flowdim+Nx*Ny):(flowdim+Nx*Ny+Nparticles)]
+        y_lag_next = state_next[(flowdim+Nx*Ny+Nparticles):(flowdim+Nx*Ny+2*Nparticles)]
 
-        self.tendency_flow(self.xdot_flow, t, state[:flowdim])
-        self.k1[:] = self.dt_step * self.xdot_flow
+        # ------------- Update flow field with Runge-Kutta ------------
+        self.compute_streamfunction_tendency(
+                self.s_rk4_1, self.s_tendency_advection, self.s_tendency_dissipation, self.s_tendency_forcing, 
+                t, s
+                )
 
-        self.x_next_temp[:] = state[:flowdim] + self.k1/2
-        self.tendency_flow(self.xdot_flow, t+self.dt_step/2, self.x_next_temp)
-        self.k2[:] = self.dt_step * self.xdot_flow
+        self.s_next_temp[:] = s + (self.dt_step/2)*self.s_rk4_1
+        self.compute_streamfunction_tendency(
+                self.s_rk4_2, self.s_tendency_advection, self.s_tendency_dissipation, self.s_tendency_forcing, 
+                t+self.dt_step/2, self.s_next_temp
+                )
+        
+        self.s_next_temp[:] = s + (self.dt_step/2)*self.s_rk4_2
+        self.compute_streamfunction_tendency(
+                self.s_rk4_3, self.s_tendency_advection, self.s_tendency_dissipation, self.s_tendency_forcing, 
+                t+self.dt_step/2, self.s_next_temp
+                )
 
-        self.x_next_temp[:] = state[:flowdim] + self.k2/2
-        self.tendency_flow(self.xdot_flow, t+self.dt_step/2, self.x_next_temp)
-        self.k3[:] = self.dt_step * self.xdot_flow
+        self.s_next_temp[:] = s + self.dt_step*self.s_rk4_3
+        self.compute_streamfunction_tendency(
+                self.s_rk4_4, self.s_tendency_advection, self.s_tendency_dissipation, self.s_tendency_forcing, 
+                t+self.dt_step/2, self.s_next_temp
+                )
 
-        self.x_next_temp[:] = state[:flowdim] + self.k3
-        self.tendency_flow(self.xdot_flow, t+self.dt_step, self.x_next_temp)
-        self.k4[:] = self.dt_step * self.xdot_flow
+        s_next[:] = s + (self.dt_step/6)*(self.s_rk4_1 + 2*(self.s_rk4_2 + self.s_rk4_3) + self.s_rk4_4)
 
-        state_next[:flowdim] = state[:flowdim] + (self.k1 + 2*(self.k2 + self.k3) + self.k4)/6
-        # Finite-voloume step for tracer
-        self.con
-        self.conc_next = state[flowdim:flowdim+(Nx*Ny)]
-        conc_next = np.copy(conc)
-        u = np.zeros((Nx+1,Ny))
-        v = np.zeros((Nx,Ny+1))
+        # --------------- Update concentration field with finite-volume ---------
+        self.conc_next_temp[:] = state[flowdim:flowdim+(Nx*Ny)]
+        self.u_eul[:] = 0.0
+        self.v_eul[:] = 0.0
         for i in range(flowdim):
-            u += 0.5*(strfn[i] + strfn_next[i]) * q["basis_u"][i,:,:]
-            v += 0.5*(strfn[i] + strfn_next[i]) * q["basis_v"][i,:,:]
+            self.u_eul[:] += 0.5*(s[i] + s_next[i]) * q["basis_u"][i,:,:]
+            self.v_eul[:] += 0.5*(s[i] + s_next[i]) * q["basis_v"][i,:,:]
+        idx_x,idx_y = np.unravel_index(np.arange(Nx*Ny), (Nx,Ny))
         for iflat in range(Nx*Ny):
-            ix,iy = np.unravel_index(iflat,(Nx,Ny))
+            ix = idx_x[iflat]
+            iy = idx_y[iflat]
             if q['source_flag'][ix,iy]:
                 conc_next[iflat] = q['source_conc'][ix,iy]
                 continue
-            iflat_nbs = np.zeros(4,dtype=int)
-            outflows = np.zeros(4)
-            inflows = np.zeros(4)
+            self.iflat_nbs[:] = 0
+            self.outflows[:] = 0.0
+            self.inflows[:] = 0.0
             # right
             i_nb = 0
             ix_nb = (ix+1) % Nx
             iy_nb = iy
             iflat_nb = np.ravel_multi_index((ix_nb,iy_nb),(Nx,Ny))
-            iflat_nbs[i_nb] = iflat_nb
-            velocity = u[ix+1,iy]
+            self.iflat_nbs[i_nb] = iflat_nb
+            velocity = self.u_eul[ix+1,iy]
             if velocity > 0:
-                outflows[i_nb] = conc[iflat]*dy*self.dt_step*velocity
+                self.outflows[i_nb] = conc[iflat]*dy*self.dt_step*velocity
             elif q['source_flag'][ix_nb,iy_nb]:
-                inflows[i_nb] = q['source_conc'][ix_nb,iy_nb]*dy*self.dt_step*(-velocity)
+                self.inflows[i_nb] = q['source_conc'][ix_nb,iy_nb]*dy*self.dt_step*(-velocity)
             # left 
             i_nb = 1
             ix_nb = (ix-1) % Nx
             iy_nb = iy
             #print(f'{ix_nb = }, {Nx = }, {iy_nb = }, {Ny = }')
             iflat_nb = np.ravel_multi_index((ix_nb,iy_nb),(Nx,Ny))
-            iflat_nbs[i_nb] = iflat_nb
-            velocity = u[ix,iy]
+            self.iflat_nbs[i_nb] = iflat_nb
+            velocity = self.u_eul[ix,iy]
             if velocity < 0:
-                outflows[i_nb] = conc[iflat]*dy*self.dt_step*(-velocity)
+                self.outflows[i_nb] = conc[iflat]*dy*self.dt_step*(-velocity)
             elif q['source_flag'][ix_nb,iy_nb]:
-                inflows[i_nb] = q['source_conc'][ix_nb,iy_nb]*dy*self.dt_step*velocity
+                self.inflows[i_nb] = q['source_conc'][ix_nb,iy_nb]*dy*self.dt_step*velocity
             # top
             i_nb = 2
             ix_nb = ix
             iy_nb = iy+1
             iflat_nb = np.ravel_multi_index((ix_nb,iy_nb),(Nx,Ny))
-            iflat_nbs[i_nb] = iflat_nb
-            velocity = v[ix,iy+1]
+            self.iflat_nbs[i_nb] = iflat_nb
+            velocity = self.v_eul[ix,iy+1]
             if velocity > 0:
-                outflows[i_nb] = conc[iflat]*dx*self.dt_step*velocity
+                self.outflows[i_nb] = conc[iflat]*dx*self.dt_step*velocity
             elif q['source_flag'][ix_nb,iy_nb]:
-                inflows[i_nb] = q['source_conc'][ix_nb,iy_nb]*dx*self.dt_step*(-velocity)
+                self.inflows[i_nb] = q['source_conc'][ix_nb,iy_nb]*dx*self.dt_step*(-velocity)
             # bottom
             i_nb = 3
             ix_nb = ix
             iy_nb = iy-1
             iflat_nb = np.ravel_multi_index((ix_nb,iy_nb),(Nx,Ny))
-            iflat_nbs[i_nb] = iflat_nb
-            velocity = v[ix,iy]
+            self.iflat_nbs[i_nb] = iflat_nb
+            velocity = self.v_eul[ix,iy]
             if velocity < 0:
-                outflows[i_nb] = conc[iflat]*dx*self.dt_step*(-velocity)
+                self.outflows[i_nb] = conc[iflat]*dx*self.dt_step*(-velocity)
             elif q['source_flag'][ix_nb,iy_nb]:
-                inflows[i_nb] = q['source_conc'][ix_nb,iy_nb]*dx*self.dt_step*velocity
+                self.inflows[i_nb] = q['source_conc'][ix_nb,iy_nb]*dx*self.dt_step*velocity
             # Sum up all in- and out-flows
-            conc_next[iflat] += np.sum(inflows)/(dx*dy)
-            sum_outflows = np.sum(outflows)
+            conc_next[iflat] += np.sum(self.inflows)/(dx*dy)
+            sum_outflows = np.sum(self.outflows)
             if sum_outflows > 0:
                 if sum_outflows > conc[iflat]*dx*dy:
-                    outflows *= conc[iflat]*dx*dy/sum_outflows
-                conc_next[iflat] -= np.sum(outflows)/(dx*dy)
+                    downweight = conc[iflat]*dx*dy/sum_outflows
+                    self.outflows *= downweight
+                    sum_outflows *= downweight
+                conc_next[iflat] -= sum_outflows/(dx*dy)
                 for i_nb in range(4):
-                    if not q['source_flag'][np.unravel_index(iflat_nbs[i_nb],(Nx,Ny))]:
-                        conc_next[iflat_nbs[i_nb]] += outflows[i_nb]/(dx*dy)
+                    if not q['source_flag'][np.unravel_index(self.iflat_nbs[i_nb],(Nx,Ny))]:
+                        conc_next[self.iflat_nbs[i_nb]] += self.outflows[i_nb]/(dx*dy)
         # Forward Euler for particles
-        idx_x_part = flowdim + (Nx*Ny) + np.arange(q['Nparticles'], dtype=int)
-        idx_y_part = idx_x_part + q['Nparticles']
-        x_part = state[idx_x_part]
-        y_part = state[idx_y_part]
-
-        s_part,s_x_part,s_y_part = self.streamfunction_at_particles(t, strfn, x_part, y_part)
-        x_part_next = np.mod(state[idx_x_part] - self.dt_step*s_y_part, Lx)
-        y_part_next = state[idx_y_part] + self.dt_step*s_x_part
+        self.compute_streamfunction_lagrangian(self.s_lag, self.u_lag, self.v_lag, t, s, x_lag, y_lag)
+        x_lag_next[:] = np.mod(x_lag + self.dt_step*self.u_lag, Lx)
+        y_lag_next[:] = y_lag + self.dt_step*self.v_lag
 
         # Account for sources and sinks 
-        death_flag = np.logical_or(y_part_next < dy, y_part_next > Ly - dy) 
+        death_flag = np.logical_or(y_lag_next < dy, y_lag_next > Ly - dy) 
         if np.any(death_flag):
             death_idx = np.where(death_flag)[0]
-            y_part_next[death_idx] = dy
-            x_part_next[death_idx] = Lx * np.random.rand(len(death_idx))
-       
-
-
-        return t+self.dt_step, np.concatenate((strfn_next, conc_next, x_part_next, y_part_next))
+            y_lag_next[death_idx] = dy
+            x_lag_next[death_idx] = Lx * np.random.rand(len(death_idx))
+        return #t+self.dt_step, np.concatenate((strfn_next, conc_next, x_lag_next, y_lag_next))
 
     def basis_functions(self, Nx, Ny):
         # Compute streamfunction and derivatives at cell corners and face centers (C-grid)
@@ -329,33 +351,38 @@ class Crommelin2004TracerODE(ODESystem):
                 x_v,y_v,basis_v,
                 x_c,y_c,
                 )
-    def streamfunction_at_particles(self, t, x, xspat, yspat):
+    def compute_streamfunction_lagrangian(self, s_lag, u_lag, v_lag, t, s, x_lag, y_lag):
         # Don't confuse xspat (a spatial position between 0 and 2pi) with x
-        Nparticles = len(xspat)
+        Nparticles = len(x_lag)
         sqrt2 = np.sqrt(2)
         b = self.config['b']
-        c1x = np.cos(xspat)
-        s1x = np.sin(xspat)
-        c1y = np.cos(yspat/b)
-        s1y = np.sin(yspat/b)
-        c2y = np.cos(2*yspat/b)
-        s2y = np.sin(2*yspat/b)
-        s = np.zeros(Nparticles)
-        s_x = np.zeros(Nparticles)
-        s_y = np.zeros(Nparticles)
+        c1x,s1x,c1y,s1y,c2y,s2y = (self.c1x_lag,self.s1x_lag,self.c1y_lag,self.s1y_lag,self.c2y_lag,self.s2y_lag)
+        c1x[:] = np.cos(x_lag)
+        s1x[:] = np.sin(x_lag)
+        c1y[:] = np.cos(y_lag/b)
+        s1y[:] = np.sin(y_lag/b)
+        c2y[:] = np.cos(2*y_lag/b)
+        s2y[:] = np.sin(2*y_lag/b)
+        s_lag[:] = 0
+        u_lag[:] = 0
+        v_lag[:] = 0 
 
-        s += b*sqrt2  *        (x[0]*c1y + x[3]*c2y)
-        s_y += b*sqrt2 *       (x[0]*(-s1y/b) + x[3]*(-s2y*2/b))
+        # zonal-mean flow
+        s_lag += b*sqrt2  *      (s[0]*c1y + s[3]*c2y)
+        u_lag -= b*sqrt2 *       (s[0]*(-s1y/b) + s[3]*(-s2y*2/b))
 
-        s += 2*b     *  s1y * (x[1]*c1x + x[2]*s1x)
-        s_x += 2*b   *  s1y * (x[1]*(-s1x) + x[2]*c1x)
-        s_y += 2*b   *  c1y/b * (x[1]*c1x + x[2]*s1x)
+        # Wave-1 in y direction
+        s_lag += 2*b     *  s1y * (s[1]*c1x + s[2]*s1x)
+        v_lag += 2*b   *  s1y * (s[1]*(-s1x) + s[2]*c1x)
+        u_lag -= 2*b   *  c1y/b * (s[1]*c1x + s[2]*s1x)
 
-        s += 2*b     *  s2y * (x[4]*c1x + x[5]*s1x)
-        s_x += 2*b   *  s2y * (x[4]*(-s1x) + x[5]*c1x)
-        s_y += 2*b   *  c2y*(2/b) * (x[4]*c1x + x[5]*s1x)
+        # Wave-2 in y direction
+        s_lag += 2*b     *  s2y * (s[4]*c1x + s[5]*s1x)
+        v_lag += 2*b   *  s2y * (s[4]*(-s1x) + s[5]*c1x)
+        u_lag -= 2*b   *  c2y*(2/b) * (s[4]*c1x + s[5]*s1x)
 
-        return s,s_x,s_y
+
+        return 
     def orography_cycle(self,t_abs):
         """
         Parameters
@@ -380,40 +407,37 @@ class Crommelin2004TracerODE(ODESystem):
         gamma_cfg_t = cosine * (q["gamma_limits_cfg"][1] - q["gamma_limits_cfg"][0])/2 
         gammadot_cfg_t = -sine * (q["gamma_limits_cfg"][1] - q["gamma_limits_cfg"][0])/2
         return gamma_t,gamma_tilde_t,gamma_cfg_t,gammadot_t,gammadot_tilde_t,gammadot_cfg_t
-    def tendency_forcing(self,xdot_flow,t,x_flow):
-        xdot_flow[:] = self.timestep_constants["forcing_term"]
+    def compute_tendency_forcing(self,s_tendency_forcing,t,s):
+        s_tendency_forcing[:] = self.timestep_constants["forcing_term"]
         return
-    def tendency_dissipation(self,xdot_flow,t,x_flow):
-        xdot_flow[:] = self.timestep_constants["linear_term"] @ x_flow
+    def compute_tendency_dissipation(self,s_tendency_dissipation,t,s):
+        s_tendency_dissipation[:] = self.timestep_constants["linear_term"] @ s
         # Modify the time-dependent components
         gamma_t,gamma_tilde_t,gamma_cfg_t,gammadot_t,gammadot_tilde_t,gammadot_cfg_t = self.orography_cycle(t)
-        xdot_flow[0] += gamma_tilde_t[0]*x_flow[2]
-        xdot_flow[2] -= gamma_t[0]*x_flow[0]
-        xdot_flow[3] += gamma_tilde_t[1]*x_flow[5]
-        xdot_flow[5] -= gamma_t[1]*x_flow[3]
+        s_tendency_dissipation[0] += gamma_tilde_t[0]*s[2]
+        s_tendency_dissipation[2] -= gamma_t[0]*s[0]
+        s_tendency_dissipation[3] += gamma_tilde_t[1]*s[5]
+        s_tendency_dissipation[5] -= gamma_t[1]*s[3]
         return 
-    def tendency_advection(self,xdot_flow,t,x_flow):
+    def compute_tendency_advection(self,s_tendency_advection,t,s):
         """
         Compute the tendency according to only the nonlinear terms, in order to check conservation of energy and enstrophy.
         """
         flowdim = self.timestep_constants["flowdim"]
-        xdot_flow[:] = 0
+        s_tendency_advection[:] = 0
         for j in range(flowdim):
-            xdot_flow[j] += np.sum(x_flow * (self.timestep_constants["bilinear_term"][j] @ x_flow))
+            s_tendency_advection[j] += np.sum(s * (self.timestep_constants["bilinear_term"][j] @ s))
         return 
-    def tendency_flow(self, xdot_flow, t, x_flow):
-        self.tendency_advection(t,self.xdot_advection,x_flow)
-        self.tendency_dissipation(t,self.xdot_dissipation,x_flow)
-        self.tendency_forcing(t,self.xdot_forcing,x_flow)
-        xdot_flow[:] = self.xdot_advection + self.xdot_dissipation + self.xdot_forcing
+    def compute_streamfunction_tendency(
+            self, 
+            s_tendency_total, s_tendency_advection, s_tendency_dissipation, s_tendency_forcing, 
+            t, s
+            ):
+        self.compute_tendency_advection(s_tendency_advection,t,s)
+        self.compute_tendency_dissipation(s_tendency_dissipation,t,s)
+        self.compute_tendency_forcing(s_tendency_forcing,t,s)
+        s_tendency_total[:] = s_tendency_advection + s_tendency_dissipation + s_tendency_forcing
         return
-    def correct_timestep(self, t, x):
-        flowdim = self.timestep_constants["flowdim"]
-        Nparticles = self.config["Nparticles"]
-        b = self.config["b"]
-        x[flowdim:flowdim+Nparticles] = np.mod(x[flowdim:flowdim+Nparticles], 2*np.pi)
-        x[flowdim+Nparticles:flowdim+2*Nparticles] = np.mod(x[flowdim+Nparticles:flowdim+2*Nparticles], np.pi*b)
-        return x
     def generate_default_init_cond(self, init_time):
         rng = default_rng(seed=49582)
         # Flow

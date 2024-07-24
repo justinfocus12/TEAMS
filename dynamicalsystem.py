@@ -75,9 +75,6 @@ class ODESystem(DynamicalSystem):
     #@abstractmethod
     def tendency(self, t, x): # aka 'drift' for an SDE
         pass
-    @abstractmethod
-    def correct_timestep(self, t, x): 
-        pass
     def apply_impulse(self, t, x, imp):
         # apply the impulse perturbation from imp to the instantaneous state x, to get a perturbed state xpert
         # But allow imp to be the 'OccasionalVectorForcing' type
@@ -151,15 +148,14 @@ class ODESystem(DynamicalSystem):
             timestep_fun(x_next, tp, x) # modify in place
             tpnew = tp + self.dt_step
 
-            #xnew = self.correct_timestep(tpnew,xnew)
             if tpnew > tp_save_next:
                 new_weight = (tp_save_next - tp)/self.dt_step 
                 # TODO: save out an observable instead of the full state? Depends on a specified frequency
-                x_save[i_save] = (1-new_weight)*x + new_weight*xnew 
+                x_save[i_save] = (1-new_weight)*x + new_weight*x_next 
                 i_save += 1
                 if i_save < Nt_save:
                     tp_save_next = tp_save[i_save]
-            x = xnew
+            x[:] = x_next
             tp = tpnew
         return t_save,x_save
     def run_trajectory(self, icandf, obs_fun, saveinfo, root_dir):

@@ -49,8 +49,8 @@ def dns_paramset(i_expt):
         'seed_min': 1000,
         'seed_max': 100000,
         'seed_inc_init': seed_inc,
-        'max_member_duration_phys': 1000.0,
-        'num_chunks_max': 5,
+        'max_member_duration_phys': 30.0,
+        'num_chunks_max': 2,
         })
     return config_dynsys,config_algo,expt_label,expt_abbrv
 
@@ -58,8 +58,8 @@ def dns_single_workflow(i_expt):
     config_dynsys,config_algo,expt_label,expt_abbrv = dns_paramset(i_expt)
     # Organize output directories
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/crommelin2004tracer"
-    date_str = "2024-07-22"
-    sub_date_str = "10"
+    date_str = "2024-07-23"
+    sub_date_str = "1"
     param_abbrv_dynsys,param_label_dynsys = Crommelin2004TracerODE.label_from_config(config_dynsys)
     param_abbrv_algo,param_label_algo = C04ODEDNS.label_from_config(config_algo)
     obslib = Crommelin2004TracerODE.observable_props()
@@ -274,7 +274,7 @@ def dns_single_procedure(i_expt):
         'plot_dns_concs':           1,
         'plot_tracer_traj':         1,
         'animate_segment':          1,
-        'return_stats':             1,
+        'return_stats':             0,
         })
 
     # Quantities of interest for statistics. These should be registered as observables under the system.
@@ -283,6 +283,9 @@ def dns_single_procedure(i_expt):
     print(f'{config_dynsys["frc"] = }')
     print('done')
 
+    tspan_phys = [10,30]
+    tspan_phys_anim = [0,30]
+
     if tododict['run']:
         print(f'About to run DNS')
         run_dns(dirdict,filedict,config_dynsys,config_algo)
@@ -290,21 +293,21 @@ def dns_single_procedure(i_expt):
     
     if tododict['plot_segment']:
         outfile = join(dirdict['plots'],'dns_components.png')
-        alg.plot_dns_segment(outfile, tspan_phys=[1000,1050])
+        alg.plot_dns_segment(outfile, tspan_phys=tspan_phys)
     if tododict['plot_dns_particle_counts']:
         # Plot particle counts
         outfile = join(dirdict['plots'],'dns_particle_counts.png')
-        alg.plot_dns_particle_counts(outfile, tspan_phys=[1000,1100])
+        alg.plot_dns_particle_counts(outfile, tspan_phys=tspan_phys)
     if tododict['plot_dns_concs']:
         # Plot particle counts
         outfile = join(dirdict['plots'],'dns_concentrations.png')
-        alg.plot_dns_concentrations(outfile, tspan_phys=[1000,1100])
+        alg.plot_dns_concentrations(outfile, tspan_phys=tspan_phys)
     if tododict['plot_tracer_traj']:
         outfile = join(dirdict['plots'],'dns_tracer_traj.png')
-        alg.plot_tracer_traj(outfile, tspan_phys=[1000,2000])
+        alg.plot_tracer_traj(outfile, tspan_phys=tspan_phys)
     if tododict['animate_segment']:
         outfile_prefix = join(dirdict['plots'],'dns_streamfunction')
-        alg.animate_dns_segment(outfile_prefix, tspan_phys=[1000,1100])
+        alg.animate_dns_segment(outfile_prefix, tspan_phys=tspan_phys_anim)
     if tododict['return_stats']:
         print(f'About to compute extreme stats')
         measure_plot_extreme_stats(config_analysis,alg,dirdict,overwrite_extstats=True)
