@@ -180,7 +180,7 @@ def ange_single_workflow(i_param):
         })
 
     # Prune
-    config_analysis['observables'] = {key: val for (key,val) in config_analysis['observables'].items() if key == 'local_dayavg_rain'}
+    #config_analysis['observables'] = {key: val for (key,val) in config_analysis['observables'].items() if key == 'local_dayavg_rain'}
     
 
     obs_names = list(config_analysis['observables'].keys())

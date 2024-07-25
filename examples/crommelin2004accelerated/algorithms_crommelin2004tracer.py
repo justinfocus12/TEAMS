@@ -2,6 +2,7 @@ import numpy as np
 from numpy.random import default_rng
 import pickle
 from scipy import sparse as sps
+from scipy.stats import skew as spskew
 import networkx as nx
 from os.path import join, exists
 from os import makedirs
@@ -9,7 +10,7 @@ import sys
 import copy as copylib
 import psutil
 import time as timelib
-from matplotlib import pyplot as plt, animation, rcParams
+from matplotlib import pyplot as plt, animation, rcParams, colors as mplcolors
 rcParams.update({
     "font.family": "monospace",
     "font.size": 15
@@ -150,6 +151,32 @@ class Crommelin2004TracerODEDirectNumericalSimulation(algorithms.ODEDirectNumeri
         fig.savefig(outfile, **pltkwargs)
         plt.close(fig)
         return
+    def plot_dns_local_concs(self, outfile, tspan_phys=None):
+        tu = self.ens.dynsys.dt_save
+        obslib = self.ens.dynsys.observable_props()
+        nmem = self.ens.get_nmem()
+        if tspan_phys is None:
+            _,fin_time = self.ens.get_member_timespan(nmem-1)
+            tspan = [fin_time-int(400/tu),fin_time]
+        else:
+            tspan = [int(t/tu) for t in tspan_phys]
+        print(f'{tspan = }')
+        # --------- Plot some local concentrations ------
+        fig,axes = plt.subplots(ncols=1, figsize=(8,3))
+        ax = axes
+        handles = []
+        #locs = [(5.0,1.0),(3.0,0.4),(3.0,1.0)]
+        locs = [(x,1.1) for x in [1,2,3,4,5,6]]
+        for i_loc,(x,y) in enumerate(locs):
+            obs_fun = lambda t,state: self.ens.dynsys.local_conc(t,state,x,y)
+            label = r'$c(%.1f,%.1f)$'%(x,y)
+            h = self.plot_obs_segment(obs_fun, tspan, fig, ax, label=label)
+            handles.append(h)
+        ax.set_xlabel('Time')
+        ax.legend(handles=handles, bbox_to_anchor=(1,1), loc='upper left')
+        fig.savefig(outfile, **pltkwargs)
+        plt.close(fig)
+        return
     def plot_dns_segment(self, outfile, tspan_phys=None):
         tu = self.ens.dynsys.dt_save
         obslib = self.ens.dynsys.observable_props()
@@ -160,6 +187,8 @@ class Crommelin2004TracerODEDirectNumericalSimulation(algorithms.ODEDirectNumeri
         else:
             tspan = [int(t/tu) for t in tspan_phys]
         print(f'{tspan = }')
+
+        # ---------- Plot modes ----------
         fig,axes = plt.subplots(ncols=1, figsize=(6,6))
         ax = axes
         handles = []
@@ -171,14 +200,13 @@ class Crommelin2004TracerODEDirectNumericalSimulation(algorithms.ODEDirectNumeri
             handles.append(h)
         ax.set_xlabel('Time')
         ax.legend(handles=handles, bbox_to_anchor=(1,1), loc='upper left')
-
         fig.savefig(outfile, **pltkwargs)
         plt.close(fig)
+
         return
     def animate_dns_segment(self, outfile_prefix, tspan_phys=None):
-        fig,ax = plt.subplots(figsize=(8,4))
-        Nx,Ny = (self.ens.dynsys.timestep_constants[key] for key in ('Nx','Ny'))
         b = self.ens.dynsys.config['b']
+        Nx,Ny = (self.ens.dynsys.timestep_constants[key] for key in ('Nx','Ny'))
         tu = self.ens.dynsys.dt_save
         dt_plot = self.ens.dynsys.dt_plot
 
@@ -219,9 +247,13 @@ class Crommelin2004TracerODEDirectNumericalSimulation(algorithms.ODEDirectNumeri
         print(f'{psi.shape = }')
         print(f'{concs.shape = }')
         print(f'{concs.min() = }, {concs.max() = }')
-        fig,ax = plt.subplots()
+        fig,axes = plt.subplots(figsize=(24,8), ncols=4, nrows=1, sharey=True, width_ratios=[5,1,1,1])
+        ax = axes[0]
         ax.set_xlabel('x')
         ax.set_ylabel('y')
+        axes[1].set_xlabel('Zonal mean')
+        axes[2].set_xlabel('Zonal std')
+        axes[3].set_xlabel('Zonal skew')
         Xe,Ye = np.meshgrid(x_s,y_s,indexing='ij')
         X,Y = np.meshgrid(x_c,y_c,indexing='ij')
         levels_pos = np.linspace(0,np.max(np.abs(psi)),9)[1:]
@@ -230,16 +262,37 @@ class Crommelin2004TracerODEDirectNumericalSimulation(algorithms.ODEDirectNumeri
         print(f'{np.min(psi) = }, {np.max(psi) = }')
 
         # ------------- ArtistAnimation -----------------
+        conc_mean_x = np.mean(concs, axis=1)
+        conc_std_x = np.std(concs, axis=1)
+        conc_skew_x = spskew(concs, axis=1)
+        conc_mean_xt = np.mean(concs, axis=(0,1))
+        conc_std_xt = np.std(concs, axis=(0,1)) 
+        conc_skew_xt = spskew(concs, axis=(0,1)) 
+        handles = []
+        h, = axes[1].plot(conc_mean_xt, y_c, color='black', linestyle='--', label='Mean')
+        handles.append(h)
+        h, = axes[2].plot(conc_std_xt, y_c, color='dodgerblue', linestyle='--', label='Std')
+        handles.append(h)
+        h, = axes[3].plot(conc_skew_xt, y_c, color='red', linestyle='--', label='Skew')
+        handles.append(h)
 
         artists = []
         ntr2plot = self.ens.dynsys.config["Nparticles"]
         for i in range(0,len(time),int(round(dt_plot/tu))):
-            conc_pcm = ax.pcolormesh(Xe,Ye,concs[i],cmap='viridis',vmin=concs.min(),vmax=concs.max())
+            new_artists = []
+            ax = axes[0]
+            conc_pcm = ax.pcolormesh(Xe,Ye,concs[i],cmap='YlOrBr',norm=mplcolors.LogNorm(vmin=concs.max()/1e6,vmax=concs.max()))
             contours_pos = ax.contour(Xe,Ye,psi[i],levels=levels_pos,colors='black',linestyles='solid')
             contours_neg = ax.contour(Xe,Ye,psi[i],levels=levels_neg,colors='black',linestyles='dashed')
-            scat = ax.scatter(trposns[i,:ntr2plot,0],trposns[i,:ntr2plot,1],color='red',marker='.')
+            scat = ax.scatter(trposns[i,:ntr2plot,0],trposns[i,:ntr2plot,1],color='black',marker='.')
             title = ax.text(0.5, 1.0, r'$\psi(t=%.2f)$'%(time[i]*tu), ha='center', va='bottom', transform=ax.transAxes)
-            artists.append([conc_pcm,contours_pos,contours_neg,scat,title])
+            ax = axes[1]
+            h_mean, = ax.plot(conc_mean_x[i,:], y_c, color='black')
+            ax = axes[2]
+            h_std, = ax.plot(conc_std_x[i,:], y_c, color='dodgerblue')
+            ax = axes[3]
+            h_skew, = ax.plot(conc_skew_x[i,:], y_c, color='red')
+            artists.append([conc_pcm,contours_pos,contours_neg,scat,title,h_mean,h_std,h_skew,])
         ani = animation.ArtistAnimation(fig, artists, interval=50, blit=True, repeat=False) #repeat_delay=5000)
         print(f'made the ani')
         ani.save(outfile_prefix+'.gif', writer="pillow") #**pltkwargs)

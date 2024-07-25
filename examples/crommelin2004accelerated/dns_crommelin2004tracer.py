@@ -5,6 +5,8 @@ from scipy import sparse as sps
 from os.path import join, exists
 from os import makedirs
 import sys
+import os
+import time as timelib
 import psutil
 import glob
 import copy as copylib
@@ -21,6 +23,7 @@ from ensemble import Ensemble
 import forcing
 from algorithms_crommelin2004tracer import Crommelin2004TracerODEDirectNumericalSimulation as C04ODEDNS 
 import utils
+
 
 def dns_multiparams():
     seed_incs = [0]
@@ -49,8 +52,8 @@ def dns_paramset(i_expt):
         'seed_min': 1000,
         'seed_max': 100000,
         'seed_inc_init': seed_inc,
-        'max_member_duration_phys': 30.0,
-        'num_chunks_max': 2,
+        'max_member_duration_phys': 100.0,
+        'num_chunks_max': 5,
         })
     return config_dynsys,config_algo,expt_label,expt_abbrv
 
@@ -58,23 +61,24 @@ def dns_single_workflow(i_expt):
     config_dynsys,config_algo,expt_label,expt_abbrv = dns_paramset(i_expt)
     # Organize output directories
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/crommelin2004accelerated"
-    date_str = "2024-07-24"
-    sub_date_str = "0"
+    date_str = "2024-07-25"
+    sub_date_str = "3"
     param_abbrv_dynsys,param_label_dynsys = Crommelin2004TracerODE.label_from_config(config_dynsys)
     param_abbrv_algo,param_label_algo = C04ODEDNS.label_from_config(config_algo)
     obslib = Crommelin2004TracerODE.observable_props()
+    flowdim = 6 
     config_analysis = dict({
         'spinup_phys': 50,
         'dns_duration_phys': 4.0e3, 
         'time_block_size_phys': 300,
         'observables': dict({
             '-c1y': dict({
-                'fun': lambda t,x: -Crommelin2004TracerODE.c1y(t,x),
+                'fun': lambda t,state: -Crommelin2004TracerODE.c1y(t,state),
                 'abbrv': '-'+obslib['c1y']['abbrv'],
                 'label': '-'+obslib['c1y']['label'],
                 }),
             'c2y': dict({
-                'fun': lambda t,x: Crommelin2004TracerODE.c2y(t,x),
+                'fun': lambda t,state: Crommelin2004TracerODE.c2y(t,state),
                 'abbrv': obslib['c2y']['abbrv'],
                 'label': obslib['c2y']['label'],
                 }),
@@ -147,7 +151,12 @@ def run_dns(dirdict,filedict,config_dynsys,config_algo):
         mem = alg.ens.get_nmem()
         print(f'----------- Starting member {mem} ----------------')
         saveinfo = dict(filename=f'mem{mem}.npz')
+        t0 = timelib.time()
         alg.take_next_step(saveinfo)
+        t1 = timelib.time()
+        print(f'--------------------- DURATION ------------------')
+        print(t1 - t0)
+        print(f'------------------------------------------------')
         pickle.dump(alg, open(filedict['alg'], 'wb'))
     return
 
@@ -268,12 +277,13 @@ def compare_extreme_stats(workflows,config_meta_analysis, dirdict):
 
 def dns_single_procedure(i_expt):
     tododict = dict({
-        'run':                      1,
-        'plot_segment':             1,
-        'plot_dns_particle_counts': 1,
-        'plot_dns_concs':           1,
-        'plot_tracer_traj':         1,
-        'animate_segment':          1,
+        'run':                      0,
+        'plot_segment':             0,
+        'plot_dns_particle_counts': 0,
+        'plot_dns_concs':           0,
+        'plot_dns_local_concs':     1,
+        'plot_tracer_traj':         0,
+        'animate_segment':          0,
         'return_stats':             0,
         })
 
@@ -283,8 +293,8 @@ def dns_single_procedure(i_expt):
     print(f'{config_dynsys["frc"] = }')
     print('done')
 
-    tspan_phys = [10,30]
-    tspan_phys_anim = [0,30]
+    tspan_phys = [100,500]
+    tspan_phys_anim = [400,415]
 
     if tododict['run']:
         print(f'About to run DNS')
@@ -302,6 +312,10 @@ def dns_single_procedure(i_expt):
         # Plot particle counts
         outfile = join(dirdict['plots'],'dns_concentrations.png')
         alg.plot_dns_concentrations(outfile, tspan_phys=tspan_phys)
+    if tododict['plot_dns_local_concs']:
+        # Plot particle counts
+        outfile = join(dirdict['plots'],'dns_local_concentrations.png')
+        alg.plot_dns_local_concs(outfile, tspan_phys=tspan_phys)
     if tododict['plot_tracer_traj']:
         outfile = join(dirdict['plots'],'dns_tracer_traj.png')
         alg.plot_tracer_traj(outfile, tspan_phys=tspan_phys)
@@ -318,6 +332,7 @@ if __name__ == "__main__":
         procedure = sys.argv[1]
         idx_expt = [int(v) for v in sys.argv[2:]]
     else:
+        #os.environ["NUMBA_DISABLE_JIT"] = "1"
         procedure = 'single'
         i_seed_inc = 0
         i_x1star = 1

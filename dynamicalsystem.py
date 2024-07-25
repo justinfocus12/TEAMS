@@ -78,9 +78,9 @@ class ODESystem(DynamicalSystem):
     def apply_impulse(self, t, x, imp):
         # apply the impulse perturbation from imp to the instantaneous state x, to get a perturbed state xpert
         # But allow imp to be the 'OccasionalVectorForcing' type
-        print(f'{x = }')
-        print(f'{imp = }')
-        print(f'{self.impulse_matrix = }')
+        #print(f'{x = }')
+        #print(f'{imp = }')
+        #print(f'{self.impulse_matrix = }')
 
         return x + self.impulse_matrix @ imp
     @abstractmethod
@@ -145,11 +145,12 @@ class ODESystem(DynamicalSystem):
         tp = init_time * self.dt_save # physical units
         timestep_fun = getattr(self, f'timestep_{timestepper}')
         while tp < tp_save[-1]:
-            timestep_fun(x_next, tp, x) # modify in place
-            tpnew = tp + self.dt_step
+            dt_step = timestep_fun(x_next, tp, x) # modify in place
+            tpnew = tp + dt_step
 
             if tpnew > tp_save_next:
-                new_weight = (tp_save_next - tp)/self.dt_step 
+                new_weight = (tp_save_next - tp)/dt_step 
+                #print(f'{dt_step = }')
                 # TODO: save out an observable instead of the full state? Depends on a specified frequency
                 x_save[i_save] = (1-new_weight)*x + new_weight*x_next 
                 i_save += 1
@@ -194,7 +195,7 @@ class ODESystem(DynamicalSystem):
         # Return metadata and observables
         metadata = self.assemble_metadata(icandf, self.config['timestepper'], saveinfo)
         observables = obs_fun(t,x)
-        print(f'{x[0] = }\n{x[-1] = }')
+        #print(f'{x[0] = }\n{x[-1] = }')
         # save full state out to saveinfo
         np.savez(join(root_dir, saveinfo['filename']), t=t, x=x)
         # TODO save in a more efficient format, maybe 

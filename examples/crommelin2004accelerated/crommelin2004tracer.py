@@ -7,6 +7,7 @@ from numba.core import types
 from scipy import sparse as sps
 from os.path import join, exists
 from os import makedirs
+
 import sys
 import pickle
 import matplotlib
@@ -22,17 +23,19 @@ import forcing
 from ensemble import Ensemble
 import utils
 
+
 # --------------- JIT functions ---------
+@njit
 def timestep_finvol_external(
     # intent(out)
     state_next, 
     # intent(in)
-    t, dt,
+    t, dt_max,
     state,
     flowdim,Nparticles,Nx,Ny,dx,dy,Lx,Ly,aspect,
     forcing_term,linear_term,bilinear_term,
     gamma,gamma_tilde,
-    basis_u, basis_v, source_flag, source_conc,
+    basis_u, basis_v, source_flag, source_conc, source_width,
     # intent(inout)
     # for streamfunction coefficient update
     s_rk4_1,s_rk4_2,s_rk4_3,s_rk4_4,
@@ -54,6 +57,17 @@ def timestep_finvol_external(
     y_lag = state[(flowdim+Nx*Ny+Nparticles):(flowdim+Nx*Ny+2*Nparticles)]
     x_lag_next = state_next[(flowdim+Nx*Ny):(flowdim+Nx*Ny+Nparticles)]
     y_lag_next = state_next[(flowdim+Nx*Ny+Nparticles):(flowdim+Nx*Ny+2*Nparticles)]
+
+    # Determine the CFL condition
+    u_eul[:,:] = 0.0
+    v_eul[:,:] = 0.0
+    for i in range(flowdim):
+        u_eul[:,:] += s[i] * basis_u[i,:,:]
+        v_eul[:,:] += s[i] * basis_v[i,:,:]
+    max_abs_u = np.max(np.abs(u_eul))
+    max_abs_v = np.max(np.abs(v_eul))
+    dt = min(dt_max, min(dx,dy)/max(max_abs_u,max_abs_v))
+
 
     # ------------- Update flow field with Runge-Kutta ------------
     const_args = (flowdim,forcing_term,linear_term,bilinear_term,gamma,gamma_tilde)
@@ -79,15 +93,14 @@ def timestep_finvol_external(
     s_next[:] = s + (dt/6)*(s_rk4_1 + 2*(s_rk4_2 + s_rk4_3) + s_rk4_4)
     # --------------- Update concentration field with finite-volume ---------
     conc_next[:] = conc
-    u_eul[:] = 0.0
-    v_eul[:] = 0.0
+    u_eul[:,:] = 0.0
+    v_eul[:,:] = 0.0
     for i in range(flowdim):
-        u_eul[:] += 0.5*(s[i] + s_next[i]) * basis_u[i,:,:]
-        v_eul[:] += 0.5*(s[i] + s_next[i]) * basis_v[i,:,:]
-    idx_x,idx_y = np.unravel_index(np.arange(Nx*Ny), (Nx,Ny))
+        u_eul[:,:] += 0.5*(s[i] + s_next[i]) * basis_u[i,:,:]
+        v_eul[:,:] += 0.5*(s[i] + s_next[i]) * basis_v[i,:,:]
     for iflat in range(Nx*Ny):
-        ix = idx_x[iflat]
-        iy = idx_y[iflat]
+        ix = iflat // Ny
+        iy = iflat - ix*Ny 
         if source_flag[ix,iy]:
             conc_next[iflat] = source_conc[ix,iy]
             continue
@@ -98,7 +111,7 @@ def timestep_finvol_external(
         i_nb = 0
         ix_nb = (ix+1) % Nx
         iy_nb = iy
-        iflat_nb = np.ravel_multi_index((ix_nb,iy_nb),(Nx,Ny))
+        iflat_nb = ix_nb*Ny + iy_nb #np.ravel_multi_index((ix_nb,iy_nb),(Nx,Ny))
         iflat_nbs[i_nb] = iflat_nb
         velocity = u_eul[ix+1,iy]
         if velocity > 0:
@@ -109,7 +122,7 @@ def timestep_finvol_external(
         i_nb = 1
         ix_nb = (ix-1) % Nx
         iy_nb = iy
-        iflat_nb = np.ravel_multi_index((ix_nb,iy_nb),(Nx,Ny))
+        iflat_nb = ix_nb*Ny + iy_nb #np.ravel_multi_index((ix_nb,iy_nb),(Nx,Ny))
         iflat_nbs[i_nb] = iflat_nb
         velocity = u_eul[ix,iy]
         if velocity < 0:
@@ -120,7 +133,7 @@ def timestep_finvol_external(
         i_nb = 2
         ix_nb = ix
         iy_nb = iy+1
-        iflat_nb = np.ravel_multi_index((ix_nb,iy_nb),(Nx,Ny))
+        iflat_nb = ix_nb*Ny + iy_nb #iflat_nb = np.ravel_multi_index((ix_nb,iy_nb),(Nx,Ny))
         iflat_nbs[i_nb] = iflat_nb
         velocity = v_eul[ix,iy+1]
         if velocity > 0:
@@ -131,7 +144,7 @@ def timestep_finvol_external(
         i_nb = 3
         ix_nb = ix
         iy_nb = iy-1
-        iflat_nb = np.ravel_multi_index((ix_nb,iy_nb),(Nx,Ny))
+        iflat_nb = ix_nb*Ny + iy_nb #iflat_nb = np.ravel_multi_index((ix_nb,iy_nb),(Nx,Ny))
         iflat_nbs[i_nb] = iflat_nb
         velocity = v_eul[ix,iy]
         if velocity < 0:
@@ -148,7 +161,9 @@ def timestep_finvol_external(
                 sum_outflows *= downweight
             conc_next[iflat] -= sum_outflows/(dx*dy)
             for i_nb in range(4):
-                if not source_flag[np.unravel_index(iflat_nbs[i_nb],(Nx,Ny))]:
+                ix_nb = iflat_nbs[i_nb] // Ny
+                iy_nb = iflat_nbs[i_nb] - Ny*ix_nb
+                if not source_flag[ix_nb,iy_nb]:
                     conc_next[iflat_nbs[i_nb]] += outflows[i_nb]/(dx*dy)
     # Forward Euler for particles
     compute_streamfunction_lagrangian_external(
@@ -161,13 +176,14 @@ def timestep_finvol_external(
     y_lag_next[:] = y_lag + dt*v_lag
 
     # Account for sources and sinks 
-    death_flag[:] = np.logical_or(y_lag_next < dy, y_lag_next > Ly - dy) 
+    death_flag[:] = np.logical_or(y_lag_next < source_width, y_lag_next > Ly-source_width) 
     if np.any(death_flag):
         death_idx = np.where(death_flag)[0]
-        y_lag_next[death_idx] = dy
+        y_lag_next[death_idx] = source_width
         x_lag_next[death_idx] = Lx * np.random.rand(len(death_idx))
-    return #t+dt_step, np.concatenate((strfn_next, conc_next, x_lag_next, y_lag_next))
+    return dt #t+dt_step, np.concatenate((strfn_next, conc_next, x_lag_next, y_lag_next))
 
+@njit
 def compute_streamfunction_tendency_external(
         # intent(out)
         s_tendency, 
@@ -191,6 +207,7 @@ def compute_streamfunction_tendency_external(
     return
         
 
+@njit
 def compute_streamfunction_lagrangian_external(
         # intent(out)
         s_lag, u_lag, v_lag,
@@ -227,8 +244,6 @@ def compute_streamfunction_lagrangian_external(
     s_lag += 2*b     *  s2y * (s[4]*c1x + s[5]*s1x)
     v_lag += 2*b   *  s2y * (s[4]*(-s1x) + s[5]*c1x)
     u_lag -= 2*b   *  c2y*(2/b) * (s[4]*c1x + s[5]*s1x)
-
-
     return 
 
         
@@ -243,11 +258,12 @@ class Crommelin2004TracerODE(ODESystem):
         cfg = dict({
             "b": 0.5, "beta": 1.25, "gamma_limits": [0.2, 0.2], 
             "C": 0.1, "x1star": 0.95, "r": -0.801, "year_length": 400.0,
+            "source_relative_width": 1/8,
             "Nparticles": 128,
-            "Nxfv": 24, "Nyfv": 12, 
             })
+        cfg["Nxfv"] = 128
+        cfg["Nyfv"] = int(round(cfg["Nxfv"]*cfg["b"]/2))
         cfg['t_burnin_phys'] = 10.0
-        cfg['dt_step'] = 0.025
         cfg['dt_save'] = 0.05
         cfg["dt_plot"] = 0.05
         cfg['timestepper'] = 'finvol'
@@ -287,7 +303,7 @@ class Crommelin2004TracerODE(ODESystem):
     def derive_parameters(self, cfg):
         n_max = 1
         m_max = 2
-        self.dt_step = cfg['dt_step']
+        #self.dt_step = cfg['dt_step']
         self.dt_save = cfg['dt_save'] 
         self.dt_plot = cfg['dt_plot']
         self.t_burnin = int(cfg['t_burnin_phys']/self.dt_save) # depends on whether to use a pre-seeded initial condition 
@@ -351,18 +367,26 @@ class Crommelin2004TracerODE(ODESystem):
         q['dx'] = q['Lx']/cfg['Nxfv']
         q['dy'] = q['Ly']/cfg['Nyfv']
         q['x_s'],q['y_s'],q['basis_s'],q['x_u'],q['y_u'],q['basis_u'],q['x_v'],q['y_v'],q['basis_v'],q['x_c'],q['y_c'] = self.basis_functions(q['Nx'],q['Ny'])
+
+        # ------- CFL condition to determine timestep --------
+        max_speed = np.max(np.sum(np.abs(q['basis_u']), axis=1)) + np.max(np.sum(np.abs(q['basis_v']), axis=1))
+        self.dt_step = min(q['dx']/max_speed, q['dy']/max_speed, self.dt_save)
+        print(f'{self.dt_step = }')
         # source and sink
         q['source_flag'] = np.zeros((q['Nx'],q['Ny']), dtype=bool)
-        q['source_flag'][:,[0,q['Ny']-1]] = True
+        q['source_width'] = cfg['source_relative_width']*q['Ly']
+        num_edge_cells = int(round(q['source_width']/q['dy']))
+        q['source_flag'][:,:num_edge_cells] = True
+        q['source_flag'][:,q['Ny']-num_edge_cells:] = True
         q['source_conc'] = np.zeros((q['Nx'],q['Ny']))
-        q['source_conc'][:,0] = 1.0
+        q['source_conc'][:,:num_edge_cells] = 1.0
         self.timestep_constants = q
         # Impulse matrix
         imp_modes = cfg['frc']['impulsive']['modes']
         imp_mags = cfg['frc']['impulsive']['magnitudes']
         self.impulse_dim = len(imp_modes)
-        print(f'{imp_mags = }')
-        print(f'{imp_modes = }')
+        #print(f'{imp_mags = }')
+        #print(f'{imp_modes = }')
         self.impulse_matrix = np.zeros((self.state_dim,self.impulse_dim))
         for i,mode in enumerate(imp_modes):
             self.impulse_matrix[mode,0] += imp_mags[i]
@@ -388,20 +412,20 @@ class Crommelin2004TracerODE(ODESystem):
         q = self.timestep_constants
 
         gamma_t,gamma_tilde_t,gamma_cfg_t,gammadot_t,gammadot_tilde_t,gammadot_cfg_t = self.orography_cycle(t)
-        timestep_finvol_external(
+        dt = timestep_finvol_external(
                 state_next,
-                t, self.dt_step, 
+                t, self.dt_save, 
                 state,
                 *(q[key] for key in 'flowdim,Nparticles,Nx,Ny,dx,dy,Lx,Ly,b'.split(',')),
                 *(q[key] for key in 'forcing_term,linear_term,bilinear_term'.split(',')),
                 gamma_t,gamma_tilde_t,
-                *(q[key] for key in 'basis_u,basis_v,source_flag,source_conc'.split(',')),
+                *(q[key] for key in 'basis_u,basis_v,source_flag,source_conc,source_width'.split(',')),
                 *(getattr(self, f's_rk4_{i}') for i in [1,2,3,4]),
                 self.s_next_temp,
                 self.s_tendency_total,
                 *(getattr(self, key) for key in 'u_eul,v_eul,iflat_nbs,outflows,inflows,s_lag,u_lag,v_lag,death_flag,c1x_lag,s1x_lag,c1y_lag,s1y_lag,c2y_lag,s2y_lag'.split(',')),
                 )
-        return #t+self.dt_step, np.concatenate((strfn_next, conc_next, x_lag_next, y_lag_next))
+        return dt #t+self.dt_step, np.concatenate((strfn_next, conc_next, x_lag_next, y_lag_next))
 
     def basis_functions(self, Nx, Ny):
         # Compute streamfunction and derivatives at cell corners and face centers (C-grid)
@@ -522,8 +546,8 @@ class Crommelin2004TracerODE(ODESystem):
         Nx,Ny,dx,dy,Nparticles = (q[key] for key in ['Nx','Ny','dx','dy','Nparticles'])
         conc = (q['source_flag'] * q['source_conc']).flatten()
         idx_part_x,idx_part_y = np.unravel_index(rng.choice(np.arange(Nx*Ny), size=Nparticles, p=conc/np.sum(conc), replace=True), (Nx,Ny))
-        print(f'{idx_part_x = }')
-        print(f'{idx_part_y = }')
+        #print(f'{idx_part_x = }')
+        #print(f'{idx_part_y = }')
         # Tracer positions (in general, draw from the sources)
         x_part = np.zeros(Nparticles)
         y_part = np.zeros(Nparticles)
@@ -583,23 +607,30 @@ class Crommelin2004TracerODE(ODESystem):
             })
         return obslib
     @staticmethod
-    def c1y(t, x):
-        return x[:,0]
+    def c1y(t, state):
+        return state[:,0]
     @staticmethod
-    def c2y(t, x):
-        return x[:,3]
+    def c2y(t, state):
+        return state[:,3]
     @staticmethod
-    def c1xs1y(t,x):
-        return x[:,1]
+    def c1xs1y(t,state):
+        return state[:,1]
     @staticmethod
-    def s1xs1y(t,x):
-        return x[:,2]
+    def s1xs1y(t,state):
+        return state[:,2]
     @staticmethod
-    def c1xs2y(t,x):
-        return x[:,4]
+    def c1xs2y(t,state):
+        return state[:,4]
     @staticmethod
-    def s1xs2y(t,x):
-        return x[:,5]
+    def s1xs2y(t,state):
+        return state[:,5]
+    # Observables related to local concentration
+    def local_conc(self,t,state,x,y):
+        q = self.timestep_constants
+        flowdim,dx,dy,Nx,Ny = (q[key] for key in 'flowdim,dx,dy,Nx,Ny'.split(','))
+        ix,iy = int(x/dx),int(y/dy)
+        iflat = ix*Ny + iy
+        return state[:,flowdim+iflat]
 
     # --------------- plotting functions -----------------
     def check_fig_ax(self, fig=None, ax=None):
