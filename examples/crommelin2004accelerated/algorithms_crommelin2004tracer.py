@@ -210,6 +210,7 @@ class Crommelin2004TracerODEDirectNumericalSimulation(algorithms.ODEDirectNumeri
         tu = self.ens.dynsys.dt_save
         dt_plot = self.ens.dynsys.dt_plot
 
+
         x_s,y_s,basis_s,x_u,y_u,basis_u,x_v,y_v,basis_v,x_c,y_c = self.ens.dynsys.basis_functions(Nx, Ny)
         def psi_fun(t,x):
             Nt = len(t)
@@ -241,8 +242,23 @@ class Crommelin2004TracerODEDirectNumericalSimulation(algorithms.ODEDirectNumeri
             tspan = [fin_time-int(400/tu),fin_time]
         else:
             tspan = [int(t/tu) for t in tspan_phys]
+        print(f'{tspan_phys = }')
+        print(f'{tspan = }')
         time,memset,tidx = self.get_member_subset(tspan)
-        psi,trposns,concs = self.ens.compute_observables([psi_fun,trposns_fun,conc_fun], memset[0])
+        print(f'{tidx = }')
+        print(f'{memset = }')
+        print(f'{time = }')
+        print(f'{memset = }')
+
+        psi_mems,trposns_mems,concs_mems = [],[],[]
+        for mem in memset:
+            psi_mem,trposns_mem,concs_mem = self.ens.compute_observables([psi_fun,trposns_fun,conc_fun], mem)
+            psi_mems.append(psi_mem)
+            trposns_mems.append(trposns_mem)
+            concs_mems.append(concs_mem)
+        psi = np.concatenate(tuple(psi_mems), axis=0)
+        trposns = np.concatenate(tuple(trposns_mems), axis=0)
+        concs = np.concatenate(tuple(concs_mems), axis=0)
         print(f'{time.shape = }')
         print(f'{psi.shape = }')
         print(f'{concs.shape = }')
@@ -278,8 +294,10 @@ class Crommelin2004TracerODEDirectNumericalSimulation(algorithms.ODEDirectNumeri
 
         artists = []
         ntr2plot = self.ens.dynsys.config["Nparticles"]
+        print(f'{len(time) = }')
+        print(f'{dt_plot = }')
+        print(f'{tu = }')
         for i in range(0,len(time),int(round(dt_plot/tu))):
-            new_artists = []
             ax = axes[0]
             conc_pcm = ax.pcolormesh(Xe,Ye,concs[i],cmap='YlOrBr',norm=mplcolors.LogNorm(vmin=concs.max()/1e6,vmax=concs.max()))
             contours_pos = ax.contour(Xe,Ye,psi[i],levels=levels_pos,colors='black',linestyles='solid')
@@ -293,7 +311,8 @@ class Crommelin2004TracerODEDirectNumericalSimulation(algorithms.ODEDirectNumeri
             ax = axes[3]
             h_skew, = ax.plot(conc_skew_x[i,:], y_c, color='red')
             artists.append([conc_pcm,contours_pos,contours_neg,scat,title,h_mean,h_std,h_skew,])
-        ani = animation.ArtistAnimation(fig, artists, interval=50, blit=True, repeat=False) #repeat_delay=5000)
+        print(f'{len(artists) = }')
+        ani = animation.ArtistAnimation(fig, artists, interval=80, blit=True, repeat=False) #repeat_delay=5000)
         print(f'made the ani')
         ani.save(outfile_prefix+'.gif', writer="pillow") #**pltkwargs)
 

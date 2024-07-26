@@ -92,10 +92,12 @@ class DirectNumericalSimulation(EnsembleAlgorithm):
     def get_member_subset(self, tspan): # returned member timespan excludes tspan[0] by convention
         all_starts,all_ends = self.ens.get_all_timespans()
         first_mem = np.where(all_starts <= tspan[0])[0][-1]
+        print(f'{all_starts,all_ends = }')
         if all_ends[-1] >= tspan[1]:
             last_mem = np.where(all_ends >= tspan[1])[0][0]
         else:
             last_mem = len(all_ends)-1
+        print(f'{last_mem = }')
         time = 1 + np.arange(tspan[0],min(all_ends[-1],tspan[1]))
         tidx = time - all_starts[first_mem] - 1
         memset = np.arange(first_mem,last_mem+1)
