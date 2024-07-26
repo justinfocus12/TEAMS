@@ -99,10 +99,30 @@ def timestep_monotone_external(
     for i in range(flowdim):
         u_eul[:,:] += 0.5*(s[i] + s_next[i]) * basis_u[i,:,:]
         v_eul[:,:] += 0.5*(s[i] + s_next[i]) * basis_v[i,:,:]
-    # Compute horizontal fluxes
+    # Compute horizontal fluxes PER TIME
     for ix in range(Nx+1):
+        ixlo,ixhi = (ix-1)%Nx, ix
         for iy in range(Ny):
-            flux_u_eul[ix,iy] = # TODO
+            iylo,iyhi = iy,iy
+            wlo,whi = 1*(u_eul[ix,iy] > 0), 1*(u_eul[ix,iy] <= 0)
+            flux_u_eul[ix,iy] = (u_eul[ix,iy]/dx) * (wlo*conc[ixlo,iylo] + whi*conc[ixhi,iyhi])
+            flux_coefs_per_dt[ixlo,iylo,0] -= u_eul[ix,iy]/dx*wlo
+            flux_coefs_per_dt[ixhi,iyhi,2] += u_eul[ix,iy]/dx*wlo
+            flux_coefs_per_dt[ixlo,iylo,1] += u_eul[ix,iy]/dx*whi
+            flux_coefs_per_dt[ixhi,iyhi,0] -= u_eul[ix,iy]/dx*whi
+    # Compute vertical fluxes
+    for ix in range(Nx):
+        ixlo,ixhi = ix,ix
+        for iy in range(Ny+1):
+            iylo,iyhi = (iy-1)%Ny,iy
+            wlo,whi = 1*(v_eul[ix,iy] > 0), 1*(v_eul[ix,iy] <= 0)
+            flux_v_eul[ix,iy] = (v_eul[ix,iy]/dy) * (wlo*conc[ixlo,iylo] + whi*conc[ixhi,iyhi])
+            flux_coefs_per_dt[ixlo,iylo,0] -= v_eul[ix,iy]/dy*wlo
+            flux_coefs_per_dt[ixhi,iyhi,3] += v_eul[ix,iy]/dy*wlo
+            flux_coefs_per_dt[ixlo,iylo,4] += v_eul[ix,iy]/dy*whi
+            flux_coefs_per_dt[ixhi,iyhi,0] -= v_eul[ix,iy]/dy*whi
+    # 
+
 
     for iflat in range(Nx*Ny):
         ix = iflat // Ny
@@ -569,7 +589,7 @@ class Crommelin2004TracerODE(ODESystem):
         self.v_eul,self.flux_v_eul = (np.zeros((q['Nx'],q['Ny']+1)) for _ in range(2))
         self.iflat_nbs = np.zeros(4, dtype=int)
         self.outflows,self.inflows = (np.zeros(4, dtype=float) for _ in range(2))
-        self.flux_coefs_per_dt = np.zeros((4, q['Nx'], q['Ny']), dtype=float64) # right, left, top, bottom in that order
+        self.flux_coefs_per_dt = np.zeros((5, q['Nx'], q['Ny']), dtype=float64) # self, right, left, top, bottom in that order
         # Forward Euler for particle positions
         (self.c1x_lag,self.s1x_lag,self.c1y_lag,self.s1y_lag,self.c2y_lag,self.s2y_lag) = (np.zeros(Nparticles) for _ in range(6))
         (self.s_lag,self.u_lag,self.v_lag) = (np.zeros(Nparticles) for _ in range(3))
