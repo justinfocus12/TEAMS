@@ -26,6 +26,169 @@ import utils
 
 # --------------- JIT functions ---------
 @njit
+def timestep_monotone_external(
+    # intent(out)
+    state_next, 
+    # intent(in)
+    t, dt_max,
+    state,
+    flowdim,Nparticles,Nx,Ny,dx,dy,Lx,Ly,aspect,
+    forcing_term,linear_term,bilinear_term,
+    gamma,gamma_tilde,
+    basis_u, basis_v, source_flag, source_conc, source_width,
+    # intent(inout)
+    # for streamfunction coefficient update
+    s_rk4_1,s_rk4_2,s_rk4_3,s_rk4_4,
+    s_next_temp,
+    s_tendency,
+    # for concentration update
+    u_eul,v_eul,iflat_nbs,outflows,inflows,
+    flux_u_eul,flux_v_eul,flux_coefs_per_dt,
+    # for Lagrangian advection update 
+    s_lag,u_lag,v_lag,death_flag,
+    c1x,s1x,c1y,s1y,c2y,s2y,
+    ):
+
+    # Make convenience aliases for the components of the state vector
+    s = state[0:flowdim]
+    s_next = state_next[0:flowdim]
+    conc = state[flowdim:flowdim+Nx*Ny]
+    conc_next = state_next[flowdim:flowdim+Nx*Ny]
+    x_lag = state[(flowdim+Nx*Ny):(flowdim+Nx*Ny+Nparticles)]
+    y_lag = state[(flowdim+Nx*Ny+Nparticles):(flowdim+Nx*Ny+2*Nparticles)]
+    x_lag_next = state_next[(flowdim+Nx*Ny):(flowdim+Nx*Ny+Nparticles)]
+    y_lag_next = state_next[(flowdim+Nx*Ny+Nparticles):(flowdim+Nx*Ny+2*Nparticles)]
+
+    # Determine the CFL condition
+    u_eul[:,:] = 0.0
+    v_eul[:,:] = 0.0
+    for i in range(flowdim):
+        u_eul[:,:] += s[i] * basis_u[i,:,:]
+        v_eul[:,:] += s[i] * basis_v[i,:,:]
+    max_abs_u = np.max(np.abs(u_eul))
+    max_abs_v = np.max(np.abs(v_eul))
+    dt = min(dt_max, min(dx,dy)/max(max_abs_u,max_abs_v))
+
+
+    # ------------- Update flow field with Runge-Kutta ------------
+    const_args = (flowdim,forcing_term,linear_term,bilinear_term,gamma,gamma_tilde)
+    compute_streamfunction_tendency_external(
+            s_rk4_1, t, s, 
+            *const_args
+            )
+    s_next_temp[:] = s + (dt/2)*s_rk4_1
+    compute_streamfunction_tendency_external(
+            s_rk4_2, t+dt/2, s_next_temp,
+            *const_args
+            )
+    s_next_temp[:] = s + (dt/2)*s_rk4_2
+    compute_streamfunction_tendency_external(
+            s_rk4_3, t+dt/2, s_next_temp, 
+            *const_args
+            )
+    s_next_temp[:] = s + dt*s_rk4_3
+    compute_streamfunction_tendency_external(
+            s_rk4_4, t+dt, s_next_temp,
+            *const_args
+            )
+    s_next[:] = s + (dt/6)*(s_rk4_1 + 2*(s_rk4_2 + s_rk4_3) + s_rk4_4)
+    # --------------- Update concentration field with finite-volume ---------
+    conc_next[:] = conc
+    u_eul[:,:] = 0.0
+    v_eul[:,:] = 0.0
+    for i in range(flowdim):
+        u_eul[:,:] += 0.5*(s[i] + s_next[i]) * basis_u[i,:,:]
+        v_eul[:,:] += 0.5*(s[i] + s_next[i]) * basis_v[i,:,:]
+    # Compute horizontal fluxes
+    for ix in range(Nx+1):
+        for iy in range(Ny):
+            flux_u_eul[ix,iy] = # TODO
+
+    for iflat in range(Nx*Ny):
+        ix = iflat // Ny
+        iy = iflat - ix*Ny 
+        if source_flag[ix,iy]:
+            conc_next[iflat] = source_conc[ix,iy]
+            continue
+        iflat_nbs[:] = 0
+        outflows[:] = 0.0
+        inflows[:] = 0.0
+        # right
+        i_nb = 0
+        ix_nb = (ix+1) % Nx
+        iy_nb = iy
+        iflat_nb = ix_nb*Ny + iy_nb #np.ravel_multi_index((ix_nb,iy_nb),(Nx,Ny))
+        iflat_nbs[i_nb] = iflat_nb
+        velocity = u_eul[ix+1,iy]
+        if velocity > 0:
+            outflows[i_nb] = (conc[iflat]+conc[iflat_nb])/2 * dt*velocity/dx
+        elif source_flag[ix_nb,iy_nb]:
+            inflows[i_nb] = source_conc[ix_nb,iy_nb] * dt*(-velocity)/dx
+        # left 
+        i_nb = 1
+        ix_nb = (ix-1) % Nx
+        iy_nb = iy
+        iflat_nb = ix_nb*Ny + iy_nb #np.ravel_multi_index((ix_nb,iy_nb),(Nx,Ny))
+        iflat_nbs[i_nb] = iflat_nb
+        velocity = u_eul[ix,iy]
+        if velocity < 0:
+            outflows[i_nb] = conc[iflat] * dt*(-velocity)/dx
+        elif source_flag[ix_nb,iy_nb]:
+            inflows[i_nb] = source_conc[ix_nb,iy_nb] * dt*velocity/dx
+        # top
+        i_nb = 2
+        ix_nb = ix
+        iy_nb = iy+1
+        iflat_nb = ix_nb*Ny + iy_nb #iflat_nb = np.ravel_multi_index((ix_nb,iy_nb),(Nx,Ny))
+        iflat_nbs[i_nb] = iflat_nb
+        velocity = v_eul[ix,iy+1]
+        if velocity > 0:
+            outflows[i_nb] = conc[iflat] * dt*velocity/dy
+        elif source_flag[ix_nb,iy_nb]:
+            inflows[i_nb] = source_conc[ix_nb,iy_nb] * dt*(-velocity)/dy
+        # bottom
+        i_nb = 3
+        ix_nb = ix
+        iy_nb = iy-1
+        iflat_nb = ix_nb*Ny + iy_nb #iflat_nb = np.ravel_multi_index((ix_nb,iy_nb),(Nx,Ny))
+        iflat_nbs[i_nb] = iflat_nb
+        velocity = v_eul[ix,iy]
+        if velocity < 0:
+            outflows[i_nb] = conc[iflat] * dt*(-velocity)/dy
+        elif source_flag[ix_nb,iy_nb]:
+            inflows[i_nb] = source_conc[ix_nb,iy_nb] * dt*velocity/dy
+        # Sum up all in- and out-flows
+        conc_next[iflat] += np.sum(inflows)
+        sum_outflows = np.sum(outflows)
+        if sum_outflows > 0:
+            if (sum_outflows > conc[iflat]):
+                downweight = conc[iflat]/sum_outflows
+                outflows *= downweight
+                sum_outflows *= downweight
+            conc_next[iflat] -= sum_outflows
+            for i_nb in range(4):
+                ix_nb = iflat_nbs[i_nb] // Ny
+                iy_nb = iflat_nbs[i_nb] - Ny*ix_nb
+                if not source_flag[ix_nb,iy_nb]:
+                    conc_next[iflat_nbs[i_nb]] += outflows[i_nb]
+    # Forward Euler for particles
+    compute_streamfunction_lagrangian_external(
+            s_lag, u_lag, v_lag, 
+            t, s, x_lag, y_lag,
+            aspect,
+            c1x,s1x,c1y,s1y,c2y,s2y
+            )
+    x_lag_next[:] = np.mod(x_lag + dt*u_lag, Lx)
+    y_lag_next[:] = y_lag + dt*v_lag
+
+    # Account for sources and sinks 
+    death_flag[:] = np.logical_or(y_lag_next < source_width, y_lag_next > Ly-source_width) 
+    if np.any(death_flag):
+        death_idx = np.where(death_flag)[0]
+        y_lag_next[death_idx] = source_width
+        x_lag_next[death_idx] = Lx * np.random.rand(len(death_idx))
+    return dt #t+dt_step, np.concatenate((strfn_next, conc_next, x_lag_next, y_lag_next))
+@njit
 def timestep_finvol_external(
     # intent(out)
     state_next, 
@@ -114,10 +277,11 @@ def timestep_finvol_external(
         iflat_nb = ix_nb*Ny + iy_nb #np.ravel_multi_index((ix_nb,iy_nb),(Nx,Ny))
         iflat_nbs[i_nb] = iflat_nb
         velocity = u_eul[ix+1,iy]
+        conc_mid = (conc[iflat] + conc[iflat_nb])/2
         if velocity > 0:
-            outflows[i_nb] = conc[iflat]*dy*dt*velocity
+            outflows[i_nb] = conc_mid * dt*velocity/dx
         elif source_flag[ix_nb,iy_nb]:
-            inflows[i_nb] = source_conc[ix_nb,iy_nb]*dy*dt*(-velocity)
+            inflows[i_nb] = conc_mid * dt*(-velocity)/dx
         # left 
         i_nb = 1
         ix_nb = (ix-1) % Nx
@@ -125,10 +289,11 @@ def timestep_finvol_external(
         iflat_nb = ix_nb*Ny + iy_nb #np.ravel_multi_index((ix_nb,iy_nb),(Nx,Ny))
         iflat_nbs[i_nb] = iflat_nb
         velocity = u_eul[ix,iy]
+        conc_mid = (conc[iflat] + conc[iflat_nb])/2
         if velocity < 0:
-            outflows[i_nb] = conc[iflat]*dy*dt*(-velocity)
+            outflows[i_nb] = conc_mid * dt*(-velocity)/dx
         elif source_flag[ix_nb,iy_nb]:
-            inflows[i_nb] = source_conc[ix_nb,iy_nb]*dy*dt*velocity
+            inflows[i_nb] = conc_mid * dt*velocity/dx
         # top
         i_nb = 2
         ix_nb = ix
@@ -136,10 +301,11 @@ def timestep_finvol_external(
         iflat_nb = ix_nb*Ny + iy_nb #iflat_nb = np.ravel_multi_index((ix_nb,iy_nb),(Nx,Ny))
         iflat_nbs[i_nb] = iflat_nb
         velocity = v_eul[ix,iy+1]
+        conc_mid = (conc[iflat] + conc[iflat_nb])/2
         if velocity > 0:
-            outflows[i_nb] = conc[iflat]*dx*dt*velocity
+            outflows[i_nb] = conc_mid * dt*velocity/dy
         elif source_flag[ix_nb,iy_nb]:
-            inflows[i_nb] = source_conc[ix_nb,iy_nb]*dx*dt*(-velocity)
+            inflows[i_nb] = conc_mid * dt*(-velocity)/dy
         # bottom
         i_nb = 3
         ix_nb = ix
@@ -147,24 +313,25 @@ def timestep_finvol_external(
         iflat_nb = ix_nb*Ny + iy_nb #iflat_nb = np.ravel_multi_index((ix_nb,iy_nb),(Nx,Ny))
         iflat_nbs[i_nb] = iflat_nb
         velocity = v_eul[ix,iy]
+        conc_mid = (conc[iflat] + conc[iflat_nb])/2
         if velocity < 0:
-            outflows[i_nb] = conc[iflat]*dx*dt*(-velocity)
+            outflows[i_nb] = conc_mid * dt*(-velocity)/dy
         elif source_flag[ix_nb,iy_nb]:
-            inflows[i_nb] = source_conc[ix_nb,iy_nb]*dx*dt*velocity
+            inflows[i_nb] = conc_mid * dt*velocity/dy
         # Sum up all in- and out-flows
-        conc_next[iflat] += np.sum(inflows)/(dx*dy)
+        conc_next[iflat] += np.sum(inflows)
         sum_outflows = np.sum(outflows)
         if sum_outflows > 0:
-            if sum_outflows > conc[iflat]*dx*dy:
-                downweight = conc[iflat]*dx*dy/sum_outflows
+            if (sum_outflows > conc[iflat]):
+                downweight = conc[iflat]/sum_outflows
                 outflows *= downweight
                 sum_outflows *= downweight
-            conc_next[iflat] -= sum_outflows/(dx*dy)
+            conc_next[iflat] -= sum_outflows
             for i_nb in range(4):
                 ix_nb = iflat_nbs[i_nb] // Ny
                 iy_nb = iflat_nbs[i_nb] - Ny*ix_nb
                 if not source_flag[ix_nb,iy_nb]:
-                    conc_next[iflat_nbs[i_nb]] += outflows[i_nb]/(dx*dy)
+                    conc_next[iflat_nbs[i_nb]] += outflows[i_nb]
     # Forward Euler for particles
     compute_streamfunction_lagrangian_external(
             s_lag, u_lag, v_lag, 
@@ -265,7 +432,7 @@ class Crommelin2004TracerODE(ODESystem):
         cfg["Nyfv"] = int(round(cfg["Nxfv"]*cfg["b"]/2))
         cfg['t_burnin_phys'] = 10.0
         cfg['dt_save'] = 0.05
-        cfg["dt_plot"] = 0.05
+        cfg["dt_plot"] = 0.25
         cfg['timestepper'] = 'finvol'
         cfg['frc'] = dict({
             'type': 'impulsive',
@@ -398,10 +565,11 @@ class Crommelin2004TracerODE(ODESystem):
         (self.s_temp, self.s_next_temp) = (np.zeros(flowdim) for _ in range(2))
         # Finite-volume for concentration field 
         self.conc_next_temp = np.zeros(q['Nx']*q['Ny'])
-        self.u_eul = np.zeros((q['Nx']+1,q['Ny']))
-        self.v_eul = np.zeros((q['Nx'],q['Ny']+1))
+        self.u_eul,self.flux_u_eul = (np.zeros((q['Nx']+1,q['Ny'])) for _ in range(2))
+        self.v_eul,self.flux_v_eul = (np.zeros((q['Nx'],q['Ny']+1)) for _ in range(2))
         self.iflat_nbs = np.zeros(4, dtype=int)
         self.outflows,self.inflows = (np.zeros(4, dtype=float) for _ in range(2))
+        self.flux_coefs_per_dt = np.zeros((4, q['Nx'], q['Ny']), dtype=float64) # right, left, top, bottom in that order
         # Forward Euler for particle positions
         (self.c1x_lag,self.s1x_lag,self.c1y_lag,self.s1y_lag,self.c2y_lag,self.s2y_lag) = (np.zeros(Nparticles) for _ in range(6))
         (self.s_lag,self.u_lag,self.v_lag) = (np.zeros(Nparticles) for _ in range(3))
@@ -424,6 +592,31 @@ class Crommelin2004TracerODE(ODESystem):
                 self.s_next_temp,
                 self.s_tendency_total,
                 *(getattr(self, key) for key in 'u_eul,v_eul,iflat_nbs,outflows,inflows,s_lag,u_lag,v_lag,death_flag,c1x_lag,s1x_lag,c1y_lag,s1y_lag,c2y_lag,s2y_lag'.split(',')),
+                )
+        return dt #t+self.dt_step, np.concatenate((strfn_next, conc_next, x_lag_next, y_lag_next))
+
+    def timestep_monotone(self, state_next, t, state):
+        q = self.timestep_constants
+
+        gamma_t,gamma_tilde_t,gamma_cfg_t,gammadot_t,gammadot_tilde_t,gammadot_cfg_t = self.orography_cycle(t)
+        dt = timestep_monotone_external(
+                state_next,
+                t, self.dt_save, 
+                state,
+                *(q[key] for key in 'flowdim,Nparticles,Nx,Ny,dx,dy,Lx,Ly,b'.split(',')),
+                *(q[key] for key in 'forcing_term,linear_term,bilinear_term'.split(',')),
+                gamma_t,gamma_tilde_t,
+                *(q[key] for key in 'basis_u,basis_v,source_flag,source_conc,source_width'.split(',')),
+                *(getattr(self, f's_rk4_{i}') for i in [1,2,3,4]),
+                self.s_next_temp,
+                self.s_tendency_total,
+                *(getattr(self, key) for key in 
+                    'u_eul,v_eul,iflat_nbs,outflows,inflows,' + 
+                    'flux_u_eul,flux_v_eul,flux_coefs_per_dt,' + 
+                    's_lag,u_lag,v_lag,death_flag,' + 
+                    'c1x_lag,s1x_lag,c1y_lag,s1y_lag,c2y_lag,s2y_lag'
+                    .split(',')
+                    )
                 )
         return dt #t+self.dt_step, np.concatenate((strfn_next, conc_next, x_lag_next, y_lag_next))
 

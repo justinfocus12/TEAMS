@@ -52,8 +52,8 @@ def dns_paramset(i_expt):
         'seed_min': 1000,
         'seed_max': 100000,
         'seed_inc_init': seed_inc,
-        'max_member_duration_phys': 100.0,
-        'num_chunks_max': 5,
+        'max_member_duration_phys': 30.0,
+        'num_chunks_max': 3,
         })
     return config_dynsys,config_algo,expt_label,expt_abbrv
 
@@ -62,7 +62,7 @@ def dns_single_workflow(i_expt):
     # Organize output directories
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/crommelin2004accelerated"
     date_str = "2024-07-25"
-    sub_date_str = "3"
+    sub_date_str = "5"
     param_abbrv_dynsys,param_label_dynsys = Crommelin2004TracerODE.label_from_config(config_dynsys)
     param_abbrv_algo,param_label_algo = C04ODEDNS.label_from_config(config_algo)
     obslib = Crommelin2004TracerODE.observable_props()
@@ -277,13 +277,13 @@ def compare_extreme_stats(workflows,config_meta_analysis, dirdict):
 
 def dns_single_procedure(i_expt):
     tododict = dict({
-        'run':                      0,
+        'run':                      1,
         'plot_segment':             0,
         'plot_dns_particle_counts': 0,
         'plot_dns_concs':           0,
         'plot_dns_local_concs':     1,
         'plot_tracer_traj':         0,
-        'animate_segment':          0,
+        'animate_segment':          1,
         'return_stats':             0,
         })
 
