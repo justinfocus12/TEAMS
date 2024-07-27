@@ -138,27 +138,32 @@ class ODESystem(DynamicalSystem):
         # Initialize the solution array
         x_save = np.zeros((Nt_save, self.state_dim))
         print(f"{x_save.shape = }")
-        i_save = 0
-        tp_save_next = tp_save[i_save]
-        x = init_cond.copy()
-        x_next = x.copy()
-        tp = init_time * self.dt_save # physical units
-        timestep_fun = getattr(self, f'timestep_{timestepper}')
-        while tp < tp_save[-1]:
-            dt_step = timestep_fun(x_next, tp, x) # modify in place
-            tpnew = tp + dt_step
+        integration_fun = getattr(self, f'integrate_{timestepper}')
+        integration_fun(tp_save, x_save, init_time, init_cond)
+        return t_save, x_save 
+        #i_save = 0
+        #tp_save_next = tp_save[i_save]
+        #x = init_cond.copy()
+        #x_next = x.copy()
+        #tp = init_time * self.dt_save # physical units
 
-            if tpnew > tp_save_next:
-                new_weight = (tp_save_next - tp)/dt_step 
-                #print(f'{dt_step = }')
-                # TODO: save out an observable instead of the full state? Depends on a specified frequency
-                x_save[i_save] = (1-new_weight)*x + new_weight*x_next 
-                i_save += 1
-                if i_save < Nt_save:
-                    tp_save_next = tp_save[i_save]
-            x[:] = x_next
-            tp = tpnew
-        return t_save,x_save
+        #timestep_fun = getattr(self, f'timestep_{timestepper}')
+        #
+        #while tp < tp_save[-1]:
+        #    dt_step = timestep_fun(x_next, tp, x) # modify in place
+        #    tpnew = tp + dt_step
+
+        #    if tpnew > tp_save_next:
+        #        new_weight = (tp_save_next - tp)/dt_step 
+        #        #print(f'{dt_step = }')
+        #        # TODO: save out an observable instead of the full state? Depends on a specified frequency
+        #        x_save[i_save] = (1-new_weight)*x + new_weight*x_next 
+        #        i_save += 1
+        #        if i_save < Nt_save:
+        #            tp_save_next = tp_save[i_save]
+        #    x[:] = x_next
+        #    tp = tpnew
+        #return t_save,x_save
     def run_trajectory(self, icandf, obs_fun, saveinfo, root_dir):
         init_cond_nopert,f = icandf['init_cond'],icandf['frc']
         assert(isinstance(f.init_time,int) and isinstance(f.fin_time,int))

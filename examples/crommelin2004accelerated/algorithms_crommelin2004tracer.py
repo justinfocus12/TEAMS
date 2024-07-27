@@ -82,33 +82,6 @@ class Crommelin2004TracerODEDirectNumericalSimulation(algorithms.ODEDirectNumeri
         fig.savefig(outfile, **pltkwargs)
         plt.close(fig)
         return
-    def plot_dns_concentrations(self, outfile, tspan_phys=None):
-        tu = self.ens.dynsys.dt_save
-        b = self.ens.dynsys.config['b']
-        q = self.ens.dynsys.timestep_constants
-        flowdim = q['flowdim']
-        Nparticles = self.ens.dynsys.config['Nparticles']
-        nmem = self.ens.get_nmem()
-        if tspan_phys is None:
-            _,fin_time = self.ens.get_member_timespan(nmem-1)
-            tspan = [fin_time-int(400/tu),fin_time]
-        else:
-            tspan = [int(t/tu) for t in tspan_phys]
-        conc_fun = lambda t,x: x[:,q['flowdim']+np.arange(q['Nx']*q['Ny'],dtype=int)]
-        time,memset,tidx = self.get_member_subset(tspan)
-        concs = np.concatenate(tuple(self.ens.compute_observables([conc_fun], mem)[0] for mem in memset), axis=0)[tidx]
-        fig,ax = plt.subplots(figsize=(15,5))
-        for i_y in range(q['Ny']):
-            for i_x in range(q['Nx']):
-                iflat = np.ravel_multi_index((i_x,i_y),(q['Nx'],q['Ny']))
-                h, = ax.plot(time,concs[:,iflat],color=plt.cm.viridis(i_y/q['Ny']),label='$y=%.1f$'%(q['y_c'][i_y]))
-        ax.plot(time,np.sum(concs,axis=1),color='black')
-        ax.set_xlabel('time')
-        ax.set_yscale('log')
-        fig.savefig(outfile, **pltkwargs)
-        return
-
-            
     def plot_dns_particle_counts(self, outfile, tspan_phys=None):
         tu = self.ens.dynsys.dt_save
         b = self.ens.dynsys.config['b']
