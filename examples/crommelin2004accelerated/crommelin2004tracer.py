@@ -26,6 +26,72 @@ import utils
 
 # --------------- JIT functions ---------
 @njit
+def integrate_monotone_external(
+        # intent(out)
+        state_save, 
+        # intent(in)
+        tp_save, dt_step_max,
+        init_time_phys,
+        init_cond,
+        flowdim,Nparticles,Nx,Ny,dx,dy,Lx,Ly,b,
+        forcing_term,linear_term,bilinear_term,
+        gamma_t,gamma_tilde_t, # for simplicity, we will have no orography cycle 
+        basis_u,basis_v,source_flag,source_conc,source_width,
+        s_rk4_1,s_rk4_2,s_rk4_3,s_rk4_4,
+        s_next_temp,
+        s_tendency_total,
+        u_eul,v_eul,iflat_nbs,outflows,inflows,
+        flux_u_eul,flux_v_eul,
+        flux_coefs_center,flux_coefs_right,flux_coefs_left,flux_coefs_up,flux_coefs_down,
+        s_lag,u_lag,v_lag,death_flag,
+        c1x_lag,s1x_lag,c1y_lag,s1y_lag,c2y_lag,s2y_lag,
+        ):
+    i_save = 0
+    Nt_save = len(tp_save)
+    tp_save_next = tp_save[i_save]
+    state = np.zeros(len(init_cond))
+    state[:] = init_cond
+    state_next = np.zeros(len(init_cond))
+    tp = init_time_phys 
+
+    
+    while tp < tp_save[-1]:
+        #print(f'{tp = }')
+        dt_step = timestep_monotone_external(
+                state_next,
+                tp, dt_step_max,
+                state,
+                flowdim,Nparticles,Nx,Ny,dx,dy,Lx,Ly,b,
+                forcing_term,linear_term,bilinear_term,
+                gamma_t,gamma_tilde_t,
+                basis_u,basis_v,source_flag,source_conc,source_width,
+                s_rk4_1,s_rk4_2,s_rk4_3,s_rk4_4,
+                s_next_temp,
+                s_tendency_total,
+                u_eul,v_eul,iflat_nbs,outflows,inflows,
+                flux_u_eul,flux_v_eul,
+                flux_coefs_center,flux_coefs_right,flux_coefs_left,flux_coefs_up,flux_coefs_down,
+                s_lag,u_lag,v_lag,death_flag,
+                c1x_lag,s1x_lag,c1y_lag,s1y_lag,c2y_lag,s2y_lag,
+                )
+        #print(f'{dt_step = }')
+        tpnew = tp + dt_step
+
+        if tpnew > tp_save_next:
+            new_weight = (tp_save_next - tp)/dt_step 
+            #print(f'{dt_step = }')
+            # TODO: save out an observable instead of the full state? Depends on a specified frequency
+            state_save[i_save,:] = (1-new_weight)*state + new_weight*state_next 
+            i_save += 1
+            if i_save < Nt_save:
+                tp_save_next = tp_save[i_save]
+        state[:] = state_next
+        tp = tpnew
+    return
+
+
+
+@njit
 def timestep_monotone_external(
     # intent(out)
     state_next, 
@@ -430,6 +496,7 @@ class Crommelin2004TracerODE(ODESystem):
         cfg["Nxfv"] = 128
         cfg["Nyfv"] = int(round(cfg["Nxfv"]*cfg["b"]/2))
         cfg['t_burnin_phys'] = 10.0
+        cfg['dt_step'] = 0.01
         cfg['dt_save'] = 0.05
         cfg["dt_plot"] = 0.25
         cfg['timestepper'] = 'monotone'
@@ -472,6 +539,7 @@ class Crommelin2004TracerODE(ODESystem):
         #self.dt_step = cfg['dt_step']
         self.dt_save = cfg['dt_save'] 
         self.dt_plot = cfg['dt_plot']
+        self.dt_step = cfg['dt_step']  #min(q['dx']/max_speed, q['dy']/max_speed, self.dt_save)
         self.t_burnin = int(cfg['t_burnin_phys']/self.dt_save) # depends on whether to use a pre-seeded initial condition 
         q = dict()
         flowdim = 6
@@ -534,10 +602,6 @@ class Crommelin2004TracerODE(ODESystem):
         q['dy'] = q['Ly']/cfg['Nyfv']
         q['x_s'],q['y_s'],q['basis_s'],q['x_u'],q['y_u'],q['basis_u'],q['x_v'],q['y_v'],q['basis_v'],q['x_c'],q['y_c'] = self.basis_functions(q['Nx'],q['Ny'])
 
-        # ------- CFL condition to determine timestep --------
-        max_speed = np.max(np.sum(np.abs(q['basis_u']), axis=1)) + np.max(np.sum(np.abs(q['basis_v']), axis=1))
-        self.dt_step = min(q['dx']/max_speed, q['dy']/max_speed, self.dt_save)
-        print(f'{self.dt_step = }')
         # source and sink
         q['source_flag'] = np.zeros((q['Nx'],q['Ny']), dtype=bool)
         q['source_width'] = cfg['source_relative_width']*q['Ly']
@@ -593,6 +657,37 @@ class Crommelin2004TracerODE(ODESystem):
                 *(getattr(self, key) for key in 'u_eul,v_eul,iflat_nbs,outflows,inflows,s_lag,u_lag,v_lag,death_flag,c1x_lag,s1x_lag,c1y_lag,s1y_lag,c2y_lag,s2y_lag'.split(',')),
                 )
         return dt #t+self.dt_step, np.concatenate((strfn_next, conc_next, x_lag_next, y_lag_next))
+
+    def integrate_monotone(self, state_save, tp_save, init_time, init_cond):
+        q = self.timestep_constants
+        init_time_phys = init_time * self.dt_save
+        gamma_t,gamma_tilde_t,gamma_cfg_t,gammadot_t,gammadot_tilde_t,gammadot_cfg_t = self.orography_cycle(init_time_phys)
+        integrate_monotone_external(
+            # intent(out)
+            state_save, 
+            # intent(in)
+            tp_save, self.dt_step,
+            init_time_phys,
+            init_cond,
+            *(q[key] for key in 'flowdim,Nparticles,Nx,Ny,dx,dy,Lx,Ly,b'.split(',')),
+            *(q[key] for key in 'forcing_term,linear_term,bilinear_term'.split(',')),
+            gamma_t,gamma_tilde_t, # for simplicity, we will have no orography cycle 
+            *(q[key] for key in 'basis_u,basis_v,source_flag,source_conc,source_width'.split(',')),
+            *(getattr(self, f's_rk4_{i}') for i in [1,2,3,4]),
+            self.s_next_temp,
+            self.s_tendency_total,
+            *(
+                getattr(self, key) for key in (
+                    'u_eul,v_eul,iflat_nbs,outflows,inflows,' + 
+                    'flux_u_eul,flux_v_eul,' + 
+                    'flux_coefs_center,flux_coefs_right,flux_coefs_left,flux_coefs_up,flux_coefs_down,' +
+                    's_lag,u_lag,v_lag,death_flag,' + 
+                    'c1x_lag,s1x_lag,c1y_lag,s1y_lag,c2y_lag,s2y_lag'
+                    )
+                .split(',')
+                )
+            )
+        return tp_save, state_save
 
     def timestep_monotone(self, state_next, t, state):
         q = self.timestep_constants

@@ -139,7 +139,7 @@ class Crommelin2004TracerODEDirectNumericalSimulation(algorithms.ODEDirectNumeri
         ax = axes
         handles = []
         #locs = [(5.0,1.0),(3.0,0.4),(3.0,1.0)]
-        locs = [(x,1.1) for x in [1,2,3,4,5,6]]
+        locs = [(2*np.pi*a,0.4) for a in [1/8,3/8,5/8,7/8]]
         for i_loc,(x,y) in enumerate(locs):
             obs_fun = lambda t,state: self.ens.dynsys.local_conc(t,state,x,y)
             label = r'$c(%.1f,%.1f)$'%(x,y)

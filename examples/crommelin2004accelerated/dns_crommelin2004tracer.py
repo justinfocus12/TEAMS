@@ -61,8 +61,8 @@ def dns_single_workflow(i_expt):
     config_dynsys,config_algo,expt_label,expt_abbrv = dns_paramset(i_expt)
     # Organize output directories
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/crommelin2004accelerated"
-    date_str = "2024-07-26"
-    sub_date_str = "2"
+    date_str = "2024-07-27"
+    sub_date_str = "0"
     param_abbrv_dynsys,param_label_dynsys = Crommelin2004TracerODE.label_from_config(config_dynsys)
     param_abbrv_algo,param_label_algo = C04ODEDNS.label_from_config(config_algo)
     obslib = Crommelin2004TracerODE.observable_props()
@@ -278,11 +278,11 @@ def compare_extreme_stats(workflows,config_meta_analysis, dirdict):
 
 def dns_single_procedure(i_expt):
     tododict = dict({
-        'run':                      0,
-        'plot_segment':             0,
-        'plot_dns_particle_counts': 0,
-        'plot_dns_local_concs':     0,
-        'plot_tracer_traj':         0,
+        'run':                      1,
+        'plot_segment':             1,
+        'plot_dns_particle_counts': 1,
+        'plot_dns_local_concs':     1,
+        'plot_tracer_traj':         1,
         'animate_segment':          1,
         'return_stats':             0,
         })
@@ -293,8 +293,8 @@ def dns_single_procedure(i_expt):
     print(f'{config_dynsys["frc"] = }')
     print('done')
 
-    tspan_phys = [100,2000]
-    tspan_phys_anim = [4000,4050]
+    tspan_phys = [500,2000]
+    tspan_phys_anim = [1600,1650]
 
     if tododict['run']:
         print(f'About to run DNS')

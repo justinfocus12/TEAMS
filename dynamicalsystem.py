@@ -139,7 +139,7 @@ class ODESystem(DynamicalSystem):
         x_save = np.zeros((Nt_save, self.state_dim))
         print(f"{x_save.shape = }")
         integration_fun = getattr(self, f'integrate_{timestepper}')
-        integration_fun(tp_save, x_save, init_time, init_cond)
+        integration_fun(x_save, tp_save, init_time, init_cond)
         return t_save, x_save 
         #i_save = 0
         #tp_save_next = tp_save[i_save]
