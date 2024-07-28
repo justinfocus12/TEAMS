@@ -490,15 +490,15 @@ class Crommelin2004TracerODE(ODESystem):
         cfg = dict({
             "b": 0.5, "beta": 1.25, "gamma_limits": [0.2, 0.2], 
             "C": 0.1, "x1star": 0.95, "r": -0.801, "year_length": 400.0,
-            "source_relative_width": 1/8,
+            "source_relative_width": 1/32,
             "Nparticles": 128,
             })
         cfg["Nxfv"] = 128
         cfg["Nyfv"] = int(round(cfg["Nxfv"]*cfg["b"]/2))
         cfg['t_burnin_phys'] = 10.0
-        cfg['dt_step'] = 0.01
-        cfg['dt_save'] = 0.05
-        cfg["dt_plot"] = 0.25
+        cfg['dt_step'] = 0.05
+        cfg['dt_save'] = 0.5
+        cfg["dt_plot"] = 0.5
         cfg['timestepper'] = 'monotone'
         cfg['frc'] = dict({
             'type': 'impulsive',

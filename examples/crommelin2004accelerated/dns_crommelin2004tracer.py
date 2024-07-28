@@ -52,8 +52,8 @@ def dns_paramset(i_expt):
         'seed_min': 1000,
         'seed_max': 100000,
         'seed_inc_init': seed_inc,
-        'max_member_duration_phys': 1000.0,
-        'num_chunks_max': 5,
+        'max_member_duration_phys': 500.0,
+        'num_chunks_max': 4,
         })
     return config_dynsys,config_algo,expt_label,expt_abbrv
 
@@ -61,7 +61,7 @@ def dns_single_workflow(i_expt):
     config_dynsys,config_algo,expt_label,expt_abbrv = dns_paramset(i_expt)
     # Organize output directories
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/crommelin2004accelerated"
-    date_str = "2024-07-27"
+    date_str = "2024-07-28"
     sub_date_str = "0"
     param_abbrv_dynsys,param_label_dynsys = Crommelin2004TracerODE.label_from_config(config_dynsys)
     param_abbrv_algo,param_label_algo = C04ODEDNS.label_from_config(config_algo)
@@ -278,11 +278,13 @@ def compare_extreme_stats(workflows,config_meta_analysis, dirdict):
 
 def dns_single_procedure(i_expt):
     tododict = dict({
-        'run':                      1,
-        'plot_segment':             1,
-        'plot_dns_particle_counts': 1,
-        'plot_dns_local_concs':     1,
-        'plot_tracer_traj':         1,
+        'run':                      0,
+        'plot_segment':             0,
+        'plot_dns_particle_counts': 0,
+        'plot_dns_local_concs':     0,
+        'plot_dns_concs_hovmoller': 0,
+        'plot_dns_spatial_stats':   0,
+        'plot_tracer_traj':         0,
         'animate_segment':          1,
         'return_stats':             0,
         })
@@ -312,6 +314,13 @@ def dns_single_procedure(i_expt):
         # Plot particle counts
         outfile = join(dirdict['plots'],'dns_local_concentrations.png')
         alg.plot_dns_local_concs(outfile, tspan_phys=tspan_phys)
+    if tododict['plot_dns_concs_hovmoller']:
+        # Plot particle counts
+        outfile = join(dirdict['plots'],'dns_concentrations_hovmoller.png')
+        alg.plot_dns_concs_hovmoller(outfile, tspan_phys=tspan_phys)
+    if tododict['plot_dns_spatial_stats']:
+        outfile = join(dirdict['plots'], 'dns_spatial_stats.png')
+        alg.plot_dns_spatial_stats(outfile, tspan_phys=tspan_phys)
     if tododict['plot_tracer_traj']:
         outfile = join(dirdict['plots'],'dns_tracer_traj.png')
         alg.plot_tracer_traj(outfile, tspan_phys=tspan_phys_anim)
