@@ -503,7 +503,7 @@ class Crommelin2004TracerODE(ODESystem):
         cfg['frc'] = dict({
             'type': 'impulsive',
             'impulsive': dict({
-                'modes': [0],
+                'modes': [5],
                 'magnitudes': [0.01],
                 }),
             })
@@ -605,7 +605,7 @@ class Crommelin2004TracerODE(ODESystem):
         # source and sink
         q['source_flag'] = np.zeros((q['Nx'],q['Ny']), dtype=bool)
         q['source_width'] = cfg['source_relative_width']*q['Ly']
-        num_edge_cells = int(round(q['source_width']/q['dy']))
+        num_edge_cells = max(1, int(round(q['source_width']/q['dy'])))
         q['source_flag'][:,:num_edge_cells] = True
         q['source_flag'][:,q['Ny']-num_edge_cells:] = True
         q['source_conc'] = np.zeros((q['Nx'],q['Ny']))

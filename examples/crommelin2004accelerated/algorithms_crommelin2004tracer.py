@@ -392,9 +392,19 @@ class Crommelin2004TracerODEDirectNumericalSimulation(algorithms.ODEDirectNumeri
 
 
 
-class Crommelin2004AncestorGenerator(algorithms.SDEAncestorGenerator):
-    def do_something():
-        return
+class Crommelin2004TracerODEAncestorGenerator(algorithms.ODEAncestorGenerator):
+    @classmethod
+    def default_config(cls):
+        cfg = dict({
+            'seed_min': 1000,
+            'seed_max': 10000,
+            'seed_inc_init': 0,
+            'burnin_time_phys': 500,
+            'time_horizon_phys': 500,
+            'num_buicks': 5,
+            'branches_per_buick': 3,
+            })
+        return cfg
 
 
 
