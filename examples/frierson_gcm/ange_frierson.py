@@ -88,7 +88,7 @@ def ange_paramset(i_param):
         'time_horizon_phys': 30,
         # mutable parameters below 
         'num_buicks': 128,
-        'branches_per_buick': 2, 
+        'branches_per_buick': 3, 
         })
     return config_gcm,config_algo,expt_label,expt_abbrv
 
@@ -179,8 +179,17 @@ def ange_single_workflow(i_param):
             }),
         })
 
-    # Prune
-    #config_analysis['observables'] = {key: val for (key,val) in config_analysis['observables'].items() if key == 'local_dayavg_rain'}
+    # Distance metrics to quantify dispersion rates
+    config_analysis['distance_metrics'] = dict({
+        'area_cwv_60x20': dict({
+            'fun': lambda ds0,ds1: frierson_gcm.FriersonGCM.dist_euc_cwv(ds0,ds1,{'lon': slice(180-30,180+30), 'lat': slice(45-10,45+10)}),
+            'kwargs': dict(),
+            'abbrv': 'dCWV60x20',
+            'label': r'Column water vapor distance',
+            'unit_symbol': r'kg m$^{-2}$',
+            }),
+        })
+    # TODO fill in some more, and write routines to measure dispersion rate 
     
 
     obs_names = list(config_analysis['observables'].keys())

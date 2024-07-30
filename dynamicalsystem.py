@@ -77,7 +77,6 @@ class ODESystem(DynamicalSystem):
         pass
     def apply_impulse(self, t, x, imp):
         # apply the impulse perturbation from imp to the instantaneous state x, to get a perturbed state xpert
-        # But allow imp to be the 'OccasionalVectorForcing' type
         #print(f'{x = }')
         #print(f'{imp = }')
         #print(f'{self.impulse_matrix = }')

@@ -907,6 +907,35 @@ class AncestorGenerator(EnsembleAlgorithm):
         plt.close(fig)
         return
 
+class ODEAncestorGenerator(AncestorGenerator):
+    # where the system of interest is an ODE driven by impulses
+    @classmethod
+    def default_init(cls, config, ens):
+        uic_time = 0
+        uic = ens.dynsys.generate_default_init_cond(uic_time)
+        return cls(uic_time, uic, config, ens)
+    def generate_icandf_from_uic(self):
+        imp = self.rng.normal(size=(self.ens.dynsys.impulse_dim,))
+        icandf = dict({
+            'init_cond': self.uic,
+            #'init_rngstate': init_rngstate,
+            'frc': forcing.OccasionalVectorForcing(self.uic_time, self.uic_time+self.burnin_time, [self.uic_time], [imp]),
+            })
+        return icandf
+    def generate_icandf_from_buick(self, parent):
+        init_time_parent,fin_time_parent = self.ens.get_member_timespan(parent)
+        print(f'{init_time_parent = }, {fin_time_parent = }')
+        mdp = self.ens.traj_metadata[parent]
+        parent_t,parent_x = self.ens.dynsys.load_trajectory(mdp, self.ens.root_dir, tspan=[fin_time_parent]*2)
+        init_cond = parent_x[0]
+        seed = self.rng.integers(low=self.seed_min,high=self.seed_max)
+        imp = self.rng.normal(size=self.ens.dynsys.impulse_dim,)
+        icandf = dict({
+            'init_cond': init_cond,
+            'frc': forcing.OccasionalVectorForcing(fin_time_parent, fin_time_parent+self.time_horizon, [fin_time_parent], [imp]),
+            })
+        return icandf
+
 class SDEAncestorGenerator(AncestorGenerator):
     # where the system of interest is an SDE driven by white noise
     @classmethod

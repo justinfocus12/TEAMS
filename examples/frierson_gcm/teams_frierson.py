@@ -252,8 +252,8 @@ def teams_single_workflow(i_expt):
 
     # Set up directories
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
-    date_str = "2024-04-04"
-    sub_date_str = "1"
+    date_str = "2024-07-07"
+    sub_date_str = "0"
     dirdict = dict()
     dirdict['expt'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_gcm, param_abbrv_algo)
     dirdict['data'] = join(dirdict['expt'], 'data')
@@ -264,7 +264,7 @@ def teams_single_workflow(i_expt):
     filedict = dict()
     # Initial conditions
     filedict['angel'] = join(
-            f'/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/2024-04-04/0/',
+            f'/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/2024-07-07/0/',
             param_abbrv_gcm, 'AnGe_si0_Tbrn50_Thrz30', 'data',
             'alg.pickle') 
     # Algorithm manager
@@ -633,10 +633,10 @@ def teams_multiseed_procedure(i_sigma,i_delta,i_slm,idx_seed,overwrite_reference
 def teams_single_procedure(i_expt):
 
     tododict = dict({
-        'run':             0,
+        'run':             1,
         'analysis': dict({
-            'observable_spaghetti':     0,
-            'scorrelation':             0,
+            'observable_spaghetti':     1,
+            'scorrelation':             1,
             'fields_2d':                1,
             }),
         })
