@@ -566,12 +566,13 @@ def run_teams(dirdict,filedict,config_gcm,config_algo):
         mem = alg.ens.get_nmem()
         print(f'----------- Starting member {mem} ----------------')
         saveinfo = dict({
-            # Temporary folder
-            'temp_dir': f'mem{mem}',
-            # Ultimate resulting filenames
-            'filename_traj': f'mem{mem}.nc',
-            'filename_restart': f'restart_mem{mem}.cpio',
+            'temp_dir': f'mem{mem}_temp',
+            'final_dir': f'mem{mem}',
             })
+        saveinfo.update(dict({
+            'filename_traj': join(saveinfo['final_dir'],f'history_mem{mem}.nc'),
+            'filename_restart': join(saveinfo['final_dir'],f'restart_mem{mem}.cpio'),
+            }))
         alg.take_next_step(saveinfo)
         if exists(filedict['alg']):
             os.rename(filedict['alg'], filedict['alg_backup'])
@@ -601,15 +602,15 @@ def teams_multiseed_procedure(i_sigma,i_delta,i_slm,idx_seed,overwrite_reference
     
     filedict = dict({
         'angel': filedicts[0]['angel'],
-        'dns': '/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/2024-04-04/0/abs1_resT21_pertSPPT_std0p3_clip2_tau6h_L500km/DNS_si0/data/alg.pickle',
+        'dns': '/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/2024-07-07/0/abs1_resT21_pertSPPT_std0p3_clip2_tau6h_L500km/DNS_si0/data/alg.pickle',
         })
     config_analysis = configs_analysis[0]
     param_abbrv_gcm,param_label_gcm = frierson_gcm.FriersonGCM.label_from_config(config_gcm)
     param_abbrv_algo,param_label_algo = algorithms_frierson.FriersonGCMTEAMS.label_from_config(config_algo)
     # Set up a meta-dirdict 
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
-    date_str = "2024-04-04"
-    sub_date_str = "1"
+    date_str = "2024-07-07"
+    sub_date_str = "0"
     dirdict = dict()
     dirdict['meta'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_gcm, 'meta') 
     dirdict['data'] = join(dirdict['meta'], 'data')
@@ -637,7 +638,7 @@ def teams_single_procedure(i_expt):
         'analysis': dict({
             'observable_spaghetti':     1,
             'scorrelation':             1,
-            'fields_2d':                1,
+            'fields_2d':                0,
             }),
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = teams_single_workflow(i_expt)

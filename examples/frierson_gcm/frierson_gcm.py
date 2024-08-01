@@ -599,7 +599,6 @@ class FriersonGCM(DynamicalSystem):
         ds0 = xr.open_mfdataset(join(root_dir,md0['filename_traj']), decode_times=False)
         for i_md1,md1 in enumerate(md1list):
             ds1 = xr.open_mfdataset(join(root_dir,md1['filename_traj']), decode_times=False)
-            pairwise_fun_vals.append([])
             for i_pwf,pwf in enumerate(pairwise_funs):
                 pairwise_fun_vals[i_pwf].append(pwf(ds0,ds1))
         print(f'{len(pairwise_fun_vals) = }')

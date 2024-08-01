@@ -180,16 +180,18 @@ def ange_single_workflow(i_param):
         })
 
     # Distance metrics to quantify dispersion rates
-    config_analysis['distance_metrics'] = dict({
-        'area_cwv_60x20': dict({
-            'fun': lambda ds0,ds1: frierson_gcm.FriersonGCM.dist_euc_cwv(ds0,ds1,{'lon': slice(180-30,180+30), 'lat': slice(45-10,45+10)}),
-            'kwargs': dict(),
-            'abbrv': 'dCWV60x20',
-            'label': r'Column water vapor distance',
-            'unit_symbol': r'kg m$^{-2}$',
-            }),
-        })
-    # TODO fill in some more, and write routines to measure dispersion rate 
+    config_analysis['distance_metrics'] = dict()
+    cwv_dist_fun = lambda ds0,ds1,dlon,dlat: frierson_gcm.FriersonGCM.dist_euc_cwv(ds0,ds1,{'lon': slice(180-dlon/2,180+dlon/2), 'lat': slice(45-dlat/2,45+dlat/2)})
+    for (dlon,dlat) in ((15,5),(30,10),(60,20),(120,40)):
+        key = r'area_cwv_%dx%d'%(dlon,dlat)
+        config_analysis['distance_metrics'][key] = dict(
+                fun = cwv_dist_fun,
+                args = (dlon,dlat),
+                abbrv = r'dCWV%dx%d'%(dlon,dlat),
+                label = r'$L^2$(CWV), $%d^\circ\mathrm{lon}\times%d^\circ\mathrm{lat}$'%(dlon,dlat),
+                unit_symbol = r'kg m$^{-2}$',
+                )
+
     
 
     obs_names = list(config_analysis['observables'].keys())
@@ -241,6 +243,37 @@ def plot_observable_distribution(config_analysis, alg, dirdict):
             alg.plot_score_distribution_branching(score_fun, buick, outfile, label=obs_props['label'])
     return
 
+def quantify_dispersion_rate(config_analysis, alg, dirdict):
+    tu = alg.ens.dynsys.dt_save 
+    for (metric_name,metric) in config_analysis['distance_metrics'].items():
+        dist_fun = lambda ds0,ds1: metric['fun'](ds0,ds1,*metric['args'])
+        buicks2measure = np.arange(5, dtype=int)
+        dists = alg.measure_dispersion(dist_fun,buicks=buicks2measure)
+        # TODO fill in using the generic method from algorithms 
+        fig_glob,axes_glob = plt.subplots(figsize=(8,5),nrows=2,ncols=1)
+        for i_buick,buck in enumerate(buicks2measure):
+            fig,ax = plt.subplots(figsize=(8,3))
+            for dist in dists[i_buick]:
+                ax.plot(tu*np.arange(1,alg.time_horizon+1), dist)
+                for ax_glob in axes_glob:
+                    ax_glob.plot(tu*np.arange(1,alg.time_horizon+1), dist,color=plt.cm.rainbow(i_buick/len(buicks2measure)))
+
+            ax.set_xlabel('time [days]')
+            ax.set_title(r'Buick %d, metric %s'%(i_buick,metric['label']))
+            ax.set_ylabel(r'[%s]'%(metric['unit_symbol']))
+            ax.set_yscale('log')
+            fig.savefig(join(dirdict['plots'], r'dispersion_metric%s_buick%d.png'%(metric['abbrv'],i_buick)), **pltkwargs)
+            plt.close(fig)
+        for ax_glob in axes_glob:
+            ax_glob.set_xlabel('time [days]')
+            ax_glob.set_title(r'Metric %s'%(metric['label']))
+            ax_glob.set_ylabel(r'[%s]'%(metric['unit_symbol']))
+        axes_glob[1].set_yscale('log')
+        fig_glob.savefig(join(dirdict['plots'], r'dispersion_metric%s.png'%(metric['abbrv'])), **pltkwargs)
+        plt.close(fig_glob)
+    return
+
+
 
 def run_ange(dirdict,filedict,config_gcm,config_algo):
     nproc = 4
@@ -290,9 +323,10 @@ def ange_single_procedure(i_expt):
     tododict = dict({
         'run':             1,
         'analysis': dict({
-            'observable_spaghetti':     1,
-            'observable_distribution':  1,
-            'observable_running_max':   1,
+            'observable_spaghetti':     0,
+            'observable_distribution':  0,
+            'observable_running_max':   0,
+            'dispersion':               1,
             }),
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = ange_single_workflow(i_expt)
@@ -306,6 +340,8 @@ def ange_single_procedure(i_expt):
         plot_observable_distribution(config_analysis, alg, dirdict)
     if tododict['analysis']['observable_running_max']:
         measure_running_max(config_analysis, alg, dirdict)
+    if tododict['analysis']['dispersion']:
+        quantify_dispersion_rate(config_analysis, alg, dirdict)
     return
 
 if __name__ == "__main__":

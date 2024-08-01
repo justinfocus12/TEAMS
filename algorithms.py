@@ -739,6 +739,30 @@ class AncestorGenerator(EnsembleAlgorithm):
         # ---------------------------------------------------------------------------
         self.branching_state.update(branching_state_update)
         return
+    # ------------------ Post-analysis methods -----------------
+    def measure_dispersion(self, dist_fun, buicks=None):
+        if buicks is None:
+            buicks = np.arange(self.branching_state['num_buicks_generated'], dtype=int)
+        print(f'{buicks = }')
+        num_buicks = len(buicks)
+        dists = []
+        for i_buick in buicks:
+            print(f'{i_buick = }')
+            gen0mem = self.branching_state['generation_0'][i_buick]
+            num_branches = self.branching_state['num_branches_generated'][i_buick]
+            branches = tuple(self.ens.memgraph.successors(gen0mem))
+            dists.append(np.zeros((int(num_branches*(num_branches-1)/2), self.time_horizon)))
+            i_pair = 0
+            for i0_branch in range(1,num_branches):
+                branch0 = branches[i0_branch]
+                other_branches = [b for b in branches[:i0_branch]]
+                print(f'{branch0 = }; {other_branches = }')
+                dists_to_branch0 = self.ens.compute_pairwise_observables([dist_fun], branch0, other_branches)[0]
+                dists[i_buick][i_pair:i_pair+i0_branch,:] = dists_to_branch0
+                i_pair += i0_branch
+        # TODO rigorous size checking
+        return dists
+
     # ------------------ Plotting methods ----------------------
     def plot_observable_spaghetti(self, obs_fun, mems2plot, outfile, time_horizon=None, ylabel='', title=''):
         tu = self.ens.dynsys.dt_save
