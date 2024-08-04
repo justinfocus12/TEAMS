@@ -321,12 +321,12 @@ def measure_running_max(config_analysis, alg, dirdict):
 
 def ange_single_procedure(i_expt):
     tododict = dict({
-        'run':             1,
+        'run':             0,
         'analysis': dict({
             'observable_spaghetti':     0,
             'observable_distribution':  0,
-            'observable_running_max':   0,
-            'dispersion':               1,
+            'observable_running_max':   1,
+            'dispersion':               0,
             }),
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = ange_single_workflow(i_expt)

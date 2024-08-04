@@ -870,20 +870,26 @@ class AncestorGenerator(EnsembleAlgorithm):
         idx_time = np.unique(np.power(2, np.linspace(np.log2(1),np.log2(ntimes-1),9)).astype(int))
         ylim_runmax = [np.nanmin(running_max),np.nanmax(running_max)]
         ylim_runmaxstd = [0,np.nanmax(running_max_std)]
+        fig_glob,axes_glob = plt.subplots(figsize=(15,3), nrows=2, sharex='col', height_ratios=[2,1])
         for buick in range(nbuicks):
             fig,axes = plt.subplots(nrows=2,ncols=2,figsize=(20,6),sharex='col',height_ratios=[2,1],width_ratios=[3,1])
             ax = axes[0,0]
+            ax_glob = axes_glob[0]
             for branch in range(nbranches):
                 hbranch, = ax.plot(time*tu, running_max[buick,branch], color='tomato', label=r'Running max')
+                ax_glob.plot(time*tu, running_max[buick,branch], color='tomato', label=r'Running max')
             hmean, = ax.plot(time*tu, running_max_mean[buick,:], color='dodgerblue', label=r'Mean running max')
+            ax_glob.plot(time*tu, running_max_mean[buick,:])
             ax.legend(handles=[hbranch,hmean])
             ax.set_xlabel('')
             ax.xaxis.set_tick_params(which='both',labelbottom=True)
             ax.set_title(label)
             ax.set_ylim(ylim_runmax)
             ax = axes[1,0]
+            ax_glob = axes_glob[1]
             hstd, = ax.plot(time*tu, current_std[buick,:], color='cyan', label='Std.')
             hmaxstd, = ax.plot(time*tu, running_max_std[buick,:], color='black', label='Std. running max')
+            ax_glob.plot(time*tu, running_max_std[buick,:], label='Std. running max')
             ax.legend(handles=[hstd,hmaxstd])
             ax.set_xlabel(r'Time')
             ax.set_ylim(ylim_runmaxstd)
@@ -907,9 +913,11 @@ class AncestorGenerator(EnsembleAlgorithm):
             axes[1,1].axis('off')
             fig.savefig(r'%s_buick%d.png'%(figfile_prefix,buick), **pltkwargs)
             plt.close(fig)
+        fig_glob.savefig(r'%s_allbuicks.png'%(figfile_prefix), **pltkwargs)
+        plt.close(fig_glob)
         # Plot aggregated CDFs across BUICKs
         nrows = int(np.ceil(np.sqrt(len(idx_time))))
-        fig,axes = plt.subplots(ncols=nrows, nrows=nrows, figsize=(6*nrows,6*nrows), gridspec_kw={'hspace': 0.2}, sharex=True)
+        fig,axes = plt.subplots(ncols=nrows, nrows=nrows, figsize=(6*nrows,6*nrows), gridspec_kw={'hspace': 0.2}, sharex=True, sharey=True)
         for i in range(len(idx_time)):
             ax = axes.flat[i]
             t = idx_time[i]

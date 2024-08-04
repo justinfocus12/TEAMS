@@ -36,7 +36,7 @@ def integrate_monotone_external(
         flowdim,Nparticles,Nx,Ny,dx,dy,Lx,Ly,b,
         forcing_term,linear_term,bilinear_term,
         gamma_t,gamma_tilde_t, # for simplicity, we will have no orography cycle 
-        basis_u,basis_v,source_flag,source_conc,source_width,
+        basis_u,basis_v,source,sink,
         s_rk4_1,s_rk4_2,s_rk4_3,s_rk4_4,
         s_next_temp,
         s_tendency_total,
@@ -64,7 +64,7 @@ def integrate_monotone_external(
                 flowdim,Nparticles,Nx,Ny,dx,dy,Lx,Ly,b,
                 forcing_term,linear_term,bilinear_term,
                 gamma_t,gamma_tilde_t,
-                basis_u,basis_v,source_flag,source_conc,source_width,
+                basis_u,basis_v,source,sink,
                 s_rk4_1,s_rk4_2,s_rk4_3,s_rk4_4,
                 s_next_temp,
                 s_tendency_total,
@@ -101,7 +101,7 @@ def timestep_monotone_external(
     flowdim,Nparticles,Nx,Ny,dx,dy,Lx,Ly,aspect,
     forcing_term,linear_term,bilinear_term,
     gamma,gamma_tilde,
-    basis_u, basis_v, source_flag, source_conc, source_width,
+    basis_u, basis_v, source, sink,
     # intent(inout)
     # for streamfunction coefficient update
     s_rk4_1,s_rk4_2,s_rk4_3,s_rk4_4,
@@ -166,7 +166,7 @@ def timestep_monotone_external(
     for i in range(flowdim):
         u_eul[:,:] += 0.5*(s[i] + s_next[i]) * basis_u[i,:,:]
         v_eul[:,:] += 0.5*(s[i] + s_next[i]) * basis_v[i,:,:]
-    # Compute fluxes
+    # Compute zonal fluxes
     flux_coefs_center[:,:] = 0.0
     for ix in range(Nx+1):
         ixlo,ixhi = (ix-1)%Nx, ix%Nx
@@ -183,7 +183,7 @@ def timestep_monotone_external(
             flux_coefs_right[ixlo,iylo] = -fhi
             flux_coefs_left[ixhi,iyhi] = flo
             flux_coefs_center[ixhi,iyhi] += fhi
-    # Compute fluxes
+    # Compute meridional fluxes
     for ix in range(Nx):
         ixlo,ixhi = ix,ix
         for iy in range(1,Ny):
@@ -203,10 +203,6 @@ def timestep_monotone_external(
     for iflat in range(Nx*Ny):
         ix = iflat // Ny
         iy = iflat - Ny*ix
-        if source_flag[ix,iy]:
-            conc_next[iflat] = source_conc[ix,iy]
-            continue
-        
         ix_right, iy_right = (ix+1)%Nx, iy
         ix_left, iy_left = (ix-1)%Nx, iy
         ix_up, iy_up = ix, iy+1
@@ -215,22 +211,23 @@ def timestep_monotone_external(
         iflat_left = ix_left*Ny + iy_left
         iflat_up = ix_up*Ny + iy_up
         iflat_down = ix_down*Ny + iy_down
-        conc_next[iflat] = (
-                #(1+flux_coefs_center[ix,iy]) * conc[iflat] 
-                (1 - flux_coefs_right[ix,iy] - flux_coefs_left[ix,iy] - flux_coefs_up[ix,iy] - flux_coefs_down[ix,iy]) * conc[iflat]
-                + flux_coefs_right[ix,iy] * conc[iflat_right]
-                + flux_coefs_left[ix,iy] * conc[iflat_left]
-                + flux_coefs_up[ix,iy] * conc[iflat_up]
-                + flux_coefs_down[ix,iy] * conc[iflat_down]
-                )
-        if False and not(min(conc[iflat_right],conc[iflat_left],conc[iflat_up],conc[iflat_down]) <= conc_next[iflat] <= max(conc[iflat_right],conc[iflat_left],conc[iflat_up],conc[iflat_down])):
-            print(f'{conc[[iflat_right,iflat_left,iflat_up,iflat_down]] = }')
-            print(f'{conc[iflat] = }')
-            print(f'{conc_next[iflat] = }')
-            print(f'{(flux_coefs_center[ix,iy],flux_coefs_right[ix,iy],flux_coefs_left[ix,iy],flux_coefs_up[ix,iy],flux_coefs_down[ix,iy]) = }')
-            print(f'{flux_coefs_center[ix,iy] + flux_coefs_right[ix,iy] + flux_coefs_left[ix,iy] + flux_coefs_up[ix,iy] + flux_coefs_down[ix,iy] = }')
-            raise Exception("No max-property")
-
+        conc_next[iflat] = conc[iflat]
+        conc_next[iflat] += flux_coefs_right[ix,iy] * (conc[iflat_right] - conc[iflat])
+        conc_next[iflat] += flux_coefs_left[ix,iy] * (conc[iflat_left] - conc[iflat])
+        if iy > 0:
+            conc_next[iflat] += flux_coefs_down[ix,iy] * (conc[iflat_down] - conc[iflat])
+        if iy < Ny-1:
+            conc_next[iflat] += flux_coefs_up[ix,iy] * (conc[iflat_up] - conc[iflat])
+        #conc_next[iflat] = (
+        #        #(1+flux_coefs_center[ix,iy]) * conc[iflat] 
+        #        (1 - flux_coefs_right[ix,iy] - flux_coefs_left[ix,iy] - flux_coefs_up[ix,iy] - flux_coefs_down[ix,iy]) * conc[iflat]
+        #        + flux_coefs_right[ix,iy] * conc[iflat_right]
+        #        + flux_coefs_left[ix,iy] * conc[iflat_left]
+        #        + flux_coefs_up[ix,iy] * conc[iflat_up]
+        #        + flux_coefs_down[ix,iy] * conc[iflat_down]
+        #        )
+        conc_next[iflat] *= np.exp(-sink*dt)
+        conc_next[iflat] += source[ix,iy]/sink*(-np.expm1(-sink*dt))
     # Forward Euler for particles
     compute_streamfunction_lagrangian_external(
             s_lag, u_lag, v_lag, 
@@ -242,11 +239,12 @@ def timestep_monotone_external(
     y_lag_next[:] = y_lag + dt*v_lag
 
     # Account for sources and sinks 
-    death_flag[:] = np.logical_or(y_lag_next < source_width, y_lag_next > Ly-source_width) 
-    if np.any(death_flag):
-        death_idx = np.where(death_flag)[0]
-        y_lag_next[death_idx] = source_width
-        x_lag_next[death_idx] = Lx * np.random.rand(len(death_idx))
+    death_flag[:] = False # TODO implement 
+    #np.logical_or(y_lag_next < source_width, y_lag_next > Ly-source_width) 
+    #if np.any(death_flag):
+    #    death_idx = np.where(death_flag)[0]
+    #    y_lag_next[death_idx] = source_width
+    #    x_lag_next[death_idx] = Lx * np.random.rand(len(death_idx))
     return dt #t+dt_step, np.concatenate((strfn_next, conc_next, x_lag_next, y_lag_next))
 
 @njit
@@ -490,11 +488,7 @@ class Crommelin2004TracerODE(ODESystem):
         cfg = dict({
             "b": 0.5, "beta": 1.25, "gamma_limits": [0.2, 0.2], 
             "C": 0.1, "x1star": 0.95, "r": -0.801, "year_length": 400.0,
-            "source_relative_width": 1/32,
-            "Nparticles": 128,
             })
-        cfg["Nxfv"] = 128
-        cfg["Nyfv"] = int(round(cfg["Nxfv"]*cfg["b"]/2))
         cfg['t_burnin_phys'] = 10.0
         cfg['dt_step'] = 0.05
         cfg['dt_save'] = 0.5
@@ -507,10 +501,21 @@ class Crommelin2004TracerODE(ODESystem):
                 'magnitudes': [0.01],
                 }),
             })
+
+        # Specify tracer characteristics 
+        Nxfv = 128
+        cfg.update(dict(
+            Nxfv = Nxfv,
+            Nyfv = int(round(Nxfv*cfg['b']/2)),
+            source_relative_width = 1/32,
+            Nparticles = 128,
+            low_lat_prod_rate = 1.0,
+            glob_diss_rate = 0.01,
+            ))
         return cfg
     @staticmethod
     def label_from_config(cfg):
-        abbrv_x1star = (r"x1st%g_r%g"%(cfg['x1star'],cfg['r'])).replace(".","p")
+        abbrv_x1star = (r"x1st%g_r%g_src%g_sink%g"%(cfg['x1star'],cfg['r'],cfg['low_lat_prod_rate'],cfg['glob_diss_rate'])).replace(".","p")
         abbrv_gamma = (r'gam%gto%g'%(cfg['gamma_limits'][0],cfg['gamma_limits'][1])).replace('.','p')
         label_physpar = r"$x_1^*=%g,\ r=%g \n \gamma\in[%g,%g],\ \beta=%g$"%(
                 cfg['x1star'],
@@ -603,13 +608,13 @@ class Crommelin2004TracerODE(ODESystem):
         q['x_s'],q['y_s'],q['basis_s'],q['x_u'],q['y_u'],q['basis_u'],q['x_v'],q['y_v'],q['basis_v'],q['x_c'],q['y_c'] = self.basis_functions(q['Nx'],q['Ny'])
 
         # source and sink
-        q['source_flag'] = np.zeros((q['Nx'],q['Ny']), dtype=bool)
-        q['source_width'] = cfg['source_relative_width']*q['Ly']
-        num_edge_cells = max(1, int(round(q['source_width']/q['dy'])))
-        q['source_flag'][:,:num_edge_cells] = True
-        q['source_flag'][:,q['Ny']-num_edge_cells:] = True
-        q['source_conc'] = np.zeros((q['Nx'],q['Ny']))
-        q['source_conc'][:,:num_edge_cells] = 1.0
+        q['source'] = np.zeros((q['Nx'],q['Ny']), dtype=bool)
+        source_width = cfg['source_relative_width']*q['Ly']
+        num_edge_cells = max(1, int(round(source_width/q['dy'])))
+        q['source'][:,:num_edge_cells] = cfg['low_lat_prod_rate']
+        q['sink'] = cfg['glob_diss_rate']
+        #q['source_conc'] = np.zeros((q['Nx'],q['Ny']))
+        #q['source_conc'][:,:num_edge_cells] = 1.0
         self.timestep_constants = q
         # Impulse matrix
         imp_modes = cfg['frc']['impulsive']['modes']
@@ -672,7 +677,7 @@ class Crommelin2004TracerODE(ODESystem):
             *(q[key] for key in 'flowdim,Nparticles,Nx,Ny,dx,dy,Lx,Ly,b'.split(',')),
             *(q[key] for key in 'forcing_term,linear_term,bilinear_term'.split(',')),
             gamma_t,gamma_tilde_t, # for simplicity, we will have no orography cycle 
-            *(q[key] for key in 'basis_u,basis_v,source_flag,source_conc,source_width'.split(',')),
+            *(q[key] for key in 'basis_u,basis_v,source,sink'.split(',')),
             *(getattr(self, f's_rk4_{i}') for i in [1,2,3,4]),
             self.s_next_temp,
             self.s_tendency_total,
@@ -834,8 +839,8 @@ class Crommelin2004TracerODE(ODESystem):
         # Concentrations
         q = self.timestep_constants
         Nx,Ny,dx,dy,Nparticles = (q[key] for key in ['Nx','Ny','dx','dy','Nparticles'])
-        conc = (q['source_flag'] * q['source_conc']).flatten()
-        idx_part_x,idx_part_y = np.unravel_index(rng.choice(np.arange(Nx*Ny), size=Nparticles, p=conc/np.sum(conc), replace=True), (Nx,Ny))
+        conc = np.zeros(Nx*Ny) #0 * (q['source_flag'] * q['source_conc']).flatten()
+        idx_part_x,idx_part_y = np.unravel_index(rng.choice(np.arange(Nx*Ny), size=Nparticles, ), (Nx,Ny)) #p=conc/np.sum(conc), replace=True), (Nx,Ny))
         #print(f'{idx_part_x = }')
         #print(f'{idx_part_y = }')
         # Tracer positions (in general, draw from the sources)
