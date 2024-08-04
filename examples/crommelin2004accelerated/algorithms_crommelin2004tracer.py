@@ -152,26 +152,29 @@ class Crommelin2004TracerODEDirectNumericalSimulation(algorithms.ODEDirectNumeri
         return
     def plot_dns_local_concs(self, outfile, tspan_phys=None):
         tu = self.ens.dynsys.dt_save
+        b = self.ens.dynsys.config['b']
         obslib = self.ens.dynsys.observable_props()
         nmem = self.ens.get_nmem()
         if tspan_phys is None:
             _,fin_time = self.ens.get_member_timespan(nmem-1)
-            tspan = [fin_time-int(400/tu),fin_time]
+            tspan = [fin_time-int(800/tu),fin_time]
         else:
             tspan = [int(t/tu) for t in tspan_phys]
         print(f'{tspan = }')
 
         # --------- Plot some local concentrations ------
-        fig,axes = plt.subplots(ncols=1, figsize=(8,3))
-        ax = axes
-        handles = []
         #locs = [(5.0,1.0),(3.0,0.4),(3.0,1.0)]
-        locs = [(2*np.pi*a,1.2) for a in [1/8,3/8,5/8,7/8]]
-        for i_loc,(x,y) in enumerate(locs):
-            obs_fun = lambda t,state: self.ens.dynsys.local_conc(t,state,x,y)
-            label = r'$c(%.1f,%.1f)$'%(x,y)
-            h = self.plot_obs_segment(obs_fun, tspan, fig, ax, label=label)
-            handles.append(h)
+        lons = [2*np.pi*a for a in [1/8,3/8,5/8,7/8]]
+        lats = [np.pi*b*a for b in [1/8,3/8,5/8/7/8]]
+        fig,axes = plt.subplots(ncols=2,nrows=len(lats), figsize=(12,3*len(lats)), width_ratios=[3,1])
+        for i_lat,lat in enumerate(lats):
+            ax = axes[len(lats)-1-i_lat]
+            handles = []
+            for i_lon,lon in enumerate(lons):
+                obs_fun = lambda t,state: self.ens.dynsys.local_conc(t,state,lon,lat)
+                label = r'$c(%.1f,%.1f)$'%(x,y)
+                h = self.plot_obs_segment(obs_fun, tspan, fig, ax, label=label)
+                handles.append(h)
         ax.set_xlabel('Time')
         ax.legend(handles=handles, bbox_to_anchor=(1,1), loc='upper left')
         fig.savefig(outfile, **pltkwargs)

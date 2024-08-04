@@ -53,7 +53,7 @@ def dns_paramset(i_expt):
         'seed_max': 100000,
         'seed_inc_init': seed_inc,
         'max_member_duration_phys': 500.0,
-        'num_chunks_max': 1,
+        'num_chunks_max': 6,
         })
     return config_dynsys,config_algo,expt_label,expt_abbrv
 
@@ -61,8 +61,8 @@ def dns_single_workflow(i_expt):
     config_dynsys,config_algo,expt_label,expt_abbrv = dns_paramset(i_expt)
     # Organize output directories
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/crommelin2004accelerated"
-    date_str = "2024-08-03"
-    sub_date_str = "2"
+    date_str = "2024-08-04"
+    sub_date_str = "0"
     param_abbrv_dynsys,param_label_dynsys = Crommelin2004TracerODE.label_from_config(config_dynsys)
     param_abbrv_algo,param_label_algo = C04ODEDNS.label_from_config(config_algo)
     obslib = Crommelin2004TracerODE.observable_props()
@@ -295,8 +295,8 @@ def dns_single_procedure(i_expt):
     print(f'{config_dynsys["frc"] = }')
     print('done')
 
-    tspan_phys = [0,500]
-    tspan_phys_anim = [450,500]
+    tspan_phys = [500,3000]
+    tspan_phys_anim = [2900,3000]
 
     if tododict['run']:
         print(f'About to run DNS')
