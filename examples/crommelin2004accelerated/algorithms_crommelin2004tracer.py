@@ -150,33 +150,44 @@ class Crommelin2004TracerODEDirectNumericalSimulation(algorithms.ODEDirectNumeri
         fig.savefig(outfile, **pltkwargs)
         plt.close(fig)
         return
-    def plot_dns_local_concs(self, outfile, tspan_phys=None):
+    def plot_dns_local_concs(self, outfile, tspan_phys_display=None, tspan_phys_stats=None):
         tu = self.ens.dynsys.dt_save
         b = self.ens.dynsys.config['b']
         obslib = self.ens.dynsys.observable_props()
         nmem = self.ens.get_nmem()
-        if tspan_phys is None:
+        if tspan_phys_display is None:
             _,fin_time = self.ens.get_member_timespan(nmem-1)
-            tspan = [fin_time-int(800/tu),fin_time]
+            tspan_display = [fin_time-int(800/tu),fin_time]
+            tspan_stats = [fin_time-int(800/tu),fin_time]
         else:
-            tspan = [int(t/tu) for t in tspan_phys]
-        print(f'{tspan = }')
+            tspan_display = [int(t/tu) for t in tspan_phys_display]
+            tspan_stats = [int(t/tu) for t in tspan_phys_stats]
 
         # --------- Plot some local concentrations ------
         #locs = [(5.0,1.0),(3.0,0.4),(3.0,1.0)]
-        lons = [2*np.pi*a for a in [1/8,3/8,5/8,7/8]]
-        lats = [np.pi*b*a for b in [1/8,3/8,5/8/7/8]]
+        lons = [2*np.pi*frac for frac in [1/8,3/8,5/8,7/8]]
+        lats = [np.pi*b*frac for frac in [1/8,3/8,5/8/7/8]]
+        lon_colors = plt.cm.Set1(np.arange(len(lons)))
         fig,axes = plt.subplots(ncols=2,nrows=len(lats), figsize=(12,3*len(lats)), width_ratios=[3,1])
         for i_lat,lat in enumerate(lats):
-            ax = axes[len(lats)-1-i_lat]
             handles = []
             for i_lon,lon in enumerate(lons):
+                ax = axes[len(lats)-1-i_lat, 0]
                 obs_fun = lambda t,state: self.ens.dynsys.local_conc(t,state,lon,lat)
-                label = r'$c(%.1f,%.1f)$'%(x,y)
-                h = self.plot_obs_segment(obs_fun, tspan, fig, ax, label=label)
+                label = r'$c(%.1f,%.1f)$'%(lon,lat)
+                h = self.plot_obs_segment(obs_fun, tspan_display, fig, ax, label=label, color=lon_colors[i_lon])
                 handles.append(h)
-        ax.set_xlabel('Time')
-        ax.legend(handles=handles, bbox_to_anchor=(1,1), loc='upper left')
+                ax = axes[len(lats)-1-i_lat, 1]
+                time,memset,tidx = self.get_member_subset(tspan_stats)
+                obs_vals = np.concatenate(tuple(self.ens.compute_observables([obs_fun], mem)[0] for mem in memset), axis=0)[tidx]
+                hist,bin_edges = np.histogram(obs_vals, bins=20)
+                bin_mids = (bin_edges[:-1]+bin_edges[1:])/2
+                ax.plot(hist, bin_mids, color=lon_colors[i_lon])
+                ax.set_xscale('log')
+
+        axes[-1,0].set_xlabel('Time')
+        axes[-1,1].set_xlabel('Prob. dens.')
+        fig.legend(handles=handles, bbox_to_anchor=(0.5,0), loc='upper center')
         fig.savefig(outfile, **pltkwargs)
         plt.close(fig)
         return

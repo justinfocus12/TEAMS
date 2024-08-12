@@ -61,7 +61,7 @@ def dns_single_workflow(i_expt):
     config_dynsys,config_algo,expt_label,expt_abbrv = dns_paramset(i_expt)
     # Organize output directories
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/crommelin2004accelerated"
-    date_str = "2024-08-04"
+    date_str = "2024-08-12"
     sub_date_str = "0"
     param_abbrv_dynsys,param_label_dynsys = Crommelin2004TracerODE.label_from_config(config_dynsys)
     param_abbrv_algo,param_label_algo = C04ODEDNS.label_from_config(config_algo)
@@ -296,6 +296,8 @@ def dns_single_procedure(i_expt):
     print('done')
 
     tspan_phys = [500,3000]
+    tspan_phys_stats = [500,3000]
+    tspan_phys_display = [2000,3000]
     tspan_phys_anim = [2900,3000]
 
     if tododict['run']:
@@ -305,25 +307,25 @@ def dns_single_procedure(i_expt):
     
     if tododict['plot_segment']:
         outfile = join(dirdict['plots'],'dns_components.png')
-        alg.plot_dns_segment(outfile, tspan_phys=tspan_phys)
+        alg.plot_dns_segment(outfile, tspan_phys=tspan_phys_display)
     if tododict['plot_dns_particle_counts']:
         # Plot particle counts
         outfile = join(dirdict['plots'],'dns_particle_counts.png')
-        alg.plot_dns_particle_counts(outfile, tspan_phys=tspan_phys)
+        alg.plot_dns_particle_counts(outfile, tspan_phys=tspan_phys_display)
     if tododict['plot_dns_local_concs']:
         # Plot particle counts
         outfile = join(dirdict['plots'],'dns_local_concentrations.png')
-        alg.plot_dns_local_concs(outfile, tspan_phys=tspan_phys)
+        alg.plot_dns_local_concs(outfile, tspan_phys_display=tspan_phys_display, tspan_phys_stats=tspan_phys_stats)
     if tododict['plot_dns_concs_hovmoller']:
         # Plot particle counts
         outfile = join(dirdict['plots'],'dns_concentrations_hovmoller.png')
-        alg.plot_dns_concs_hovmoller(outfile, tspan_phys=tspan_phys)
+        alg.plot_dns_concs_hovmoller(outfile, tspan_phys=tspan_phys_display)
     if tododict['plot_dns_spatial_stats']:
         outfile = join(dirdict['plots'], 'dns_spatial_stats.png')
-        alg.plot_dns_spatial_stats(outfile, tspan_phys=tspan_phys)
+        alg.plot_dns_spatial_stats(outfile, tspan_phys=tspan_phys_stats)
     if tododict['plot_tracer_traj']:
         outfile = join(dirdict['plots'],'dns_tracer_traj.png')
-        alg.plot_tracer_traj(outfile, tspan_phys=tspan_phys_anim)
+        alg.plot_tracer_traj(outfile, tspan_phys=tspan_phys_display)
     if tododict['animate_segment']:
         outfile_prefix = join(dirdict['plots'],'dns_streamfunction')
         alg.animate_dns_segment(outfile_prefix, tspan_phys=tspan_phys_anim)
@@ -347,7 +349,6 @@ if __name__ == "__main__":
         shp = tuple(len(mp) for mp in multiparams)
         print(f'{shp = }')
         idx_expt = [np.ravel_multi_index((i_seed_inc,i_x1star,i_r,i_gamma), shp)]
-        print
     if procedure == 'single':
         for i_expt in idx_expt:
             dns_single_procedure(i_expt)

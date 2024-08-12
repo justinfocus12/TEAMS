@@ -510,7 +510,7 @@ class Crommelin2004TracerODE(ODESystem):
             source_relative_width = 1/32,
             Nparticles = 128,
             low_lat_prod_rate = 1.0,
-            glob_diss_rate = 0.01,
+            glob_diss_rate = 1/400,
             ))
         return cfg
     @staticmethod
