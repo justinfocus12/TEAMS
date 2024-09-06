@@ -58,7 +58,7 @@ def print_comp_proc(compproc):
 
 def dns_multiparams():
     seed_incs = [0]
-    sigmas = [0.0,0.01,0.1,0.3,0.5]
+    sigmas = [0.0,0.01,0.1,0.3,0.4,0.5]
     taus = [tau_hrs * 3600 for tau_hrs in [6]]
     Ls = [L_km * 1000 for L_km in [500]]
     return seed_incs,sigmas,taus,Ls
@@ -625,8 +625,8 @@ def dns_meta_procedure(idx_expt):
 
 def dns_single_procedure(i_expt):
     tododict = dict({
-        'run':                            0,
-        'plot_snapshots':                 0,
+        'run':                            1,
+        'plot_snapshots':                 1,
         'plot_timeseries':                1,
         'compute_basic_stats':            1,
         'compute_extreme_stats':          1,

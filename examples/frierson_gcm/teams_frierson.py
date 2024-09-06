@@ -79,8 +79,8 @@ def teams_paramset(i_expt):
 
 
     config_algo = dict({
-        'num_levels_max': 512-64, # This parameter shouldn't affect the filenaming or anything like that 
-        'num_members_max': 512,
+        'num_levels_max': 768-64, # This parameter shouldn't affect the filenaming or anything like that 
+        'num_members_max': 768,
         'num_active_families_min': 2,
         'seed_min': 1000,
         'seed_max': 100000,
@@ -583,8 +583,8 @@ def run_teams(dirdict,filedict,config_gcm,config_algo):
 def teams_multiseed_procedure(i_sigma,i_delta,i_slm,idx_seed,overwrite_reference=False): # Just different seeds for now
     tododict = dict({
         'score_distribution': 1,
-        'boost_distribution': 0,
-        'boost_composites':   0,
+        'boost_distribution': 1,
+        'boost_composites':   1,
         })
     # Figure out which flat indices corresond to this set of seeds
     multiparams = teams_multiparams()
@@ -788,7 +788,7 @@ if __name__ == "__main__":
         for i_expt in idx_expt:
             teams_single_procedure(i_expt)
     elif procedure == 'multiseed':
-        idx_seed = list(range(16))
+        idx_seed = list(range(12))
         i_sigma = 0
         i_slm = 0
         i_delta = int(sys.argv[2])

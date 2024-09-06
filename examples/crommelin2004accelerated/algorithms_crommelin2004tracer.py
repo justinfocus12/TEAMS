@@ -166,7 +166,7 @@ class Crommelin2004TracerODEDirectNumericalSimulation(algorithms.ODEDirectNumeri
         # --------- Plot some local concentrations ------
         #locs = [(5.0,1.0),(3.0,0.4),(3.0,1.0)]
         lons = [2*np.pi*frac for frac in [1/8,3/8,5/8,7/8]]
-        lats = [np.pi*b*frac for frac in [1/8,3/8,5/8/7/8]]
+        lats = [np.pi*b*frac for frac in [1/8,3/8,5/8,7/8]]
         lon_colors = plt.cm.Set1(np.arange(len(lons)))
         fig,axes = plt.subplots(ncols=2,nrows=len(lats), figsize=(12,3*len(lats)), width_ratios=[3,1])
         for i_lat,lat in enumerate(lats):

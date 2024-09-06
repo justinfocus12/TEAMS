@@ -58,7 +58,7 @@ def ange_paramset(i_param):
 
     # Parameters to loop over
     pert_types = ['SPPT'] * 5
-    std_sppts = [0.01,0.1,0.3,0.5]
+    std_sppts = [0.01,0.1,0.3,0.4,0.5]
     tau_sppts = [6.0*3600] * 5
     L_sppts = [500.0*1000] * 5
     seed_incs = [0] * 5
@@ -321,10 +321,10 @@ def measure_running_max(config_analysis, alg, dirdict):
 
 def ange_single_procedure(i_expt):
     tododict = dict({
-        'run':             0,
+        'run':             1,
         'analysis': dict({
-            'observable_spaghetti':     0,
-            'observable_distribution':  0,
+            'observable_spaghetti':     1,
+            'observable_distribution':  1,
             'observable_running_max':   1,
             'dispersion':               0,
             }),
@@ -351,7 +351,7 @@ if __name__ == "__main__":
         idx_param = [int(arg) for arg in sys.argv[2:]]
     else:
         procedure = 'single'
-        idx_param = [2] #list(range(1,21))
+        idx_param = [3] #list(range(1,21))
     print(f'Got into Main')
     if procedure == 'single':
         for i_param in idx_param:
