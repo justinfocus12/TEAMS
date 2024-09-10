@@ -147,10 +147,12 @@ class FriersonGCM(DynamicalSystem):
                 lat_max = 32,
                 num_fourier = 21,
                 num_spherical = 22,
+                num_levels = 6,
+                vert_coord_option = "6level",
                 ),
             "main_nml": dict(
                 hours =  0,
-                dt_atmos =  600
+                dt_atmos =  2400
                 ),
             "atmosphere_nml": dict(
                 two_stream =  True,

@@ -58,7 +58,7 @@ def print_comp_proc(compproc):
 
 def dns_multiparams():
     seed_incs = [0]
-    sigmas = [0.0,0.01,0.1,0.3,0.4,0.5]
+    sigmas = [0.0,0.01,0.1,0.2,0.3,0.4,0.5]
     taus = [tau_hrs * 3600 for tau_hrs in [6]]
     Ls = [L_km * 1000 for L_km in [500]]
     return seed_incs,sigmas,taus,Ls
@@ -286,7 +286,7 @@ def dns_single_workflow(i_expt):
             }),
         })
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
-    date_str = "2024-07-07"
+    date_str = "2024-09-10"
     sub_date_str = "0"
     dirdict = dict()
     dirdict['expt'] = join(scratch_dir,date_str,sub_date_str,param_abbrv_gcm,param_abbrv_algo)
@@ -303,7 +303,7 @@ def dns_single_workflow(i_expt):
 
 def run_dns(dirdict,filedict,config_gcm,config_algo):
     nproc = 4
-    recompile = False
+    recompile = True
     root_dir = dirdict['data']
     obs_fun = lambda t,x: None
 
