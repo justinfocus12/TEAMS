@@ -1,7 +1,8 @@
 import numpy as np
 from numpy.random import default_rng
-from scipy.special import logsumexp
+from scipy.special import logsumexp, gamma as GammaFunction
 from scipy.stats import genextreme as spgex, beta as spbeta
+from scipy.optimize import fsolve,bisect
 
 def find_true_in_dict(d):
     # Thanks Bing Chat
@@ -94,9 +95,88 @@ def compute_block_maxima(x,T):
     m = np.max(x[:(nb*T)].reshape((nb,T) + shp[1:]), axis=1)
     return m
 
-def fit_gev_distn(block_maxima):
-    neg_shape,loc,scale = spgex.fit(block_maxima)
-    return -neg_shape,loc,scale
+def fit_gev_distn(block_maxima, method="PWM"):
+    if method == "MLE":
+        neg_shape,loc,scale = spgex.fit(block_maxima)
+        shape = -neg_shape
+    elif method == "PWM":
+        shape,loc,scale = estimate_gev_params_one_ensemble(block_maxima, np.zeros(len(block_maxima)), method="PWM")
+
+    return shape,loc,scale
+
+def estimate_gev_params_one_ensemble(Xall,logWall,max_num_uniform=1e5,min_level=None,method="PWM"):
+
+    if min_level is None: min_level = -np.inf
+    idx = np.where(Xall > min_level)[0]
+    X = Xall[idx]
+    log_weights = logWall[idx]
+    logwnorm = log_weights - logsumexp(log_weights)
+
+    if method == "MLE":
+        # Replicate samples by inflating weights to all be approximate integers
+        num_uniform = int(min(1/np.exp(np.min(logwnorm)), max_num_uniform)+0.5)
+        print(f"num_uniform = {num_uniform}")
+
+        weights_inflated = np.maximum(1, (wnorm*num_uniform)).astype(int)
+        X_inflated = np.repeat(X, weights_inflated)
+        print(f"len(bmi) = {len(X_inflated)}")
+        shape,loc,scale = spgex.fit(X_inflated)
+        shape *= -1 # switch conventions 
+        print(f"from {len(X_inflated)} in range ({min(X_inflated),max(X_inflated)}): shape,loc,scale = {shape,loc,scale}")
+    elif method == "PWM":
+        # Use the method of Hosking et al 1985
+        # Estimate the first three PWMs (beta0, beta1, beta2) by (b0, b1, b2)
+        order = np.argsort(X)
+        logWord = logwnorm[order]
+        Xord = X[order]
+        logFord = np.logaddexp.accumulate(logWord) # - np.exp(logWord/2 # TODO is this the proper estimator?
+        b0 = np.exp(logsumexp(logWord, b=Xord)) #np.sum(Word * Xord)
+        b1 = np.exp(logsumexp(logWord + logFord, b=Xord))#np.sum(Word * Xord * Ford)
+        b2 = np.exp(logsumexp(logWord + 2*logFord, b=Xord))#np.sum(Word * Xord * Ford**2)
+        # Solve for the shape, location, and scale parameters. Don't use the linear approximation, but
+        b_ratio = (3*b2 - b0)/(2*b1 - b0)
+        if b_ratio <= 0.0:
+            # TODO come up with the best possible alternative...xi is a very large number, probably 
+            raise Exception(f"The L-moment method has no solution; {b_ratio = }")
+        # Choose initialization for solver
+        tol = 1e-2
+        psf0 = pwm_shape_func(0,b_ratio) 
+        if psf0 == 0:
+            shape = 0.0
+        elif psf0 < 0: # shape > 0
+            lower = 0.0
+            upper = 1.0
+            while pwm_shape_func(upper,b_ratio) < 0.0:
+                upper *= 2.0
+        else: # shape < 0
+            lower = -1.0
+            upper = 0.0
+            while pwm_shape_func(lower,b_ratio) > 0.0:
+                lower *= 2.0
+        shape,root_result = bisect(pwm_shape_func, lower, upper, args=(b_ratio,), full_output=True, disp=True)
+
+        g = GammaFunction(1 - shape)
+        if shape == 0:
+            scale = (2*b1 - b0)/np.log(2)
+            loc = b0 - 0.5772*scale
+        else:
+            scale = shape*(2*b1 - b0)/((2**shape-1) * g)
+            loc = b0 + scale*(1 - g)/shape
+
+
+    gev_params = np.array([shape,loc,scale])
+    #print(f"After fitting with method {method}, (shape,loc,scale) = \n{gev_params}")
+        
+    return gev_params
+
+def pwm_shape_func(shape,b_ratio): # The function to solve: (3**shape-1)/(2**shape-1) - (3*b2-b0)/(2*b1-b0)
+    if np.abs(shape) < 1e-6:
+        return np.log(3)/np.log(2)*(1 + np.log(3/2)/2*shape - np.log(6)/4*shape**2) - b_ratio
+        # Use local quadratic approximation
+    return (3**shape - 1)/(2**shape - 1) - b_ratio
+
+def hosking_shape_fprime_log(k, log_b_ratio):
+    return np.log(3)/(3**k-1) - np.log(2)/(2**k-1)
 
 def gev_return_time(x,T,shape,loc,scale):
     logsf = spgex.logsf(x,-shape,loc=loc,scale=scale)

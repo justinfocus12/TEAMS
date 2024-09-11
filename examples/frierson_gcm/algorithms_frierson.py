@@ -109,6 +109,19 @@ class FriersonGCMTEAMS(algorithms.TEAMS):
             buick_choices = rng_buick_choice.choice(np.arange(angel.num_buicks, dtype=int), size=config['population_size'], replace=False)
         return buick_choices
     @classmethod
+    def initialize_from_dns(cls, dns, config, ens):
+        init_conds = []
+        init_times = []
+
+        dns_tinits,dns_tfins = dns.ens.get_member_timespans()
+        tu = dns.ens.dynsys.dt_save
+        spinup_phys = 500.0
+        parent = np.where(dns_tinits*tu > spinup_phys)[0][0]
+        for i_anc in range(config['population_size']):
+            init_cond = relpath(join(dns.ens.root_dir, dns.ens.traj_metadata[parent]['icandf']['init_cond']), ens.root_dir)
+            init_conds.append(init_cond)
+            init_times.append
+    @classmethod
     def initialize_from_ancestorgenerator(cls, angel, config, ens):
         init_conds = []
         init_times = []

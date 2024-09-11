@@ -648,7 +648,9 @@ class FriersonGCM(DynamicalSystem):
         # Clip the time axis to contain exactly an integer multiple of the block size
         clip_size = np.mod(fxt['time'].size, time_block_size)
         f_subsel = fxt.isel(time=slice(clip_size,None))
+        print(f"Concatenating...")
         fconcat = np.concatenate(tuple(f_subsel.isel(lon=i_lon).to_numpy() for i_lon in idx_lon))
+        print(f"Done concatenating")
         return utils.compute_returnstats_and_histogram(fconcat, time_block_size, bounds=bounds)
     @staticmethod
     def observable_props():

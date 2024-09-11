@@ -513,7 +513,7 @@ def compare_extreme_stats(workflows,config_meta_analysis,meta_dirdict):
             sigmas_idx = np.array([sigmas[i] for i in idx])
             handles_curves = []
             shapes,locs,scales = (np.zeros(len(idx)) for _ in range(3))
-            ax = axes_curves[i_group]
+            ax = axes_curves if len(Ltau_idx_groups)==1 else axes_curves[i_group]
             for ii,i in enumerate(idx):
                 extstats = np.load(join(workflows['dirdicts'][i]['analysis'],r'extstats_zonsym_%s.npz'%(obs_props['abbrv'])))
                 shapes[ii],locs[ii],scales[ii] = extstats['shape'],extstats['loc'],extstats['scale']
@@ -526,7 +526,8 @@ def compare_extreme_stats(workflows,config_meta_analysis,meta_dirdict):
             ax.set_xlabel('Return time [days]')
             ax.set_xlim([30,20000])
             ax.set_xscale('log')
-            axes_curves[-1].legend(handles=handles_curves,loc=(1,0))
+            if i_group == len(Ltau_idx_groups)-1:
+                ax.legend(handles=handles_curves,loc=(1,0))
 
             # GEV parameters
             ax = axes_gevpar[0]
@@ -558,10 +559,11 @@ def compute_extreme_stats(config_analysis, alg, dirdict):
     all_starts,all_ends = alg.ens.get_all_timespans()
     mems2summarize = np.where(all_starts >= spinup)[0]
     for obs_name,obs_props in config_analysis['observables_onelat_zonsym'].items():
+        print(f"----------Starting extreme stats analysis for {obs_name}--------------")
         fun = lambda ds: obs_props['fun'](ds, **obs_props['kwargs'])
         fxt = xr.concat(tuple(alg.ens.compute_observables([fun], mem)[0] for mem in mems2summarize), dim='time')
         lon_roll_step_requested = config_analysis['lon_roll_step']
-        bin_lows,hist,rtime,logsf,rtime_gev,logsf_gev,shape,loc,scale = alg.ens.dynsys.compute_stats_dns_rotsym(fxt, lon_roll_step_requested, time_block_size)
+        bin_lows,hist,rtime,logsf,rtime_gev,logsf_gev,shape,loc,scale = alg.ens.dynsys.compute_stats_dns_zonsym(fxt, lon_roll_step_requested, time_block_size)
         extstats = dict({'bin_lows': bin_lows, 'hist': hist, 'rtime': rtime, 'logsf': logsf, 'rtime_gev': rtime_gev, 'logsf_gev': logsf_gev, 'shape': shape, 'loc': loc, 'scale': scale})
         np.savez(join(dirdict['analysis'],r'extstats_zonsym_%s.npz'%(obs_props['abbrv'])), **extstats)
         # Plot 
@@ -596,7 +598,7 @@ def dns_meta_workflow(idx_param):
         workflows[key] = tuple(workflow_tuple[j][i_key] for j in range(len(workflow_tuple)))
     print(f'{workflows.keys() = }')
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
-    date_str = "2024-03-26"
+    date_str = "2024-09-10"
     sub_date_str = "0"
     meta_dirdict = dict()
     meta_dirdict['meta'] = join(scratch_dir,date_str,sub_date_str,'meta')
@@ -625,10 +627,10 @@ def dns_meta_procedure(idx_expt):
 
 def dns_single_procedure(i_expt):
     tododict = dict({
-        'run':                            1,
-        'plot_snapshots':                 1,
-        'plot_timeseries':                1,
-        'compute_basic_stats':            1,
+        'run':                            0,
+        'plot_snapshots':                 0,
+        'plot_timeseries':                0,
+        'compute_basic_stats':            0,
         'compute_extreme_stats':          1,
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = dns_single_workflow(i_expt)
