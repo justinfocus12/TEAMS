@@ -1,4 +1,5 @@
 import numpy as np
+from pprint import pprint
 from numpy.random import default_rng
 import pickle
 from scipy import sparse as sps
@@ -26,6 +27,7 @@ import utils
 
 
 def dns_multiparams():
+    # default: (0,1,3,1)
     seed_incs = [0]
     x1stars = [6.0, 0.95]
     rs = [0.0,-0.2,-0.4,-0.801]
@@ -61,7 +63,7 @@ def dns_single_workflow(i_expt):
     config_dynsys,config_algo,expt_label,expt_abbrv = dns_paramset(i_expt)
     # Organize output directories
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/crommelin2004accelerated"
-    date_str = "2024-08-12"
+    date_str = "2024-09-11"
     sub_date_str = "0"
     param_abbrv_dynsys,param_label_dynsys = Crommelin2004TracerODE.label_from_config(config_dynsys)
     param_abbrv_algo,param_label_algo = C04ODEDNS.label_from_config(config_algo)
@@ -286,7 +288,7 @@ def dns_single_procedure(i_expt):
         'plot_dns_spatial_stats':   1,
         'plot_tracer_traj':         1,
         'animate_segment':          1,
-        'return_stats':             0,
+        'return_stats':             1,
         })
 
     # Quantities of interest for statistics. These should be registered as observables under the system.
@@ -294,6 +296,8 @@ def dns_single_procedure(i_expt):
     config_dynsys,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = dns_single_workflow(i_expt)
     print(f'{config_dynsys["frc"] = }')
     print('done')
+    print(f'Config of model = ')
+    pprint(config_dynsys)
 
     tspan_phys = [500,3000]
     tspan_phys_stats = [500,3000]

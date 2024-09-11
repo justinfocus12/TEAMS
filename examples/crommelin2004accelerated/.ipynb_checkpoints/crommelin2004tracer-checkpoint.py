@@ -515,7 +515,7 @@ class Crommelin2004TracerODE(ODESystem):
         return cfg
     @staticmethod
     def label_from_config(cfg):
-        abbrv_x1star = (r"x1st%g_r%g_src%g_sink%g"%(cfg['x1star'],cfg['r'],cfg['low_lat_prod_rate'],cfg['glob_diss_rate'],)).replace(".","p")
+        abbrv_x1star = (r"x1st%g_r%g_src%g_sink%g"%(cfg['x1star'],cfg['r'],cfg['low_lat_prod_rate'],cfg['glob_diss_rate'])).replace(".","p")
         abbrv_gamma = (r'gam%gto%g'%(cfg['gamma_limits'][0],cfg['gamma_limits'][1])).replace('.','p')
         label_physpar = r"$x_1^*=%g,\ r=%g \n \gamma\in[%g,%g],\ \beta=%g$"%(
                 cfg['x1star'],
@@ -531,11 +531,10 @@ class Crommelin2004TracerODE(ODESystem):
         label_noise_mode = ""
         if len(w['modes']) > 0:
             abbrv_noise_mode = "mode"
-            abbrv_noise_mode += "-".join([f"{m:g}" for m in w['modes']]) 
+            abbrv_noise_mode += "-".join([f"{m:g}" for m in w['modes']]) + "_"
         else:
             abbrv_noise_mode= "modenil"
-        abbrv_fvgrid = r"fvgrid%dx%d"%(cfg['Nxfv'],cfg['Nyfv'])
-        abbrv = "_".join([abbrv_x1star,abbrv_gamma,abbrv_noise_type,abbrv_noise_mode,abbrv_fvgrid]).replace('.','p')
+        abbrv = "_".join([abbrv_x1star,abbrv_gamma,abbrv_noise_type,abbrv_noise_mode]).replace('.','p')
         label = "\n".join([label_physpar,label_noise_type,label_noise_mode])
 
         return abbrv,label
@@ -644,7 +643,7 @@ class Crommelin2004TracerODE(ODESystem):
         (self.s_lag,self.u_lag,self.v_lag) = (np.zeros(Nparticles) for _ in range(3))
         self.death_flag = np.zeros(Nparticles, dtype=bool)
         return 
-    # This is the non-numba version
+    # TODO jit-compile this with numba
     def timestep_finvol(self, state_next, t, state):
         q = self.timestep_constants
 
@@ -695,7 +694,6 @@ class Crommelin2004TracerODE(ODESystem):
             )
         return tp_save, state_save
 
-    # non-numba version 
     def timestep_monotone(self, state_next, t, state):
         q = self.timestep_constants
 
@@ -873,32 +871,32 @@ class Crommelin2004TracerODE(ODESystem):
         obslib = dict({
             'c1y': dict({
                 'abbrv': 'c1y',
-                'label': r'$\cos(y/b)$',
+                'label': r'$\langle\psi,\cos(y/b)\rangle$',
                 'cmap': 'coolwarm',
                 }),
             'c2y': dict({
                 'abbrv': 'c2y',
-                'label': r'$\cos(2y/b)$',
+                'label': r'$\langle\psi,\cos(2y/b)\rangle$',
                 'cmap': 'coolwarm',
                 }),
             'c1xs1y': dict({
                 'abbrv': 'c1xs1y',
-                'label': r'$\cos(x)\sin(y/b)$',
+                'label': r'$\langle\psi,\cos(x)\sin(y/b)\rangle$',
                 'cmap': 'coolwarm',
                 }),
             's1xs1y': dict({
                 'abbrv': 's1xs1y',
-                'label': r'$\sin(x)\sin(y/b)$',
+                'label': r'$\langle\psi,\sin(x)\sin(y/b)\rangle$',
                 'cmap': 'coolwarm',
                 }),
             'c1xs2y': dict({
                 'abbrv': 'c1xs2y',
-                'label': r'$\cos(x)\sin(2y/b)$',
+                'label': r'$\langle\psi,\cos(x)\sin(2y/b)\rangle$',
                 'cmap': 'coolwarm',
                 }),
             's1xs2y': dict({
                 'abbrv': 's1xs2y',
-                'label': r'$\sin(x)\sin(2y/b)$',
+                'label': r'$\langle\psi,\sin(x)\sin(2y/b)\rangle$',
                 'cmap': 'coolwarm',
                 }),
             })
