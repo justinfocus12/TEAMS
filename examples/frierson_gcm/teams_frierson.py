@@ -54,7 +54,7 @@ print(f'{i = }'); i += 1
 import algorithms_frierson; reload(algorithms_frierson)
 
 def teams_multiparams():
-    seed_incs = list(range(16))
+    seed_incs = list(range(16,32))
     sigmas = [0.3]
     deltas_phys = [0.0,4.0,5.0,6.0,7.0,8.0,10.0]
     split_landmarks = ['thx']
@@ -79,8 +79,8 @@ def teams_paramset(i_expt):
 
 
     config_algo = dict({
-        'num_levels_max': 768-64, # This parameter shouldn't affect the filenaming or anything like that 
-        'num_members_max': 768,
+        'num_levels_max': 512-64, # This parameter shouldn't affect the filenaming or anything like that 
+        'num_members_max': 512,
         'num_active_families_min': 2,
         'seed_min': 1000,
         'seed_max': 100000,
@@ -252,7 +252,7 @@ def teams_single_workflow(i_expt):
 
     # Set up directories
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
-    date_str = "2024-07-07"
+    date_str = "2024-09-10"
     sub_date_str = "0"
     dirdict = dict()
     dirdict['expt'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_gcm, param_abbrv_algo)
@@ -264,8 +264,8 @@ def teams_single_workflow(i_expt):
     filedict = dict()
     # Initial conditions
     filedict['angel'] = join(
-            f'/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/2024-07-07/0/',
-            param_abbrv_gcm, 'AnGe_si0_Tbrn50_Thrz30', 'data',
+            f'/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/2024-09-10/0',
+            param_abbrv_gcm, 'DNS_si0', 'data',
             'alg.pickle') 
     # Algorithm manager
     filedict['alg'] = join(dirdict['data'], 'alg.pickle')
@@ -439,6 +439,7 @@ def plot_scorrelations(config_analysis, alg, dirdict, filedict, expt_label):
     scmax_buick = np.zeros(alg.population_size)
     for i in range(alg.population_size):
         if angel.branching_state['num_branches_generated'][i] > 0:
+            # TODO fix this so it works on DNS sources too 
             mem_buick = next(angel.ens.memgraph.successors(angel.branching_state['generation_0'][i]))
             scmax_buick[i] = np.nanmax(angel.ens.compute_observables([score_fun], mem_buick)[0][:alg.time_horizon])
     fig,axes = plt.subplots(nrows=2, figsize=(6,12))
@@ -558,7 +559,8 @@ def run_teams(dirdict,filedict,config_gcm,config_algo):
     else:
         gcm = frierson_gcm.FriersonGCM(config_gcm, recompile=recompile)
         ens = ensemble.Ensemble(gcm, root_dir=root_dir)
-        alg = algorithms_frierson.FriersonGCMTEAMS.initialize_from_ancestorgenerator(angel, config_algo, ens)
+        #alg = algorithms_frierson.FriersonGCMTEAMS.initialize_from_ancestorgenerator(angel, config_algo, ens)
+        alg = algorithms_frierson.FriersonGCMTEAMS.initialize_from_dns(angel, config_algo, ens)
 
     alg.ens.dynsys.set_nproc(nproc)
     alg.ens.set_root_dir(root_dir)
@@ -593,26 +595,42 @@ def teams_multiseed_procedure(i_sigma,i_delta,i_slm,idx_seed,overwrite_reference
     for i_multiparam in idx_multiparam:
         i_expt = np.ravel_multi_index(i_multiparam,tuple(len(mp) for mp in multiparams))
         idx_expt.append(i_expt) #list(range(1,21))
-    workflows = tuple(teams_single_workflow(i_expt) for i_expt in idx_expt)
-    configs_gcm,configs_algo,configs_analysis,expt_labels,expt_abbrvs,dirdicts,filedicts = tuple(
-            tuple(workflows[i][j] for i in range(len(workflows)))
-            for j in range(len(workflows[0])))
+    workflows = []
+    configs_gcm,configs_algo,configs_analysis,expt_labels,expt_abbrvs,dirdicts,filedicts = [[] for _ in range(7)]
+    idx_expt_incomplete = []
+    for i_expt in idx_expt:
+        workflow = teams_single_workflow(i_expt)
+        alg_file = workflow[6]['alg']
+        if exists(alg_file):
+            workflows.append(workflow)
+            configs_gcm.append(workflow[0])
+            configs_algo.append(workflow[1])
+            configs_analysis.append(workflow[2])
+            expt_labels.append(workflow[3])
+            expt_abbrvs.append(workflow[4])
+            dirdicts.append(workflow[5])
+            filedicts.append(workflow[6])
+        else:
+            print(f'WARNING alg file for {i_expt = } does not exist')
+            idx_expt_incomplete.append(i_expt)
+    for i_expt in idx_expt_incomplete:
+        idx_expt.remove(i_expt)
     config_gcm = configs_gcm[0]
     config_algo = configs_algo[0]
     
     filedict = dict({
         'angel': filedicts[0]['angel'],
-        'dns': '/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/2024-07-07/0/abs1_resT21_pertSPPT_std0p3_clip2_tau6h_L500km/DNS_si0/data/alg.pickle',
+        'dns': filedicts[0]['angel'], #'/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/2024-07-07/0/abs1_resT21_pertSPPT_std0p3_clip2_tau6h_L500km/DNS_si0/data/alg.pickle',
         })
     config_analysis = configs_analysis[0]
     param_abbrv_gcm,param_label_gcm = frierson_gcm.FriersonGCM.label_from_config(config_gcm)
     param_abbrv_algo,param_label_algo = algorithms_frierson.FriersonGCMTEAMS.label_from_config(config_algo)
     # Set up a meta-dirdict 
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
-    date_str = "2024-07-07"
+    date_str = "2024-09-10"
     sub_date_str = "0"
     dirdict = dict()
-    dirdict['meta'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_gcm, 'meta') 
+    dirdict['meta'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_gcm, param_abbrv_algo) 
     dirdict['data'] = join(dirdict['meta'], 'data')
     dirdict['analysis'] = join(dirdict['meta'], 'analysis')
     dirdict['plots'] = join(dirdict['meta'], 'plots')
@@ -638,7 +656,7 @@ def teams_single_procedure(i_expt):
         'analysis': dict({
             'observable_spaghetti':     1,
             'scorrelation':             1,
-            'fields_2d':                0,
+            'fields_2d':                1,
             }),
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = teams_single_workflow(i_expt)
@@ -788,7 +806,7 @@ if __name__ == "__main__":
         for i_expt in idx_expt:
             teams_single_procedure(i_expt)
     elif procedure == 'multiseed':
-        idx_seed = list(range(12))
+        idx_seed = list(range(16))
         i_sigma = 0
         i_slm = 0
         i_delta = int(sys.argv[2])

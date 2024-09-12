@@ -109,19 +109,6 @@ class FriersonGCMTEAMS(algorithms.TEAMS):
             buick_choices = rng_buick_choice.choice(np.arange(angel.num_buicks, dtype=int), size=config['population_size'], replace=False)
         return buick_choices
     @classmethod
-    def initialize_from_dns(cls, dns, config, ens):
-        init_conds = []
-        init_times = []
-
-        dns_tinits,dns_tfins = dns.ens.get_member_timespans()
-        tu = dns.ens.dynsys.dt_save
-        spinup_phys = 500.0
-        parent = np.where(dns_tinits*tu > spinup_phys)[0][0]
-        for i_anc in range(config['population_size']):
-            init_cond = relpath(join(dns.ens.root_dir, dns.ens.traj_metadata[parent]['icandf']['init_cond']), ens.root_dir)
-            init_conds.append(init_cond)
-            init_times.append
-    @classmethod
     def initialize_from_ancestorgenerator(cls, angel, config, ens):
         init_conds = []
         init_times = []
@@ -136,6 +123,20 @@ class FriersonGCMTEAMS(algorithms.TEAMS):
                     ens.root_dir)
             init_conds.append(init_cond)
             init_times.append(fin_time_parent)
+        return cls(init_times, init_conds, config, ens)
+    @classmethod
+    def initialize_from_dns(cls, dns, config, ens):
+        init_conds = []
+        init_times = []
+
+        dns_tinits,dns_tfins = dns.ens.get_all_timespans()
+        tu = dns.ens.dynsys.dt_save
+        spinup_phys = 500.0
+        first_parent = np.where(dns_tinits*tu > spinup_phys)[0][0]
+        for parent in range(first_parent,first_parent+config['population_size']):
+            init_cond = relpath(join(dns.ens.root_dir, dns.ens.traj_metadata[parent]['icandf']['init_cond']), ens.root_dir)
+            init_conds.append(init_cond)
+            init_times.append(dns_tinits[parent])
         return cls(init_times, init_conds, config, ens)
     def derive_parameters(self, config):
         # Parameterize the score function in a simple way: the components will be area-averages of fields over specified regions. The combined score will be a linear combination.
@@ -253,6 +254,7 @@ class FriersonGCMTEAMS(algorithms.TEAMS):
                         print(f'{i_alg = }, {alg.ens.get_nmem() = }')
                         ancs,descs = alg.collect_ancdesc_pairs_byscore(anc_min,anc_max,desc_min,desc_max)
                         print(f'{len(ancs) = }, {len(descs) = }')
+
                         for i_mem,mem in enumerate(np.concatenate((ancs, descs))):
                             print(f'{mem = }, {alg.branching_state["scores_max"][mem] = }')
                             tinit,tfin = alg.ens.get_member_timespan(mem)
@@ -267,6 +269,8 @@ class FriersonGCMTEAMS(algorithms.TEAMS):
                                 fs_desc.append(f_new)
                                 logw_desc.append(logw_new)
                     # Compute average 
+                    if len(logw_anc) == 0:
+                        continue
                     logw_anc = np.array(logw_anc)
                     logw_anc -= logsumexp(logw_anc)
                     logw_desc = np.array(logw_desc)

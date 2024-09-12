@@ -86,7 +86,7 @@ def dns_paramset(i_expt):
         'seed_max': 100000,
         'seed_inc_init': seed_inc, # will be added to seed_min
         'max_member_duration_phys': 30.0,
-        'num_chunks_max': 256,
+        'num_chunks_max': 1024,
         })
 
     return config_gcm,config_algo,expt_label,expt_abbrv
@@ -303,7 +303,7 @@ def dns_single_workflow(i_expt):
 
 def run_dns(dirdict,filedict,config_gcm,config_algo):
     nproc = 4
-    recompile = True
+    recompile = False
     root_dir = dirdict['data']
     obs_fun = lambda t,x: None
 
@@ -627,10 +627,10 @@ def dns_meta_procedure(idx_expt):
 
 def dns_single_procedure(i_expt):
     tododict = dict({
-        'run':                            0,
-        'plot_snapshots':                 0,
-        'plot_timeseries':                0,
-        'compute_basic_stats':            0,
+        'run':                            1,
+        'plot_snapshots':                 1,
+        'plot_timeseries':                1,
+        'compute_basic_stats':            1,
         'compute_extreme_stats':          1,
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = dns_single_workflow(i_expt)
