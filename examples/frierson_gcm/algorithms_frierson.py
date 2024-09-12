@@ -299,18 +299,18 @@ class FriersonGCMTEAMS(algorithms.TEAMS):
                     vmin_std = -vmax_std
 
                     # ---------------- Plot averages ----------------
-                    fig,axes = plt.subplots(ncols=2, nrows=2, figsize=(16,8), sharey=True, sharex=True)
+                    fig,axes = plt.subplots(ncols=2, nrows=2, figsize=(48,6), sharey=True, sharex=True)
                     ax = axes[0,0]
-                    xr.plot.pcolormesh(f_mean_anc,x='lon',y='lat',cmap=field_props['cmap'],ax=ax,vmin=vmin,vmax=vmax,cbar_kwargs={'orientation': 'vertical','label': None})
+                    xr.plot.contourf(f_mean_anc,x='lon',y='lat',cmap=field_props['cmap'],ax=ax,vmin=vmin,vmax=vmax,cbar_kwargs={'orientation': 'vertical','label': None})
                     ax.set_title(r'Ancestors (scores %g-%g)'%(anc_min,anc_max))
                     ax = axes[0,1]
-                    xr.plot.pcolormesh(f_mean_desc,x='lon',y='lat',cmap=field_props['cmap'],ax=ax,vmin=vmin,vmax=vmax,cbar_kwargs={'orientation': 'vertical','label': None})
+                    xr.plot.contourf(f_mean_desc,x='lon',y='lat',cmap=field_props['cmap'],ax=ax,vmin=vmin,vmax=vmax,cbar_kwargs={'orientation': 'vertical','label': None})
                     ax.set_title(r'Descendants (scores %g-%g)'%(desc_min,desc_max))
                     ax = axes[1,0]
-                    xr.plot.pcolormesh(f_diff_mean,x='lon',y='lat',cmap=field_props['cmap'],vmin=vmin_std,vmax=vmax_std,ax=ax,cbar_kwargs={'orientation': 'vertical','label': None})
+                    xr.plot.contourf(f_diff_mean,x='lon',y='lat',cmap=field_props['cmap'],vmin=vmin_std,vmax=vmax_std,ax=ax,cbar_kwargs={'orientation': 'vertical','label': None})
                     ax.set_title("Mean diff.")
                     ax = axes[1,1]
-                    xr.plot.pcolormesh(f_diff_std,x='lon',y='lat',cmap=field_props['cmap'],vmin=vmin_std,vmax=vmax_std,ax=ax,cbar_kwargs={'orientation': 'vertical','label': None})
+                    xr.plot.contourf(f_diff_std,x='lon',y='lat',cmap=field_props['cmap'],vmin=vmin_std,vmax=vmax_std,ax=ax,cbar_kwargs={'orientation': 'vertical','label': None})
                     ax.set_title("Std. diff.")
                     for ax in axes.flat:
                         ax.set(xlabel='',ylabel='')

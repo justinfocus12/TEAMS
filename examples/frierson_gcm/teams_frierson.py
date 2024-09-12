@@ -54,7 +54,7 @@ print(f'{i = }'); i += 1
 import algorithms_frierson; reload(algorithms_frierson)
 
 def teams_multiparams():
-    seed_incs = list(range(16,32))
+    seed_incs = list(range(32))
     sigmas = [0.3]
     deltas_phys = [0.0,4.0,5.0,6.0,7.0,8.0,10.0]
     split_landmarks = ['thx']
@@ -806,7 +806,7 @@ if __name__ == "__main__":
         for i_expt in idx_expt:
             teams_single_procedure(i_expt)
     elif procedure == 'multiseed':
-        idx_seed = list(range(16))
+        idx_seed = list(range(32))
         i_sigma = 0
         i_slm = 0
         i_delta = int(sys.argv[2])
