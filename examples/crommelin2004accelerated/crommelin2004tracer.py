@@ -228,7 +228,7 @@ def timestep_monotone_external(
         #        )
         conc_next[iflat] *= np.exp(-sink*dt)
         conc_next[iflat] += source[ix,iy]/sink*(-np.expm1(-sink*dt))
-    # Forward Euler for particles
+    # --------- Forward Euler for particles -------------
     compute_streamfunction_lagrangian_external(
             s_lag, u_lag, v_lag, 
             t, s, x_lag, y_lag,
@@ -447,7 +447,6 @@ def compute_streamfunction_lagrangian_external(
         # intent(inout)
         c1x,s1x,c1y,s1y,c2y,s2y,
         ):
-    # Don't confuse xspat (a spatial position between 0 and 2pi) with x
     Nparticles = len(x_lag)
     sqrt2 = np.sqrt(2)
     b = aspect
@@ -876,11 +875,6 @@ class Crommelin2004TracerODE(ODESystem):
                 'label': r'$\cos(y/b)$',
                 'cmap': 'coolwarm',
                 }),
-            'c2y': dict({
-                'abbrv': 'c2y',
-                'label': r'$\cos(2y/b)$',
-                'cmap': 'coolwarm',
-                }),
             'c1xs1y': dict({
                 'abbrv': 'c1xs1y',
                 'label': r'$\cos(x)\sin(y/b)$',
@@ -889,6 +883,11 @@ class Crommelin2004TracerODE(ODESystem):
             's1xs1y': dict({
                 'abbrv': 's1xs1y',
                 'label': r'$\sin(x)\sin(y/b)$',
+                'cmap': 'coolwarm',
+                }),
+            'c2y': dict({
+                'abbrv': 'c2y',
+                'label': r'$\cos(2y/b)$',
                 'cmap': 'coolwarm',
                 }),
             'c1xs2y': dict({
