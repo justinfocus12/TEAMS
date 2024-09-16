@@ -117,6 +117,26 @@ class ODESystem(DynamicalSystem):
             x = x[idx0:idx1+1]
         return t,x
 
+    def integrate_rk4(self, x_save, tp_save, init_time, init_cond):
+        i_save = 0
+        tp_save_next = tp_save[i_save]
+        x = init_cond.copy()
+        x_next = x.copy()
+        tp = init_time * self.dt_save # physical units
+        Nt_save = len(tp_save)
+
+        while tp < tp_save[-1]:
+            tp_next, x_next = self.timestep_rk4(tp, x) # modify in place
+
+            if tp_next > tp_save_next:
+                weight_next = (tp_save_next - tp)/self.dt_step 
+                x_save[i_save] = (1-weight_next)*x + weight_next*x_next 
+                i_save += 1
+                if i_save < Nt_save:
+                    tp_save_next = tp_save[i_save]
+            x[:] = x_next
+            tp = tp_next
+        return 
     # These are driven by impulses only
     def timestep_rk4(self, t, x): # physical time units
         k1 = self.dt_step * self.tendency(t,x)
@@ -140,29 +160,6 @@ class ODESystem(DynamicalSystem):
         integration_fun = getattr(self, f'integrate_{timestepper}')
         integration_fun(x_save, tp_save, init_time, init_cond)
         return t_save, x_save 
-        #i_save = 0
-        #tp_save_next = tp_save[i_save]
-        #x = init_cond.copy()
-        #x_next = x.copy()
-        #tp = init_time * self.dt_save # physical units
-
-        #timestep_fun = getattr(self, f'timestep_{timestepper}')
-        #
-        #while tp < tp_save[-1]:
-        #    dt_step = timestep_fun(x_next, tp, x) # modify in place
-        #    tpnew = tp + dt_step
-
-        #    if tpnew > tp_save_next:
-        #        new_weight = (tp_save_next - tp)/dt_step 
-        #        #print(f'{dt_step = }')
-        #        # TODO: save out an observable instead of the full state? Depends on a specified frequency
-        #        x_save[i_save] = (1-new_weight)*x + new_weight*x_next 
-        #        i_save += 1
-        #        if i_save < Nt_save:
-        #            tp_save_next = tp_save[i_save]
-        #    x[:] = x_next
-        #    tp = tpnew
-        #return t_save,x_save
     def run_trajectory(self, icandf, obs_fun, saveinfo, root_dir):
         init_cond_nopert,f = icandf['init_cond'],icandf['frc']
         assert(isinstance(f.init_time,int) and isinstance(f.fin_time,int))
@@ -225,6 +222,24 @@ class SDESystem(DynamicalSystem):
     @abstractmethod
     def diffusion(self, t, x):
         pass
+    def integrate_euler_maruyama(self, x_save, tp_save, init_time, init_cond, rng):
+        i_save = 0
+        tp_save_next = tp_save[i_save]
+        x = init_cond.copy()
+        tp = init_time * self.ode.dt_save # physical units
+        while tp < tp_save[-1]:
+            tp_next,x_next = self.timestep_euler_maruyama(tp, x, rng)
+            if tp_next > tp_save_next:
+                new_weight = (tp_save_next - tp)/self.ode.dt_step 
+                # TODO: save out an observable instead of the full state? Depends on a specified frequency
+                x_save[i_save] = (1-new_weight)*x + new_weight*x_next 
+                i_save += 1
+                if i_save < Nt_save:
+                    tp_save_next = tp_save[i_save]
+            x[:] = x_next
+            tp = tp_next
+        print('done')
+        return 
     def timestep_euler_maruyama(self, t, x, rng): # physical time units
         k1 = self.ode.dt_step * self.ode.tendency(t,x)
         sdw = self.sqrt_dt_step * self.diffusion(t,x) @ rng.normal(size=(self.white_noise_dim,))
@@ -238,24 +253,9 @@ class SDESystem(DynamicalSystem):
         # Initialize the solution array
         print(f'Initializing output array...', end='')
         x_save = np.zeros((Nt_save, self.ode.state_dim))
+        integration_fun = getattr(self, f"integrate_{timestepper}")
+        integration_fun(x_save, tp_save, init_time, init_cond, rng)
         print('done; integrating,...', end='')
-        i_save = 0
-        tp_save_next = tp_save[i_save]
-        x = init_cond.copy()
-        tp = init_time * self.ode.dt_save # physical units
-        timestep_fun = getattr(self, f'timestep_{timestepper}')
-        while tp < tp_save[-1]:
-            tpnew,xnew = timestep_fun(tp, x, rng)
-            if tpnew > tp_save_next:
-                new_weight = (tp_save_next - tp)/self.ode.dt_step 
-                # TODO: save out an observable instead of the full state? Depends on a specified frequency
-                x_save[i_save] = (1-new_weight)*x + new_weight*xnew 
-                i_save += 1
-                if i_save < Nt_save:
-                    tp_save_next = tp_save[i_save]
-            x = xnew
-            tp = tpnew
-        print('done')
         return t_save,x_save
     def run_trajectory(self, icandf, obs_fun, saveinfo, root_dir):
         init_cond_nopert,f,rngstate = icandf['init_cond'],icandf['frc'],icandf['init_rngstate']
@@ -317,8 +317,8 @@ class SDESystem(DynamicalSystem):
         memusage = psutil.virtual_memory().used/1e9
         print(f'After collecting garbage, using {memusage} GB')
         return metadata,observables
-    def generate_default_init_cond(self, init_time):
-        return self.ode.generate_default_init_cond(init_time)
+    def generate_default_init_cond(self, init_time_phys):
+        return self.ode.generate_default_init_cond(init_time_phys)
     def generate_default_forcing_sequence(self,init_time,fin_time):
         f_reseed = forcing.OccasionalReseedForcing(init_time, fin_time, [], [])
         f_vector = forcing.OccasionalVectorForcing(init_time, fin_time, [], [])
