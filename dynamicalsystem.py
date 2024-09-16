@@ -227,6 +227,7 @@ class SDESystem(DynamicalSystem):
         tp_save_next = tp_save[i_save]
         x = init_cond.copy()
         tp = init_time * self.ode.dt_save # physical units
+        Nt_save = len(tp_save)
         while tp < tp_save[-1]:
             tp_next,x_next = self.timestep_euler_maruyama(tp, x, rng)
             if tp_next > tp_save_next:
