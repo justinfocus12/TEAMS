@@ -54,14 +54,14 @@ print(f'{i = }'); i += 1
 import algorithms_frierson; reload(algorithms_frierson)
 
 def teams_multiparams():
+    sigmas = [0.3,0.4]
     seed_incs = list(range(32))
-    sigmas = [0.3]
     deltas_phys = [0.0,4.0,5.0,6.0,7.0,8.0,10.0]
     split_landmarks = ['thx']
-    return seed_incs,sigmas,deltas_phys,split_landmarks
+    return sigmas,seed_incs,deltas_phys,split_landmarks
 
 def teams_paramset(i_expt):
-    seed_incs,sigmas,deltas_phys,split_landmarks = teams_multiparams()
+    sigmas,seed_incs,deltas_phys,split_landmarks = teams_multiparams()
     i_seed_inc,i_sigma,i_delta,i_slm = np.unravel_index(i_expt, (len(seed_incs),len(sigmas),len(deltas_phys),len(split_landmarks)))
     base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
     config_gcm = frierson_gcm.FriersonGCM.default_config(base_dir_absolute,base_dir_absolute)
@@ -586,11 +586,12 @@ def teams_multiseed_procedure(i_sigma,i_delta,i_slm,idx_seed,overwrite_reference
     tododict = dict({
         'score_distribution': 1,
         'boost_distribution': 1,
-        'boost_composites':   1,
+        'boost_composites':   0,
         })
     # Figure out which flat indices corresond to this set of seeds
     multiparams = teams_multiparams()
-    idx_multiparam = [(i_seed,i_sigma,i_delta,i_slm) for i_seed in idx_seed]
+    idx_multiparam = [(i_sigma,i_seed,i_delta,i_slm) for i_seed in idx_seed]
+    print(f'{len(idx_multiparam) = }')
     idx_expt = []
     for i_multiparam in idx_multiparam:
         i_expt = np.ravel_multi_index(i_multiparam,tuple(len(mp) for mp in multiparams))
@@ -611,12 +612,14 @@ def teams_multiseed_procedure(i_sigma,i_delta,i_slm,idx_seed,overwrite_reference
             dirdicts.append(workflow[5])
             filedicts.append(workflow[6])
         else:
-            print(f'WARNING alg file for {i_expt = } does not exist')
+            print(f'WARNING alg file for {i_expt = } does not exist. The location should be {alg_file}')
             idx_expt_incomplete.append(i_expt)
     for i_expt in idx_expt_incomplete:
         idx_expt.remove(i_expt)
     config_gcm = configs_gcm[0]
     config_algo = configs_algo[0]
+    print(f'{idx_expt = }')
+    sys.exit()
     
     filedict = dict({
         'angel': filedicts[0]['angel'],
@@ -790,7 +793,7 @@ if __name__ == "__main__":
         idx_expt = [int(arg) for arg in sys.argv[2:]]
     else:
         procedure = 'meta'
-        seed_incs,sigmas,deltas_phys,split_landmarks = teams_multiparams()
+        sigmas,seed_incs,deltas_phys,split_landmarks = teams_multiparams()
         iseed_isigma_idelta_islm = [
                 (i_seed,i_sigma,i_delta,0)
                 for i_seed in range(8)
