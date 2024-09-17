@@ -51,7 +51,6 @@ class DynamicalSystem(ABC):
         pass 
 
 
-# TODO make subclasses for ODESystem and SDESystem, each of which will have their own way to incorporate perturbations (apply_impulse vs run with white noise) and have their own way to generate a random sequence of standard inputs. 
 
 class ODESystem(DynamicalSystem):
     # This is only SMALL systems --- small enough to fit a full-state trajectory in memory, avoiding the need for restart files. 
