@@ -295,7 +295,7 @@ class SDESystem(DynamicalSystem):
                     cond1 = (ftimes_bytype[i_type][i_frc] == seg_starts[i_seg])
                 if i_frc < nfrc_bytype[i_type] and ftimes_bytype[i_type][i_frc] == seg_starts[i_seg]:
                     if isinstance(f.frc_list[i_type], forcing.OccasionalVectorForcing):
-                        init_cond_temp = self.apply_impulse(seg_starts[i_seg], init_cond_temp, f.frc_list[i_type].forces[i_frc])
+                        init_cond_temp = self.ode.apply_impulse(seg_starts[i_seg], init_cond_temp, f.frc_list[i_type].forces[i_frc])
                     elif isinstance(f.frc_list[i_type], forcing.OccasionalReseedForcing):
                         rng = default_rng(f.frc_list[i_type].seeds[i_frc])
                     else:
