@@ -28,7 +28,12 @@ from dynamicalsystem import DynamicalSystem
 import forcing
 
 class CaneZebiak(DynamicalSystem):
-    # TODO for SP: implement concrete methods implementing the abstract methods of DynamicalSystem, as stipulated in "../../dynamicalsystem.py". They are listed below. 
+    # TODO for SP: implement concrete versions of the abstract methods of DynamicalSystem, as stipulated in "../../dynamicalsystem.py". They are listed below with explanatory comments. 
+    # The FriersonGCM class in ../frierson_gcm/frierson_gcm.py has some additional methods, like default_config() and default_namelist(), that might also be helpful here, but are not strictly required. 
+    def __init__(self, cfg):
+        self.dt_save = cfg['dt_save']
+        # TODO for SP: optionally compute some other model parameters that might be variable between experiments, and store them as instance variables.
+        return
     def generate_default_icandf(self,init_time,fin_time,seed=None): 
         """
         Inputs
@@ -47,8 +52,25 @@ class CaneZebiak(DynamicalSystem):
         pass
     @staticmethod
     def observable_props():
-        # Should return a dictionary whose keys correspond to class methods and whose values correspond to plotting arguments
-        pass
+        """
+        Convenience function for naming and plotting observable functions
+        Inputs: none
+        Outputs: a dictionary with keys corresponding to observable names and values corresponding to dictionaries of labels. A couple of rough examples are given below. 
+        """
+        obsprop = dict()
+        obsprop["nino3"] = dict({
+            "abbrv": "NINO3",
+            "unit_symbol": "K",
+            "label": "Nino-3 index",
+            "cmap": "coolwarm",
+            })
+        obsprop["umax"] = dict({
+            "abbrv": "UMAX",
+            "unit_symbol": "m/s",
+            "label": "Maximum zonal velocity",
+            "cmap": "coolwarm",
+            })
+        return obsprop
     def compute_pairwise_observables(self, pair_funs, md0, md1list, root_dir):
         """
         Not needed now (helpful for comparison of two trajectories, e.g., Euclidean distance, mean)
@@ -67,7 +89,7 @@ class CaneZebiak(DynamicalSystem):
             a. init_cond: filename containing the initial condition, e.g., a restart leftover from a spinup run, BEFORE perturbation (because later ensemble members might want to launch from the same file with their own perturbation).
             b. frc: an object of type CaneZebiakForcing (see the class below). 
         - obs_fun: an "observable function" that the external calling function might want to use immediately for deciding what to do next, without having to read the cumbersome output files produced by the model. If not needed, just set obs_fun = lambda model_output: None
-        - saveinfo: output filenames, temporary directories, etc.; whatever is needed to specify where to store the output. In case you want to move the whole output directory elsewhere later, I suggest making these paths relative to the final argument, root_dir.
+        - saveinfo: dictionary specifying output filenames, temporary directories, etc.; whatever is needed to specify where to store the output. In case you want to move the whole output directory elsewhere later, I suggest making these paths relative to the final argument, root_dir.
         - root_dir: the path relative to which saveinfo is specified. 
 
         Outputs: 
@@ -85,6 +107,25 @@ class CaneZebiak(DynamicalSystem):
         return metadata, observables
 
 class CaneZebiakForcing(forcing.Forcing):
-    # TODO for SP: implement concrete methods implementing the abstract methods of Forcing, as stipulated in "../../forcing.py". (There's only one: get_forcing_times()). Beyond that, devise a compact data structure that fully specifies the times and shapes of perturbations, which can then be used in CaneZebiak.run_trajectory(). 
+    # TODO for SP: implement concrete methods implementing the abstract methods of Forcing, as stipulated in "../../forcing.py". (There's only one: get_forcing_times(), which is necessary for the algorithm to decide when and how to branch next). Beyond that, devise a compact data structure that fully specifies the times and shapes of perturbations, which can then be used in CaneZebiak.run_trajectory(). 
     def get_forcing_times():
         pass
+
+
+
+
+if __name__ == "__main__":
+    cfg = dict({
+        # for any physical parameters you may want to systematically vary; could be none
+        'dt_save': 0.5, # years??
+        }) 
+    cz = CaneZebiak(cfg)
+    init_time_phys = 0.0
+    fin_time_phys = 100.0
+    init_time = int(round(init_time_phys/cz.dt_save))
+    fin_time = int(round(fin_time_phys/cz.dt_save))
+    seed = 98304
+    icandf = cz.generate_default_icandf(init_time,fin_time,seed=seed)
+
+
+

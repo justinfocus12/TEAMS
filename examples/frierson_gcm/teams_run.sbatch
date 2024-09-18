@@ -2,7 +2,7 @@
 
 #SBATCH -n 4
 #SBATCH -N 1
-#SBATCH -t 0-3:00
+#SBATCH -t 0-6:00
 #SBATCH -p sched_mit_hill
 #SBATCH -e /net/bstor002.ib/pog/001/ju26596/TEAMS/logs/error_%A_%a.out
 #SBATCH -o /dev/null

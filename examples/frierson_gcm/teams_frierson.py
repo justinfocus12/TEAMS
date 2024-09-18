@@ -62,6 +62,7 @@ def teams_multiparams():
 
 def teams_paramset(i_expt):
     sigmas,seed_incs,deltas_phys,split_landmarks = teams_multiparams()
+    # TODO switch i_seed_inc with i_sigma below for the next round of runs, so as to avoid interference 
     i_seed_inc,i_sigma,i_delta,i_slm = np.unravel_index(i_expt, (len(seed_incs),len(sigmas),len(deltas_phys),len(split_landmarks)))
     base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
     config_gcm = frierson_gcm.FriersonGCM.default_config(base_dir_absolute,base_dir_absolute)
@@ -253,9 +254,9 @@ def teams_single_workflow(i_expt):
     # Set up directories
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
     date_str = "2024-09-10"
-    sub_date_str = "0"
+    sub_date_str = "2"
     dirdict = dict()
-    dirdict['expt'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_gcm, param_abbrv_algo)
+    dirdict['expt'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_gcm, param_abbrv_algo, r'seedinc%d'%(config_algo['seed_inc_init']))
     dirdict['data'] = join(dirdict['expt'], 'data')
     dirdict['analysis'] = join(dirdict['expt'], 'analysis')
     dirdict['plots'] = join(dirdict['expt'], 'plots')

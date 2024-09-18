@@ -158,6 +158,21 @@ def dns_single_workflow(i_expt):
             'abbrv': 'PSlat30-90',
             }),
         })
+    # Latitude- and height-dependent fields 
+    config_analysis['fields_latheightdep'] = dict({
+        'U': dict({
+            'fun': frierson_gcm.FriersonGCM.zonal_velocity,
+            'abbrv': 'U',
+            'label': 'Zonal Velocity [m/s]',
+            'cmap': 'coolwarm',
+            }),
+        'T': dict({
+            'fun': frierson_gcm.FriersonGCM.temperature,
+            'abbrv': 'T',
+            'label': 'Temperature [K]',
+            'cmap': 'coolwarm',
+            }),
+        })
     # Latitude-dependent fields, zonally symmetric
     config_analysis['fields_latdep'] = dict({
         'u_500': dict({
@@ -386,6 +401,10 @@ def plot_timeseries(config_analysis, alg, dirdict):
     return
 
 def compute_basic_stats(config_analysis, alg, dirdict):
+    todo = dict({
+        'latheight':    1,
+        'lat':          0,
+        })
     obsprop = alg.ens.dynsys.observable_props()
     nmem = alg.ens.get_nmem()
     tu = alg.ens.dynsys.dt_save
@@ -394,31 +413,49 @@ def compute_basic_stats(config_analysis, alg, dirdict):
     all_starts,all_ends = alg.ens.get_all_timespans()
     mems2summarize = np.where(all_starts >= spinup)[0]
     print(f'{mems2summarize = }')
-    # Visualize zonal mean fields
-    for (field_name,field_props) in config_analysis['fields_latdep'].items():
-        print(f'Computing stats of {field_name}')
-        fun = lambda ds: frierson_gcm.FriersonGCM.sel_from_roi(field_props['fun'](ds), field_props['roi']).compute() # TODO need to massively speed this up
-        f = xr.concat(tuple(alg.ens.compute_observables([fun], mem)[0] for mem in mems2summarize), dim='time')
-        print(f'{f.dims = }, {f.coords = }')
-        moments = config_analysis['basic_stats']['moments']
-        f_stats = dict()
-        for moment in moments:
-            f_stats[r'moment%d'%(moment)] = np.power(f,moment).mean(dim=['time','lon'])
-        quantiles = config_analysis['basic_stats']['quantiles']
-        f_stats['quantiles'] = f.quantile(quantiles, dim=['time','lon']) 
-        f_stats = xr.Dataset(data_vars = f_stats)
-        f_stats.to_netcdf(join(dirdict['analysis'], r'%s.nc'%(field_props['abbrv'])))
-        # Plot 
-        fig,ax = plt.subplots()
-        hmean, = xr.plot.plot(f_stats['moment1'], x='lat', color='black', linestyle='--', linewidth=2, label=r'Mean')
-        for quantile in quantiles:
-            hquant, = xr.plot.plot(f_stats['quantiles'].sel(quantile=quantile), x='lat', color='dodgerblue', label=r'Quantiles')
-        ax.legend(handles=[hmean,hquant])
-        ax.set_xlabel("Latitude")
-        ax.set_ylabel(field_props['label'])
-        ax.set_title('')
-        fig.savefig(join(dirdict['plots'], r'%s.png'%(field_props['abbrv'])), **pltkwargs)
-        plt.close(fig)
+    # zonal mean fields
+    if todo['latheight']:
+        for (field_name,field_props) in config_analysis['fields_latheightdep'].items():
+            # restrict to zonal mean; too expensive to get quantiles for full fields
+            f_zonmean = dict()
+            fun = lambda ds: field_props['fun'](ds).mean(dim='lon').compute() # TODO need to massively speed this up
+            fzm = xr.concat(tuple(alg.ens.compute_observables([fun], mem)[0] for mem in mems2summarize[:3]), dim='time').mean(dim='time')
+            fzm.to_netcdf(join(dirdict['analysis'], r'%s_zonmean.nc'%(field_props['abbrv'])))
+            # Plot 
+            fig,ax = plt.subplots(figsize=(12,6))
+            img = xr.plot.contourf(fzm.assign_coords(pfull=fzm['pfull']/1000), x='lat', y='pfull', cmap=field_props['cmap'], levels=12, cbar_kwargs={'label': ''})
+            ax.invert_yaxis()
+            ax.set_title(field_props['label'])
+            ax.set_xlabel('Longitude')
+            ax.set_ylabel(r'$p/p_{\mathrm{surf}}$')
+            fig.savefig(join(dirdict['plots'], r'%s_zonmean.png'%(field_props['abbrv'])))
+            plt.close(fig)
+
+    if todo['lat']:
+        for (field_name,field_props) in config_analysis['fields_latdep'].items():
+            print(f'Computing stats of {field_name}')
+            fun = lambda ds: frierson_gcm.FriersonGCM.sel_from_roi(field_props['fun'](ds), field_props['roi']).compute() # TODO need to massively speed this up
+            f = xr.concat(tuple(alg.ens.compute_observables([fun], mem)[0] for mem in mems2summarize), dim='time')
+            print(f'{f.dims = }, {f.coords = }')
+            moments = config_analysis['basic_stats']['moments']
+            f_stats = dict()
+            for moment in moments:
+                f_stats[r'moment%d'%(moment)] = np.power(f,moment).mean(dim=['time','lon'])
+            quantiles = config_analysis['basic_stats']['quantiles']
+            f_stats['quantiles'] = f.quantile(quantiles, dim=['time','lon']) 
+            f_stats = xr.Dataset(data_vars = f_stats)
+            f_stats.to_netcdf(join(dirdict['analysis'], r'%s.nc'%(field_props['abbrv'])))
+            # Plot 
+            fig,ax = plt.subplots()
+            hmean, = xr.plot.plot(f_stats['moment1'], x='lat', color='black', linestyle='--', linewidth=2, label=r'Mean')
+            for quantile in quantiles:
+                hquant, = xr.plot.plot(f_stats['quantiles'].sel(quantile=quantile), x='lat', color='dodgerblue', label=r'Quantiles')
+            ax.legend(handles=[hmean,hquant])
+            ax.set_xlabel("Latitude")
+            ax.set_ylabel(field_props['label'])
+            ax.set_title('')
+            fig.savefig(join(dirdict['plots'], r'%s.png'%(field_props['abbrv'])), **pltkwargs)
+            plt.close(fig)
     return
 
 
@@ -627,11 +664,11 @@ def dns_meta_procedure(idx_expt):
 
 def dns_single_procedure(i_expt):
     tododict = dict({
-        'run':                            1,
-        'plot_snapshots':                 1,
-        'plot_timeseries':                1,
+        'run':                            0,
+        'plot_snapshots':                 0,
+        'plot_timeseries':                0,
         'compute_basic_stats':            1,
-        'compute_extreme_stats':          1,
+        'compute_extreme_stats':          0,
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = dns_single_workflow(i_expt)
 

@@ -1054,13 +1054,12 @@ class TEAMS(EnsembleAlgorithm):
     @staticmethod
     def label_from_config(config):
         abbrv = (
-                r'TEAMS_N%d_T%g_ast%gb4%s_drop%d_si%d_ipas%d'%(
+                r'TEAMS_N%d_T%g_ast%gb4%s_drop%d_ipas%d'%(
                     config['population_size'],
                     config['time_horizon_phys'],
                     config['advance_split_time_phys'],
                     config['split_landmark'],
                     config['num2drop'],
-                    config['seed_inc_init'],
                     int(config['inherit_perts_after_split']),
                     )
                 ).replace('.','p')
