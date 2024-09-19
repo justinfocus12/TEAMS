@@ -163,7 +163,7 @@ def dns_single_workflow(i_expt):
         'U': dict({
             'fun': frierson_gcm.FriersonGCM.zonal_velocity,
             'abbrv': 'U',
-            'label': 'Zonal Velocity [m/s]',
+            'label': 'Zonal velocity [m/s]',
             'cmap': 'coolwarm',
             }),
         'T': dict({
@@ -171,6 +171,12 @@ def dns_single_workflow(i_expt):
             'abbrv': 'T',
             'label': 'Temperature [K]',
             'cmap': 'coolwarm',
+            }),
+        'Q': dict({
+            'fun': frierson_gcm.FriersonGCM.specific_humidity,
+            'abbrv': 'Q',
+            'label': 'Specific humidity [kg/kg]',
+            'cmap': 'Blues',
             }),
         })
     # Latitude-dependent fields, zonally symmetric

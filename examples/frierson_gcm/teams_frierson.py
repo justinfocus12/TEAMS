@@ -63,7 +63,7 @@ def teams_multiparams():
 def teams_paramset(i_expt):
     sigmas,seed_incs,deltas_phys,split_landmarks = teams_multiparams()
     # TODO switch i_seed_inc with i_sigma below for the next round of runs, so as to avoid interference 
-    i_seed_inc,i_sigma,i_delta,i_slm = np.unravel_index(i_expt, (len(seed_incs),len(sigmas),len(deltas_phys),len(split_landmarks)))
+    i_sigma,i_seed_inc,i_delta,i_slm = np.unravel_index(i_expt, (len(sigmas),len(seed_incs),len(deltas_phys),len(split_landmarks)))
     base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
     config_gcm = frierson_gcm.FriersonGCM.default_config(base_dir_absolute,base_dir_absolute)
     config_gcm['outputs_per_day'] = 4
@@ -620,7 +620,6 @@ def teams_multiseed_procedure(i_sigma,i_delta,i_slm,idx_seed,overwrite_reference
     config_gcm = configs_gcm[0]
     config_algo = configs_algo[0]
     print(f'{idx_expt = }')
-    sys.exit()
     
     filedict = dict({
         'angel': filedicts[0]['angel'],
@@ -632,7 +631,7 @@ def teams_multiseed_procedure(i_sigma,i_delta,i_slm,idx_seed,overwrite_reference
     # Set up a meta-dirdict 
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
     date_str = "2024-09-10"
-    sub_date_str = "0"
+    sub_date_str = "2"
     dirdict = dict()
     dirdict['meta'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_gcm, param_abbrv_algo) 
     dirdict['data'] = join(dirdict['meta'], 'data')

@@ -79,7 +79,7 @@ class CaneZebiak(DynamicalSystem):
     def compute_observables(self, obs_funs, metadata, root_dir):
         # obs_names must correspond to class methods
         """
-        Not needed now (helpful for batch calculation of multiple low-dimensional observables without reading the output files repeatedly)
+        Post-processing convenience function, not needed now (helpful for batch calculation of multiple low-dimensional observables without reading the output files repeatedly)
         """
         return
     def run_trajectory(self, icandf, obs_fun, saveinfo, root_dir):
@@ -120,12 +120,26 @@ if __name__ == "__main__":
         'dt_save': 0.5, # years??
         }) 
     cz = CaneZebiak(cfg)
+    # specify a timespan in physical units
     init_time_phys = 0.0
     fin_time_phys = 100.0
+    # convert to integer save-out times 
     init_time = int(round(init_time_phys/cz.dt_save))
     fin_time = int(round(fin_time_phys/cz.dt_save))
     seed = 98304
     icandf = cz.generate_default_icandf(init_time,fin_time,seed=seed)
+    obs_fun = lambda model_output: None
+
+    # create a place to store output
+    root_dir = "home/atmospheritas/elitas/sarahitas/canitas/zebiakitas" # Random question: does Harvard dining serve carnitas/sofritas?  
+    saveinfo = dict({
+        'temp_directory': 'mem0_tempdir',
+        'filename_traj': 'mem0_history.nc', 
+        'filename_restart': 'mem0_restart.gz',
+        })
+        
+    cz.run_trajectory(icandf, obs_fun, saveinfo, root_dir)
+
 
 
 
