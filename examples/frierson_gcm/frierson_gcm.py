@@ -817,6 +817,16 @@ class FriersonGCM(DynamicalSystem):
             "clo": "gray",
             "chi": "yellow",
             })
+        obslib["surface_pressure_neg"] = dict({
+            "abbrv": "NPS",
+            "unit_symbol": r"Pa",
+            "label": "-(surface pressure)",
+            "cmap": "rainbow_r",
+            "vmin": -103.0e3,
+            "vmax": -96.0e3, 
+            "clo": "yellow",
+            "chi": "gray",
+            })
         return obslib
     @staticmethod
     def pressure(ds):
@@ -962,6 +972,9 @@ class FriersonGCM(DynamicalSystem):
     @staticmethod
     def surface_pressure(ds):
         return ds["ps"]
+    @staticmethod
+    def surface_pressure_neg(ds):
+        return -ds["ps"]
     @staticmethod
     def vertical_velocity(ds):
         return ds["omega"]

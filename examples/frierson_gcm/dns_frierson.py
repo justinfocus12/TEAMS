@@ -307,7 +307,7 @@ def dns_single_workflow(i_expt):
             }),
         })
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
-    date_str = "2024-09-10"
+    date_str = "2024-07-07" #"2024-09-10"
     sub_date_str = "0"
     dirdict = dict()
     dirdict['expt'] = join(scratch_dir,date_str,sub_date_str,param_abbrv_gcm,param_abbrv_algo)
@@ -408,8 +408,8 @@ def plot_timeseries(config_analysis, alg, dirdict):
 
 def compute_basic_stats(config_analysis, alg, dirdict):
     todo = dict({
-        'latheight':    1,
-        'lat':          0,
+        'latheight':    0,
+        'lat':          1,
         })
     obsprop = alg.ens.dynsys.observable_props()
     nmem = alg.ens.get_nmem()
@@ -658,8 +658,8 @@ def dns_meta_workflow(idx_param):
 
 def dns_meta_procedure(idx_expt):
     tododict = dict({
-        'compare_basic_stats':            0,
-        'compare_extreme_stats':          1,
+        'compare_basic_stats':            1,
+        'compare_extreme_stats':          0,
         })
     workflows,config_meta_analysis,meta_dirdict = dns_meta_workflow(idx_expt)
     if tododict['compare_basic_stats']:

@@ -1,9 +1,9 @@
 #!/bin/bash
 
-#SBATCH -n 4
+#SBATCH -n 1
 #SBATCH -N 1
 #SBATCH -t 0-4:00
-#SBATCH -p sched_mit_hill
+#SBATCH -p sched_mit_pog_r8
 #SBATCH -e /net/bstor002.ib/pog/001/ju26596/TEAMS/logs/dns_%A_%a_error.out
 #SBATCH -o /dev/null
 #SBATCH --mem-per-cpu=10GB

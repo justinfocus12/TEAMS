@@ -54,16 +54,17 @@ print(f'{i = }'); i += 1
 import algorithms_frierson; reload(algorithms_frierson)
 
 def teams_multiparams():
+    target_fields = ["surf_pres_neg","rainrate",]
     sigmas = [0.3,0.4]
     seed_incs = list(range(32))
     deltas_phys = [0.0,4.0,5.0,6.0,7.0,8.0,10.0]
     split_landmarks = ['thx']
-    return sigmas,seed_incs,deltas_phys,split_landmarks
+    return target_fields,sigmas,seed_incs,deltas_phys,split_landmarks
 
 def teams_paramset(i_expt):
-    sigmas,seed_incs,deltas_phys,split_landmarks = teams_multiparams()
+    target_fields,sigmas,seed_incs,deltas_phys,split_landmarks = teams_multiparams()
     # TODO switch i_seed_inc with i_sigma below for the next round of runs, so as to avoid interference 
-    i_sigma,i_seed_inc,i_delta,i_slm = np.unravel_index(i_expt, (len(sigmas),len(seed_incs),len(deltas_phys),len(split_landmarks)))
+    i_target_field,i_sigma,i_seed_inc,i_delta,i_slm = np.unravel_index(i_expt, (len(target_fields),len(sigmas),len(seed_incs),len(deltas_phys),len(split_landmarks)))
     base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
     config_gcm = frierson_gcm.FriersonGCM.default_config(base_dir_absolute,base_dir_absolute)
     config_gcm['outputs_per_day'] = 4
@@ -74,9 +75,18 @@ def teams_paramset(i_expt):
     config_gcm['remove_temp'] = 1
     pprint.pprint(config_gcm)
 
+    target_field = target_fields[i_target_field]
+    if target_field == "rainrate":
+        target_abbrv = "R" 
+    elif target_field == "surf_pres_neg":
+        target_abbrv = "NPS"
+
+
 
     expt_label = r'$\sigma=%g$, $\delta=%g$'%(sigmas[i_sigma],deltas_phys[i_delta])
-    expt_abbrv = (r'std%g_ast%g'%(sigmas[i_sigma],deltas_phys[i_delta])).replace('.','p')
+    expt_abbrv = (r'std%g_ast%g_tgt%s'%(sigmas[i_sigma],deltas_phys[i_delta],target_abbrv)).replace('.','p')
+
+
 
 
     config_algo = dict({
@@ -94,7 +104,9 @@ def teams_paramset(i_expt):
         'split_landmark': split_landmarks[i_slm],
         'inherit_perts_after_split': False,
         'num2drop': 1,
-        'score_components': dict({
+        })
+    if target_field == 'rainrate':
+        config_algo['score_components'] = dict({
             'rainrate': dict({
                 'observable': 'total_rain',
                 'roi': dict({
@@ -104,8 +116,19 @@ def teams_paramset(i_expt):
                 'tavg': 1 * config_gcm['outputs_per_day'],
                 'weight': 1.0,
                 }),
-            }),
-        })
+            })
+    elif target_field == 'surf_pres_neg':
+        config_algo['score_components'] = dict({
+            'surf_pres_neg': dict({
+                'observable': 'surface_pressure_neg',
+                'roi': dict({
+                    'lat': 45,
+                    'lon': 180,
+                    }),
+                'tavg': 1 * config_gcm['outputs_per_day'],
+                'weight': 1.0,
+                }),
+            })
     return config_gcm,config_algo,expt_label,expt_abbrv
 
 def teams_single_workflow(i_expt):
@@ -118,6 +141,15 @@ def teams_single_workflow(i_expt):
     config_analysis['target_location'] = dict(lat=45, lon=180)
     # observables (scalar quantities)
     observables = dict({
+        'local_surface_pressure_neg': dict({
+            'fun': lambda ds: frierson_gcm.FriersonGCM.sel_from_roi(
+                frierson_gcm.FriersonGCM.surface_pressure_neg(ds), 
+                config_analysis['target_location'])
+                .to_numpy().flatten(),
+            'kwargs': dict(),
+            'abbrv': 'NPSloc',
+            'label': '-(surface pressure) $(\phi,\lambda)=(45,180)$',
+            }),
         'local_rain': dict({
             'fun': frierson_gcm.FriersonGCM.regional_rain,
             'kwargs': dict({
@@ -253,8 +285,8 @@ def teams_single_workflow(i_expt):
 
     # Set up directories
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
-    date_str = "2024-09-10"
-    sub_date_str = "2"
+    date_str = "2024-09-23"
+    sub_date_str = "0"
     dirdict = dict()
     dirdict['expt'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_gcm, param_abbrv_algo, r'seedinc%d'%(config_algo['seed_inc_init']))
     dirdict['data'] = join(dirdict['expt'], 'data')
@@ -407,7 +439,17 @@ def plot_observable_spaghetti(config_analysis, alg, dirdict, filedict, remove_ol
             os.remove(fig)
     angel = pickle.load(open(filedict['angel'],'rb'))
     for (obs_name,obs_props) in config_analysis['observables'].items():
-        is_score = (obs_name == 'local_dayavg_rain')
+
+        target_field = list(alg.score_params['components'].keys())[0]
+        if target_field == 'rainrate':
+            is_score = (obs_name == 'local_dayavg_rain')
+        elif target_field == 'surf_pres_neg':
+            is_score = (obs_name == 'local_surface_pressure_neg')
+        else:
+            raise Exception(f"You need to plot score spaghetti. {obs_name = }")
+
+        print(f"{obs_name = }, {is_score = }")
+            
         if is_score:
             obs_fun = lambda ds: obs_props['fun'](ds, **obs_props['kwargs'])
             for i_ancestor,ancestor in enumerate(ancs2plot):
@@ -525,7 +567,8 @@ def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, refere
             for i_lon in range(len(dlons)): 
                 sccomp_ilon = xr.concat((sccomp[mem][i_lon] for mem in mems_dns), dim='time') 
                 score_ilon = algs[0].score_combined(sccomp_ilon)[int(spinup_phys/tu):]
-                scmax_ilon = utils.compute_block_maxima(score_ilon, algs[0].time_horizon-max(algs[0].advance_split_time_max, (algs[0].score_params['components']['rainrate']['tavg']-1)))
+                scorekey = list(algs[0].score_params['components'].keys())[0]
+                scmax_ilon = utils.compute_block_maxima(score_ilon, algs[0].time_horizon-max(algs[0].advance_split_time_max, (algs[0].score_params['components'][scorekey]['tavg']-1)))
                 print(f'At lonroll {dlons[i_lon]}: {scmax_ilon[:5] = }')
                 scmax_alllon.append(scmax_ilon)
             scmax_ref = np.concatenate(scmax_alllon)
@@ -583,15 +626,15 @@ def run_teams(dirdict,filedict,config_gcm,config_algo):
     return
 
 
-def teams_multiseed_procedure(i_sigma,i_delta,i_slm,idx_seed,overwrite_reference=False): # Just different seeds for now
+def teams_multiseed_procedure(i_field,i_sigma,idx_seed,i_delta,i_slm,overwrite_reference=False): # Just different seeds for now
     tododict = dict({
-        'score_distribution': 1,
+        'score_distribution': 0,
         'boost_distribution': 1,
         'boost_composites':   0,
         })
     # Figure out which flat indices corresond to this set of seeds
     multiparams = teams_multiparams()
-    idx_multiparam = [(i_sigma,i_seed,i_delta,i_slm) for i_seed in idx_seed]
+    idx_multiparam = [(i_field,i_sigma,i_seed,i_delta,i_slm) for i_seed in idx_seed]
     print(f'{len(idx_multiparam) = }')
     idx_expt = []
     for i_multiparam in idx_multiparam:
@@ -630,8 +673,8 @@ def teams_multiseed_procedure(i_sigma,i_delta,i_slm,idx_seed,overwrite_reference
     param_abbrv_algo,param_label_algo = algorithms_frierson.FriersonGCMTEAMS.label_from_config(config_algo)
     # Set up a meta-dirdict 
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
-    date_str = "2024-09-10"
-    sub_date_str = "2"
+    date_str = "2024-09-23"
+    sub_date_str = "0"
     dirdict = dict()
     dirdict['meta'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_gcm, param_abbrv_algo) 
     dirdict['data'] = join(dirdict['meta'], 'data')
@@ -644,6 +687,7 @@ def teams_multiseed_procedure(i_sigma,i_delta,i_slm,idx_seed,overwrite_reference
         algs.append(pickle.load(open(filedicts[i_alg]['alg'],'rb')))
     param_suffix = (r'std%g_ast%g'%(config_gcm['SPPT']['std_sppt'],config_algo['advance_split_time_phys'])).replace('.','p')
     if tododict['score_distribution']:
+        print(f'{dirdict = }')
         measure_plot_score_distribution(config_algo, algs, dirdict, filedict, reference='dns', param_suffix=param_suffix, overwrite_reference=overwrite_reference)
     if tododict['boost_distribution']:
         figfile = join(dirdict['plots'], r'boost_distn_%s.png'%(param_suffix))
@@ -658,7 +702,7 @@ def teams_single_procedure(i_expt):
         'run':             1,
         'analysis': dict({
             'observable_spaghetti':     1,
-            'scorrelation':             1,
+            'scorrelation':             0,
             'fields_2d':                1,
             }),
         })
@@ -810,10 +854,12 @@ if __name__ == "__main__":
             teams_single_procedure(i_expt)
     elif procedure == 'multiseed':
         idx_seed = list(range(32))
+        i_field = 0
         i_sigma = 0
         i_slm = 0
-        i_delta = int(sys.argv[2])
-        teams_multiseed_procedure(i_sigma,i_delta,i_slm,idx_seed,overwrite_reference=False)
+        idx_delta = [int(sys.argv[a]) for a in range(2,len(sys.argv))]
+        for i_delta in idx_delta:
+            teams_multiseed_procedure(i_field,i_sigma,idx_seed,i_delta,i_slm,overwrite_reference=False)
 
 
 
