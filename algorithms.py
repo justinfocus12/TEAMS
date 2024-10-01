@@ -1404,6 +1404,9 @@ class TEAMS(EnsembleAlgorithm):
     @staticmethod
     def measure_plot_score_distribution(config_algo, algs, scmax_dns, returnstats_file, figfileh, figfilev, alpha=0.05, param_display=''):
         N_dns = len(scmax_dns)
+        print(f'{N_dns = }')
+        time_horizon_effective = config_algo['time_horizon_phys'] - config_algo['advance_split_time_max_phys']
+        sf2rt = lambda sf: utils.convert_sf_to_rtime(sf, time_horizon_effective) 
         # ---------------- Calculate TEAMS statistics -------------------
         #Iterate through alg objects first to collect scores and define bin edges
         sclim = [np.min(scmax_dns),np.max(scmax_dns)]
@@ -1418,6 +1421,8 @@ class TEAMS(EnsembleAlgorithm):
             Ns_fin[i_alg] = alg.ens.get_nmem()
             assert int(round(np.exp(logsumexp(logw,b=mult)))) == Ns_init[i_alg]
             sclim[0],sclim[1] = min(sclim[0],np.min(scmax)),max(sclim[1],np.max(scmax))
+        N_teams_init = np.sum(Ns_init)
+        N_teams_fin = np.sum(Ns_fin)
         bin_edges = np.linspace(sclim[0]-1e-10,sclim[1]+1e-10,16)
         hist_dns,_ = np.histogram(scmax_dns, bins=bin_edges, density=False)
         # determine bounds on measurable return periods 
@@ -1429,6 +1434,7 @@ class TEAMS(EnsembleAlgorithm):
         ccdf_min = np.exp(logw_pooled[np.argmax(scmaxs_pooled)])
         ccdf_max = 0.5 # arbitrary
         logccdf_grid = np.linspace(np.log(ccdf_max), np.log(ccdf_min), 30)
+        rt_grid = sf2rt(np.exp(logccdf_grid))
         # Now put the scores from separate runs into this common set of bins
         hists_init,hists_fin_unif,hists_fin_wted,ccdfs_init,ccdfs_fin_unif,ccdfs_fin_wted = (np.zeros((len(algs),len(bin_edges)-1)) for i in range(6))
         rlevs_init,rlevs_fin = (np.zeros((len(algs), len(logccdf_grid))) for i in range(2))
@@ -1469,36 +1475,50 @@ class TEAMS(EnsembleAlgorithm):
         # rlev
 
         xord_pooled,logccdf_emp_pooled = utils.compute_logsf_empirical_with_multiplicities(np.concatenate(scmaxs), logw=np.concatenate(logws), mults=np.concatenate(mults))
-        print(f'{xord_pooled = }')
-        print(f'{logccdf_emp_pooled = }')
 
         rlev_fin_pooled = np.interp(logccdf_grid[::-1], logccdf_emp_pooled[::-1], xord_pooled[::-1])[::-1]
-        print(f'{rlev_fin_pooled = }')
-        print(f'{logccdf_grid = }')
-        sf2rt = lambda sf: utils.convert_sf_to_rtime(sf, config_algo['time_horizon_phys'] - config_algo['advance_split_time_max_phys'])
-        print(f'{sf2rt(np.exp(logccdf_grid)) = }')
+        # DNS 
+        xord_dns,logccdf_dns_emp = utils.compute_logsf_empirical_with_multiplicities(scmax_dns)
+        rlev_dns = np.interp(logccdf_grid[::-1], logccdf_dns_emp[::-1], xord_dns[::-1])[::-1]
+
         # put error bars on TEAMS by bootstrapping
         rng_boot = default_rng(45839)
         n_boot = 5000
         idx_alg_boot = rng_boot.choice(np.arange(len(algs)), replace=True, size=(n_boot,len(algs)))
+        N_dns_boot_init = int(N_teams_init*config_algo['time_horizon_phys']/time_horizon_effective)
+        print(f'{N_dns_boot_init = }')
+        idx_dns_boot_init = rng_boot.choice(np.arange(N_dns), replace=True, size=(n_boot, N_dns_boot_init))
+        N_dns_boot_fin = int(N_teams_fin*config_algo['time_horizon_phys']/time_horizon_effective)
+        print(f'{N_dns_boot_fin = }')
+        idx_dns_boot_fin = rng_boot.choice(np.arange(N_dns), replace=True, size=(n_boot, N_dns_boot_fin))
+        print(f'{idx_dns_boot_init[1] = }')
+        print(f'{idx_dns_boot_fin[1] = }')
+        rlevs_dns_boot_init  = np.nan*np.ones((n_boot, len(logccdf_grid)))
+        rlevs_dns_boot_fin  = np.nan*np.ones((n_boot, len(logccdf_grid)))
         ccdf_fin_wted_boot = np.nan*np.ones((n_boot,len(bin_edges)-1))
         rlevs_fin_pooled_boot = np.nan*np.ones((n_boot, len(logccdf_grid)))
         for i_boot in range(n_boot):
+            # ||||||||||| horizontal ||||||||||
             hist_fin_wted_boot = np.sum(hists_fin_wted[idx_alg_boot[i_boot,:]],axis=0)
             ccdf_fin_wted_boot[i_boot,:] = utils.pmf2ccdf(hist_fin_wted_boot,bin_edges)
+            # ------- vertical ----------
+            # TEAMS
             scmax_boot = np.concatenate([scmaxs[i] for i in idx_alg_boot[i_boot]])
             logw_boot = np.concatenate([logws[i] for i in idx_alg_boot[i_boot]])
             mults_boot = np.concatenate([mults[i] for i in idx_alg_boot[i_boot]])
             xord,logccdf_emp = utils.compute_logsf_empirical_with_multiplicities(scmax_boot,logw=logw_boot,mults=mults_boot)
             rlevs_fin_pooled_boot[i_boot,:] = np.interp(logccdf_grid[::-1], logccdf_emp[::-1], xord[::-1])[::-1]
+            # DNS 
+            xord,logccdf_emp = utils.compute_logsf_empirical_with_multiplicities(scmax_dns[idx_dns_boot_init[i_boot]])
+            rlevs_dns_boot_init[i_boot,:] = np.interp(logccdf_grid[::-1], logccdf_emp[::-1], xord[::-1])[::-1]
+            xord,logccdf_emp = utils.compute_logsf_empirical_with_multiplicities(scmax_dns[idx_dns_boot_fin[i_boot]])
+            rlevs_dns_boot_fin[i_boot,:] = np.interp(logccdf_grid[::-1], logccdf_emp[::-1], xord[::-1])[::-1]
             
         ccdf_fin_wted_pooled_lower = np.nanquantile(ccdf_fin_wted_boot,alpha/2,axis=0)
         ccdf_fin_wted_pooled_upper = np.nanquantile(ccdf_fin_wted_boot,1-alpha/2,axis=0)
 
 
         # --------------------- Tally costs ------------------------
-        N_teams_init = np.sum(Ns_init)
-        N_teams_fin = np.sum(Ns_fin)
         cost_teams_init = N_teams_init * (config_algo['time_horizon_phys'] - config_algo['advance_split_time_max_phys'] + config_algo['advance_split_time_phys'])
         cost_teams_fin = N_teams_fin/N_teams_init * cost_teams_init
         cost_dns = N_dns * (config_algo['time_horizon_phys'] - config_algo['advance_split_time_max_phys'])
@@ -1537,6 +1557,8 @@ class TEAMS(EnsembleAlgorithm):
             'rlevs_fin': rlevs_fin,
             'rlev_fin_pooled': rlev_fin_pooled,
             'rlevs_fin_pooled_boot': rlevs_fin_pooled_boot,
+            'rlevs_dns_boot_init': rlevs_dns_boot_init,
+            'rlevs_dns_boot_fin': rlevs_dns_boot_fin,
             # DNS
             'hist_dns': hist_dns,
             'ccdf_dns': ccdf_dns,
@@ -1548,7 +1570,7 @@ class TEAMS(EnsembleAlgorithm):
             'cost_teams_init': cost_teams_init,
             'cost_teams_fin': cost_teams_fin,
             'cost_dns': cost_dns,
-            'time_horizon_effective': config_algo['time_horizon_phys'] - config_algo['advance_split_time_max_phys'],
+            'time_horizon_effective': time_horizon_effective,
             })
 
         np.savez(returnstats_file, **returnstats)
@@ -1575,12 +1597,13 @@ class TEAMS(EnsembleAlgorithm):
         for axes in (axesh,axesv):
             axes[0].text(-0.3,0.5,display,fontsize=15,transform=axesh[0].transAxes,horizontalalignment='right',verticalalignment='center')
 
-        # ++++ Column 0: individual curves on the left ++++
+        # ++++ Column 0: individual curves ++++
 
         ax = axesv[0]
         for i_alg,alg in enumerate(algs):
             ax.plot(sf2rt(np.exp(logccdf_grid)), rlevs_init[i_alg], color='dodgerblue', linestyle='-', linewidth=1, alpha=0.5, label=r'Init')
             ax.plot(sf2rt(np.exp(logccdf_grid)), rlevs_fin[i_alg], color='red', linestyle='-', linewidth=1, alpha=0.5, label=teams_abbrv)
+        ax.plot(rt_grid, rlev_dns, color='black')
         ax.set_ylabel(r'Return level')
         ax.set_title(r'Single %s runs'%(teams_abbrv))
         ax.set_xscale('log')
@@ -1626,12 +1649,16 @@ class TEAMS(EnsembleAlgorithm):
             ax.set_ylim(ylim)
             ax.set_xlabel(r'Return time')
 
-        # TODO plot the vertical version
         ax = axesv[1]
         ax.plot(sf2rt(np.exp(logccdf_grid)), rlev_fin_pooled, color='red')
         qlo = np.quantile(rlevs_fin_pooled_boot, alpha/2, axis=0)
         qhi = np.quantile(rlevs_fin_pooled_boot, 1-alpha/2, axis=0)
         ax.fill_between(sf2rt(np.exp(logccdf_grid)), 2*rlev_fin_pooled-qhi, 2*rlev_fin_pooled-qlo, color='red', alpha=0.5, zorder=-1)
+        ax.plot(rt_grid, rlev_dns, color='black')
+        qlo_dns = np.quantile(rlevs_dns_boot_fin, alpha/2, axis=0)
+        qhi_dns = np.quantile(rlevs_dns_boot_fin, 1-alpha/2, axis=0)
+        ax.fill_between(sf2rt(rt_grid), 2*rlev_fin_pooled-qhi, 2*rlev_fin_pooled-qlo, color='red', alpha=0.5, zorder=-1)
+        ax.fill_between(rt_grid, 2*rlev_dns-qhi_dns, 2*rlev_dns-qlo_dns, color='gray', alpha=0.5, zorder=-2)
         ax.set_xscale('log')
 
         # ++++ Column 2: Histograms ++++

@@ -34,6 +34,7 @@ def compute_logsf_empirical_with_multiplicities(x,logw=None,mults=None):
     # x: scalar data samples
     # logw: log-weights
     x = np.array(x)
+    assert 1 == x.ndim
     n = len(x)
     if logw is None:
         logw = np.zeros(n)

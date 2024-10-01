@@ -579,6 +579,7 @@ def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, refere
         else:
             scmax_ref = np.load(scmax_dns_file)['scmax']
 
+    print(f'{scmax_ref = }')
     returnstats_file = join(dirdict['analysis'],'returnstats_%s.npz'%(param_suffix))
     figfileh = join(dirdict['plots'],r'returnstats_h_%s.png'%(param_suffix))
     figfilev = join(dirdict['plots'],r'returnstats_v_%s.png'%(param_suffix))
@@ -855,12 +856,12 @@ if __name__ == "__main__":
             teams_single_procedure(i_expt)
     elif procedure == 'multiseed':
         idx_seed = list(range(32))
-        i_field = 0
         i_sigma = 0
         i_slm = 0
-        idx_delta = [int(sys.argv[a]) for a in range(2,len(sys.argv))]
-        for i_delta in idx_delta:
-            teams_multiseed_procedure(i_field,i_sigma,idx_seed,i_delta,i_slm,overwrite_reference=False)
+        for i_field in [0,1]:
+            idx_delta = [int(sys.argv[a]) for a in range(2,len(sys.argv))]
+            for i_delta in idx_delta:
+                teams_multiseed_procedure(i_field,i_sigma,idx_seed,i_delta,i_slm,overwrite_reference=False)
 
 
 
