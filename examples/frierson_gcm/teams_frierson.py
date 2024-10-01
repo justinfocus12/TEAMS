@@ -54,8 +54,8 @@ print(f'{i = }'); i += 1
 import algorithms_frierson; reload(algorithms_frierson)
 
 def teams_multiparams():
-    target_fields = ["surf_pres_neg","rainrate",]
-    sigmas = [0.3,0.4]
+    target_fields = ["surf_pres_neg","rainrate",][1:]
+    sigmas = [0.3,0.4][:1]
     seed_incs = list(range(32))
     deltas_phys = [0.0,4.0,5.0,6.0,7.0,8.0,10.0]
     split_landmarks = ['thx']
@@ -90,8 +90,8 @@ def teams_paramset(i_expt):
 
 
     config_algo = dict({
-        'num_levels_max': 512-64, # This parameter shouldn't affect the filenaming or anything like that 
-        'num_members_max': 512,
+        'num_levels_max': 768-64, # This parameter shouldn't affect the filenaming or anything like that 
+        'num_members_max': 768,
         'num_active_families_min': 2,
         'seed_min': 1000,
         'seed_max': 100000,
@@ -285,8 +285,15 @@ def teams_single_workflow(i_expt):
 
     # Set up directories
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
-    date_str = "2024-09-23"
-    sub_date_str = "0"
+    target_field = next(iter(config_algo['score_components'].keys()))
+    if "surf_pres_neg" == target_field:
+        date_str = "2024-09-23"
+        sub_date_str = "0"
+    elif "rainrate" == target_field:
+        date_str = "2024-09-10"
+        sub_date_str = "2"
+    else:
+        raise Exception(f'Unsupported target field {target_field}')
     dirdict = dict()
     dirdict['expt'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_gcm, param_abbrv_algo, r'seedinc%d'%(config_algo['seed_inc_init']))
     dirdict['data'] = join(dirdict['expt'], 'data')
@@ -631,7 +638,7 @@ def run_teams(dirdict,filedict,config_gcm,config_algo):
 def teams_multiseed_procedure(i_field,i_sigma,idx_seed,i_delta,i_slm,overwrite_reference=False): # Just different seeds for now
     tododict = dict({
         'score_distribution': 1,
-        'boost_distribution': 0,
+        'boost_distribution': 1,
         'boost_composites':   0,
         })
     # Figure out which flat indices corresond to this set of seeds
@@ -675,8 +682,15 @@ def teams_multiseed_procedure(i_field,i_sigma,idx_seed,i_delta,i_slm,overwrite_r
     param_abbrv_algo,param_label_algo = algorithms_frierson.FriersonGCMTEAMS.label_from_config(config_algo)
     # Set up a meta-dirdict 
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
-    date_str = "2024-09-23"
-    sub_date_str = "0"
+    target_field = next(iter(config_algo['score_components'].keys()))
+    if "surf_pres_neg" == target_field:
+        date_str = "2024-09-23"
+        sub_date_str = "0"
+    elif "rainrate" == target_field:
+        date_str = "2024-09-10"
+        sub_date_str = "2"
+    else:
+        raise Exception(f'Unsupported target field {target_field}')
     dirdict = dict()
     dirdict['meta'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_gcm, param_abbrv_algo) 
     dirdict['data'] = join(dirdict['meta'], 'data')
@@ -858,7 +872,7 @@ if __name__ == "__main__":
         idx_seed = list(range(32))
         i_sigma = 0
         i_slm = 0
-        for i_field in [0,1]:
+        for i_field in [0]:
             idx_delta = [int(sys.argv[a]) for a in range(2,len(sys.argv))]
             for i_delta in idx_delta:
                 teams_multiseed_procedure(i_field,i_sigma,idx_seed,i_delta,i_slm,overwrite_reference=False)

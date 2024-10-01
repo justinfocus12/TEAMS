@@ -1324,6 +1324,7 @@ class TEAMS(EnsembleAlgorithm):
         # ---------------- Calculate TEAMS statistics -------------------
         #Iterate through alg objects first to collect scores and define bin edges
         N = config_algo['population_size']
+        original_ancs_only = True
         Nalg = len(algs)
         sclim = np.array([np.inf,-np.inf])
         sc_anc = [] # here 'ancestor' can include intermediates along the family tree
@@ -1335,11 +1336,12 @@ class TEAMS(EnsembleAlgorithm):
             sclim[1] = max(sclim[1],np.max(alg.branching_state['scores_max']))
             # Compute everyone's descendants by raising the matrix to higher powers
             B = alg.ens.construct_descent_matrix().toarray()
-            sc_anc_new = list(alg.branching_state['scores_max'])
-            logw_anc_new = list(alg.branching_state['log_weights'])
+            Nanc = N if original_ancs_only else alg.ens.get_nmem()
+            sc_anc_new = list(alg.branching_state['scores_max'][:Nanc])
+            logw_anc_new = list(alg.branching_state['log_weights'][:Nanc])
             sc_desc_new = []
             logw_desc_new = []
-            for anc in range(alg.ens.get_nmem()):
+            for anc in range(Nanc):
                 desc = np.where(B[anc,:] == 1)[0]
                 sc_desc_new.append(np.array([alg.branching_state['scores_max'][i] for i in desc]))
                 logw_desc_new.append(np.array([alg.branching_state['log_weights'][i] for i in desc]))
@@ -1590,6 +1592,12 @@ class TEAMS(EnsembleAlgorithm):
         display = '\n'.join([param_display,'',cost_display])
         sf2rt = lambda sf: utils.convert_sf_to_rtime(sf, returnstats['time_horizon_effective'])
 
+        def cliprlev(rlev_curve):
+            i0 = np.argmax(rlev_curve)
+            rlev_clipped = np.copy(rlev_curve)
+            rlev_clipped[i0+1:] = np.NaN
+            return rlev_clipped
+
 
         figh,axesh = plt.subplots(ncols=3, figsize=(18,4), sharex=False, sharey=True)
         figv,axesv = plt.subplots(ncols=3, figsize=(18,4), sharex=False, sharey=True) # vertically oriented errbars
@@ -1601,8 +1609,8 @@ class TEAMS(EnsembleAlgorithm):
 
         ax = axesv[0]
         for i_alg,alg in enumerate(algs):
-            ax.plot(sf2rt(np.exp(logccdf_grid)), rlevs_init[i_alg], color='dodgerblue', linestyle='-', linewidth=1, alpha=0.5, label=r'Init')
-            ax.plot(sf2rt(np.exp(logccdf_grid)), rlevs_fin[i_alg], color='red', linestyle='-', linewidth=1, alpha=0.5, label=teams_abbrv)
+            ax.plot(rt_grid, cliprlev(rlevs_init[i_alg]), color='dodgerblue', linestyle='-', linewidth=1, alpha=0.5, label=r'Init')
+            ax.plot(rt_grid, cliprlev(rlevs_fin[i_alg]), color='red', linestyle='-', linewidth=1, alpha=0.5, label=teams_abbrv)
         ax.plot(rt_grid, rlev_dns, color='black')
         ax.set_ylabel(r'Return level')
         ax.set_title(r'Single %s runs'%(teams_abbrv))
@@ -1634,7 +1642,7 @@ class TEAMS(EnsembleAlgorithm):
             ax.fill_betweenx(bin_edges[:-1],sf2rt(ccdf_init_lower),sf2rt(ccdf_init_upper),fc='dodgerblue',ec='none',zorder=-1,alpha=0.5)
         # Final TEAMS (weighted)
         hfin_wted, = ax.plot(sf2rt(ccdf_fin_wted), bin_edges[:-1], marker='.', color='red', label=teams_abbrv)
-        ax.fill_betweenx(bin_edges[:-1],sf2rt(ccdf_fin_wted_pooled_lower),sf2rt(ccdf_fin_wted_pooled_upper),fc='red',ec='none',zorder=-1,alpha=0.5)
+        ax.fill_betweenx(bin_edges[:-1],sf2rt(ccdf_fin_wted_pooled_lower),sf2rt(ccdf_fin_wted_pooled_upper),fc='red',ec='none',zorder=-1,alpha=0.25)
         ax.legend(handles=[hinit,hfin_wted,hdns],bbox_to_anchor=(1,0),loc='lower right')
         ax.set_ylabel('')
         ax.yaxis.set_tick_params(which='both',labelbottom=True)
@@ -1650,15 +1658,15 @@ class TEAMS(EnsembleAlgorithm):
             ax.set_xlabel(r'Return time')
 
         ax = axesv[1]
-        ax.plot(sf2rt(np.exp(logccdf_grid)), rlev_fin_pooled, color='red')
+        ax.plot(rt_grid, cliprlev(rlev_fin_pooled), color='red')
         qlo = np.quantile(rlevs_fin_pooled_boot, alpha/2, axis=0)
         qhi = np.quantile(rlevs_fin_pooled_boot, 1-alpha/2, axis=0)
-        ax.fill_between(sf2rt(np.exp(logccdf_grid)), 2*rlev_fin_pooled-qhi, 2*rlev_fin_pooled-qlo, color='red', alpha=0.5, zorder=-1)
-        ax.plot(rt_grid, rlev_dns, color='black')
+        ax.fill_between(rt_grid, cliprlev(2*rlev_fin_pooled-qhi), cliprlev(2*rlev_fin_pooled-qlo), color='red', alpha=0.25, zorder=-1)
+        ax.plot(rt_grid, cliprlev(rlev_dns), color='black')
         qlo_dns = np.quantile(rlevs_dns_boot_fin, alpha/2, axis=0)
         qhi_dns = np.quantile(rlevs_dns_boot_fin, 1-alpha/2, axis=0)
-        ax.fill_between(sf2rt(rt_grid), 2*rlev_fin_pooled-qhi, 2*rlev_fin_pooled-qlo, color='red', alpha=0.5, zorder=-1)
-        ax.fill_between(rt_grid, 2*rlev_dns-qhi_dns, 2*rlev_dns-qlo_dns, color='gray', alpha=0.5, zorder=-2)
+        ax.fill_between(rt_grid, cliprlev(2*rlev_fin_pooled-qhi), cliprlev(2*rlev_fin_pooled-qlo), color='red', alpha=0.25, zorder=-1)
+        ax.fill_between(rt_grid, cliprlev(2*rlev_dns-qhi_dns), cliprlev(2*rlev_dns-qlo_dns), color='gray', alpha=0.5, zorder=-2)
         ax.set_xscale('log')
 
         # ++++ Column 2: Histograms ++++

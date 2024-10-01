@@ -670,11 +670,11 @@ def dns_meta_procedure(idx_expt):
 
 def dns_single_procedure(i_expt):
     tododict = dict({
-        'run':                            0,
-        'plot_snapshots':                 0,
-        'plot_timeseries':                0,
+        'run':                            1,
+        'plot_snapshots':                 1,
+        'plot_timeseries':                1,
         'compute_basic_stats':            1,
-        'compute_extreme_stats':          0,
+        'compute_extreme_stats':          1,
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = dns_single_workflow(i_expt)
 
