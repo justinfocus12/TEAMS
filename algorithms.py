@@ -1402,7 +1402,7 @@ class TEAMS(EnsembleAlgorithm):
         plt.close(fig)
         
     @staticmethod
-    def measure_plot_score_distribution(config_algo, algs, scmax_dns, returnstats_file, figfile, alpha=0.05, param_display=''):
+    def measure_plot_score_distribution(config_algo, algs, scmax_dns, returnstats_file, figfileh, figfilev, alpha=0.05, param_display=''):
         N_dns = len(scmax_dns)
         # ---------------- Calculate TEAMS statistics -------------------
         #Iterate through alg objects first to collect scores and define bin edges
@@ -1423,10 +1423,11 @@ class TEAMS(EnsembleAlgorithm):
         # determine bounds on measurable return periods 
         logw_pooled = np.concatenate(logws)
         mults_pooled = np.concatenate(mults)
-        finite_idx = np.where(np.isfinite(logw_pooled))
+        scmaxs_pooled = np.concatenate(scmaxs)
+        finite_idx = np.where(np.isfinite(logw_pooled) * (mults_pooled >= 1))
         logw_pooled -= logsumexp(logw_pooled[finite_idx], b=mults_pooled[finite_idx])
-        ccdf_min = np.exp(np.min(logw_pooled))
-        ccdf_max = 0.1 # arbitrary
+        ccdf_min = np.exp(logw_pooled[np.argmax(scmaxs_pooled)])
+        ccdf_max = 0.5 # arbitrary
         logccdf_grid = np.linspace(np.log(ccdf_max), np.log(ccdf_min), 30)
         # Now put the scores from separate runs into this common set of bins
         hists_init,hists_fin_unif,hists_fin_wted,ccdfs_init,ccdfs_fin_unif,ccdfs_fin_wted = (np.zeros((len(algs),len(bin_edges)-1)) for i in range(6))
@@ -1443,7 +1444,9 @@ class TEAMS(EnsembleAlgorithm):
             ccdfs_fin_unif[i_alg,:] = utils.pmf2ccdf(hists_fin_unif[i_alg],bin_edges)
             # return levels as function of return periods
             xord,logccdf_emp = utils.compute_logsf_empirical_with_multiplicities(scmaxs[i_alg],logw=logws[i_alg],mults=mults[i_alg])
-            rlevs_fin[i_alg,:] = np.interp(logccdf_grid, logccdf_emp, xord)
+            rlevs_fin[i_alg,:] = np.interp(logccdf_grid[::-1], logccdf_emp[::-1], xord[::-1])[::-1]
+            xord,logccdf_emp = utils.compute_logsf_empirical_with_multiplicities(scmaxs[i_alg][:alg.population_size],logw=np.zeros(alg.population_size),mults=np.ones(alg.population_size, dtype=int))
+            rlevs_init[i_alg,:] = np.interp(logccdf_grid[::-1], logccdf_emp[::-1], xord[::-1])[::-1]
             # Calculate gains
             A = alg.ens.construct_descent_matrix().toarray().astype(int)
             print(f'{np.min(A) = }, {np.max(A) = }')
@@ -1464,8 +1467,16 @@ class TEAMS(EnsembleAlgorithm):
         ccdf_fin_wted_upper = np.where(ccdf_fin_wted_upper==0, np.nan, ccdf_fin_wted_upper)
         ccdf_fin_unif = utils.pmf2ccdf(hist_fin_unif,bin_edges)
         # rlev
+
         xord_pooled,logccdf_emp_pooled = utils.compute_logsf_empirical_with_multiplicities(np.concatenate(scmaxs), logw=np.concatenate(logws), mults=np.concatenate(mults))
-        rlev_fin_pooled = np.interp(logccdf_grid, logccdf_emp_pooled, xord_pooled)
+        print(f'{xord_pooled = }')
+        print(f'{logccdf_emp_pooled = }')
+
+        rlev_fin_pooled = np.interp(logccdf_grid[::-1], logccdf_emp_pooled[::-1], xord_pooled[::-1])[::-1]
+        print(f'{rlev_fin_pooled = }')
+        print(f'{logccdf_grid = }')
+        sf2rt = lambda sf: utils.convert_sf_to_rtime(sf, config_algo['time_horizon_phys'] - config_algo['advance_split_time_max_phys'])
+        print(f'{sf2rt(np.exp(logccdf_grid)) = }')
         # put error bars on TEAMS by bootstrapping
         rng_boot = default_rng(45839)
         n_boot = 5000
@@ -1479,7 +1490,7 @@ class TEAMS(EnsembleAlgorithm):
             logw_boot = np.concatenate([logws[i] for i in idx_alg_boot[i_boot]])
             mults_boot = np.concatenate([mults[i] for i in idx_alg_boot[i_boot]])
             xord,logccdf_emp = utils.compute_logsf_empirical_with_multiplicities(scmax_boot,logw=logw_boot,mults=mults_boot)
-            rlevs_fin_pooled_boot[i_boot,:] = np.interp(logccdf_grid, logccdf_emp, xord)
+            rlevs_fin_pooled_boot[i_boot,:] = np.interp(logccdf_grid[::-1], logccdf_emp[::-1], xord[::-1])[::-1]
             
         ccdf_fin_wted_pooled_lower = np.nanquantile(ccdf_fin_wted_boot,alpha/2,axis=0)
         ccdf_fin_wted_pooled_upper = np.nanquantile(ccdf_fin_wted_boot,1-alpha/2,axis=0)
@@ -1495,6 +1506,7 @@ class TEAMS(EnsembleAlgorithm):
         ccdf_dns,ccdf_dns_sep_lower,ccdf_dns_sep_upper = utils.pmf2ccdf(hist_dns,bin_edges,return_errbars=True,alpha=alpha,N_errbars=int(N_dns * cost_teams_fin/cost_dns * 1/len(algs)))
         _,ccdf_dns_pooled_lower,ccdf_dns_pooled_upper = utils.pmf2ccdf(hist_dns,bin_edges,return_errbars=True,alpha=alpha,N_errbars=int(N_dns * cost_teams_fin/cost_dns))
 
+        print(f'{ccdf_dns = }')
         # Collect in a dictionary and store 
         returnstats = dict({
             'bin_edges': bin_edges,
@@ -1560,16 +1572,19 @@ class TEAMS(EnsembleAlgorithm):
         figh,axesh = plt.subplots(ncols=3, figsize=(18,4), sharex=False, sharey=True)
         figv,axesv = plt.subplots(ncols=3, figsize=(18,4), sharex=False, sharey=True) # vertically oriented errbars
 
-        for axes in (axesh,axesv)
+        for axes in (axesh,axesv):
             axes[0].text(-0.3,0.5,display,fontsize=15,transform=axesh[0].transAxes,horizontalalignment='right',verticalalignment='center')
 
         # ++++ Column 0: individual curves on the left ++++
 
         ax = axesv[0]
         for i_alg,alg in enumerate(algs):
-            ax.plot(sf2rt(logccdf_grid), rlev_fin[i_alg], color='dodgerblue', linestyle='-', linewidth=1, alpha=0.5, label=r'Init')
+            ax.plot(sf2rt(np.exp(logccdf_grid)), rlevs_init[i_alg], color='dodgerblue', linestyle='-', linewidth=1, alpha=0.5, label=r'Init')
+            ax.plot(sf2rt(np.exp(logccdf_grid)), rlevs_fin[i_alg], color='red', linestyle='-', linewidth=1, alpha=0.5, label=teams_abbrv)
         ax.set_ylabel(r'Return level')
         ax.set_title(r'Single %s runs'%(teams_abbrv))
+        ax.set_xscale('log')
+        # TODO add DNS line 
 
 
         ax = axesh[0]
@@ -1611,20 +1626,29 @@ class TEAMS(EnsembleAlgorithm):
             ax.set_ylim(ylim)
             ax.set_xlabel(r'Return time')
 
-        # ++++ Column 2: Histograms ++++
-        ax = axesh[2]
-        ax.plot(hist_dns, bin_edges[:-1], color='black')
-        ax.plot(hist_init, bin_edges[:-1], color='dodgerblue')
-        ax.plot(hist_fin_unif, bin_edges[:-1], color='red')
-        ax.yaxis.set_tick_params(which='both',labelbottom=True)
+        # TODO plot the vertical version
+        ax = axesv[1]
+        ax.plot(sf2rt(np.exp(logccdf_grid)), rlev_fin_pooled, color='red')
+        qlo = np.quantile(rlevs_fin_pooled_boot, alpha/2, axis=0)
+        qhi = np.quantile(rlevs_fin_pooled_boot, 1-alpha/2, axis=0)
+        ax.fill_between(sf2rt(np.exp(logccdf_grid)), 2*rlev_fin_pooled-qhi, 2*rlev_fin_pooled-qlo, color='red', alpha=0.5, zorder=-1)
         ax.set_xscale('log')
-        ax.set_ylim(ylim)
-        ax.set_xlabel('Counts')
-        ax.set_title('Score histograms')
 
-        figh.savefig(figfile, **pltkwargs)
+        # ++++ Column 2: Histograms ++++
+        for ax in (axesh[2],axesv[2]):
+            ax.plot(hist_dns, bin_edges[:-1], color='black')
+            ax.plot(hist_init, bin_edges[:-1], color='dodgerblue')
+            ax.plot(hist_fin_unif, bin_edges[:-1], color='red')
+            ax.yaxis.set_tick_params(which='both',labelbottom=True)
+            ax.set_xscale('log')
+            ax.set_ylim(ylim)
+            ax.set_xlabel('Counts')
+            ax.set_title('Score histograms')
+
+        figh.savefig(figfileh, **pltkwargs)
         plt.close(figh)
 
+        figv.savefig(figfilev, **pltkwargs)
         plt.close(figv)
 
 

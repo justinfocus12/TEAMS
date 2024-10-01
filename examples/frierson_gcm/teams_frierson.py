@@ -580,12 +580,13 @@ def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, refere
             scmax_ref = np.load(scmax_dns_file)['scmax']
 
     returnstats_file = join(dirdict['analysis'],'returnstats_%s.npz'%(param_suffix))
-    figfile = join(dirdict['plots'],r'returnstats_%s.png'%(param_suffix))
+    figfileh = join(dirdict['plots'],r'returnstats_h_%s.png'%(param_suffix))
+    figfilev = join(dirdict['plots'],r'returnstats_v_%s.png'%(param_suffix))
     param_display = '\n'.join([
         r'$\sigma=%g$'%(algs[0].ens.dynsys.config['SPPT']['std_sppt']),
         r'$\delta=%g$'%(config_algo['advance_split_time_phys']),
         ])
-    algorithms_frierson.FriersonGCMTEAMS.measure_plot_score_distribution(config_algo, algs, scmax_ref, returnstats_file, figfile, param_display=param_display)
+    algorithms_frierson.FriersonGCMTEAMS.measure_plot_score_distribution(config_algo, algs, scmax_ref, returnstats_file, figfileh, figfilev, param_display=param_display)
 
     return
 
@@ -628,8 +629,8 @@ def run_teams(dirdict,filedict,config_gcm,config_algo):
 
 def teams_multiseed_procedure(i_field,i_sigma,idx_seed,i_delta,i_slm,overwrite_reference=False): # Just different seeds for now
     tododict = dict({
-        'score_distribution': 0,
-        'boost_distribution': 1,
+        'score_distribution': 1,
+        'boost_distribution': 0,
         'boost_composites':   0,
         })
     # Figure out which flat indices corresond to this set of seeds

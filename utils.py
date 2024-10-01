@@ -33,18 +33,21 @@ def concat_dict_of_arrays(d0,d1,axis=-1):
 def compute_logsf_empirical_with_multiplicities(x,logw=None,mults=None):
     # x: scalar data samples
     # logw: log-weights
+    x = np.array(x)
     n = len(x)
     if logw is None:
         logw = np.zeros(n)
+    logw = np.array(logw)
     if mults is None:
         mults = np.ones(n, dtype=int)
+    mults = np.array(mults)
     # Assume pre-processing has been done so all values are finite 
     assert np.all(np.isfinite(x)) and np.all(np.isfinite(logw)) and len(x) == len(logw) == len(mults)
     order = np.argsort(x)
     order = order[np.where(mults[order] >= 1)[0]]
     xord,logword = x[order],logw[order]
     logZ = logsumexp(logw[order], b=mults[order])
-    logsf_emp = np.logaddexp.accumulate(logword[::-1] + log(mults[order][::-1]))[::-1] - logZ # log of sf(x) = p(X >= x)
+    logsf_emp = np.logaddexp.accumulate(logword[::-1] + np.log(mults[order][::-1]))[::-1] - logZ # log of sf(x) = p(X >= x)
     return xord,logsf_emp
 
 def compute_logsf_empirical(x,logw=None):
