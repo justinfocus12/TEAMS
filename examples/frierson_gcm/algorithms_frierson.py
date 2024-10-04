@@ -216,21 +216,28 @@ class FriersonGCMTEAMS(algorithms.TEAMS):
         new_seed = self.rng.integers(low=self.seed_min, high=self.seed_max)
         # TODO consider carefully whether we need to distinguish procedure based on SPPT vs. other kinds of forcing
         if init_time_parent < branch_time:
-            pfrc = self.ens.traj_metadata[parent]['icandf']['frc']
+            frc_parent = self.ens.traj_metadata[parent]['icandf']['frc']
             reseed_times = []
             seeds = []
             # Replicate parent's seeds up until the branch time
-            for i_rst,rst in enumerate(pfrc.reseed_times):
+            i_rst = 0
+            for rst in frc_parent.reseed_times:
                 if rst < branch_time:
                     reseed_times.append(rst)
-                    seeds.append(pfrc.seeds[i_rst])
+                    seeds.append(frc_parent.seeds[i_rst])
+                    i_rst += 1
             # Put in a new seed for the branch time
             reseed_times.append(branch_time)
             seeds.append(new_seed)
+            if self.inherit_perts_after_split:
+                for rst in frc_parent.reseed_times:
+                    if rst > branch_time:
+                        reseed_times.append(rst)
+                        seeds.append(frc_parent.seeds[i_rst])
+                        i_rst += 1
         else:
             reseed_times = [branch_time]
             seeds = [new_seed] 
-        # TODO If parent also has seeds following the branch time, MAYBE copy those too, to make use of useful forcing discovered by the parent 
         icandf = dict({
             'init_cond': init_cond,
             'frc': forcing.OccasionalReseedForcing(init_time, fin_time, reseed_times, seeds),

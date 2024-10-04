@@ -1011,7 +1011,7 @@ class TEAMS(EnsembleAlgorithm):
         super().__init__(config, ens)
         return
     @classmethod
-    @abstractmethod
+    #@abstractmethod
     def initialize_from_ancestorgenerator(cls, angel, buicks):
         # angel is an instance of AncestorGenerator
         pass
@@ -1031,7 +1031,7 @@ class TEAMS(EnsembleAlgorithm):
         self.num2drop = config['num2drop']
         return
     def set_capacity(self, num_levels_max, num_members_max):
-        print(f'Resetting cpacity; before, {self.terminate = }')
+        print(f'Resetting capacity; before, {self.terminate = }')
         num_new_levels = num_levels_max - len(self.branching_state['score_levels'])
         num_new_members = num_members_max - self.ens.get_nmem()
         num_active_members = len(self.branching_state['members_active'])
