@@ -69,7 +69,7 @@ class CaneZebiak(DynamicalSystem):
             fc = file.readlines()
             fc[10] = 'TENDD  =  '+str(fin_time)+'\n'
             
-        with open('fc_'+run_label+'.data', 'w') as file:
+        with open('fc_'+run_label+'.data', 'w') as ff:
             file.writelines(fc)
         
         ## Make perturbed start file at time init_time

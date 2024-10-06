@@ -1152,7 +1152,6 @@ class TEAMS(EnsembleAlgorithm):
             branch_ti = branch_time - init_time_ancestor 
             print(f'modified to {branch_time}')
             icandf = self.generate_icandf_from_parent(parent, branch_time)
-            print(f'{icandf["frc"].get_forcing_times() = }')
             memact = self.branching_state['members_active']
             log_active_weight_old = logsumexp([self.branching_state['log_weights'][ma] for ma in memact], b=[self.branching_state['multiplicities'][ma] for ma in memact])
 
@@ -1954,7 +1953,7 @@ class SDETEAMS(TEAMS):
         parent = requested_parent
         reseed_times_uplim = np.inf # Upper limit on where to inherit new seeds
         searching_back = True
-        while searching_back: #init_time > branch_time:
+        while searching_back: 
             init_time,fin_time = self.ens.get_member_timespan(parent)
             if self.inherit_perts_after_split:
                 # Extract the relevant forcing sequence from the parent
