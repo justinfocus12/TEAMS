@@ -86,7 +86,7 @@ def dns_paramset(i_expt):
         'seed_max': 100000,
         'seed_inc_init': seed_inc, # will be added to seed_min
         'max_member_duration_phys': 30.0,
-        'num_chunks_max': 1024,
+        'num_chunks_max': 2048,
         })
 
     return config_gcm,config_algo,expt_label,expt_abbrv
@@ -307,7 +307,7 @@ def dns_single_workflow(i_expt):
             }),
         })
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
-    date_str = "2024-07-07" #"2024-09-10"
+    date_str = "2024-09-10" #"2024-09-10"
     sub_date_str = "0"
     dirdict = dict()
     dirdict['expt'] = join(scratch_dir,date_str,sub_date_str,param_abbrv_gcm,param_abbrv_algo)

@@ -2,7 +2,7 @@
 
 #SBATCH -n 4
 #SBATCH -N 1
-#SBATCH -t 0-4:00
+#SBATCH -t 0-8:00
 #SBATCH -p sched_mit_hill
 #SBATCH -e /net/bstor002.ib/pog/001/ju26596/TEAMS/logs/dns_%A_%a_error.out
 #SBATCH -o /dev/null
