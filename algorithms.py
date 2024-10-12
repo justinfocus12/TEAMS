@@ -1938,7 +1938,7 @@ class SDETEAMS(TEAMS):
                 'frc': forcing.SuperposedForcing([frc_vector,frc_reseed]),
                 })
             obs_fun = lambda t,x: x
-            saveinfo = {'filename': f'spinup_{i}.nc'}
+            saveinfo = {'filename': f'spinup_{i}.nc'} # TODO remove .nc
             metadata,x = ens.dynsys.run_trajectory(icandf, obs_fun, saveinfo, ens.root_dir)
             init_conds.append(x[-1,:])
             init_times.append(ens.dynsys.t_burnin)

@@ -56,18 +56,21 @@ import algorithms_lorenz96; reload(algorithms_lorenz96)
 print(f'{i = }'); i += 1
 
 def teams_multiparams():
-    # Random seed
-    seed_incs = list(range(64)) 
     # Physical
     F4s = [0.25,0.5,1.0,3.0]
     # Algorithmic
     deltas_phys = list(np.linspace(0.0,2.0,11))
-    return seed_incs,F4s,deltas_phys
+    # Random seed
+    seed_incs = list(range(64)) 
+    return F4s,deltas_phys,seed_incs
 
-def teams_paramset(i_expt):
+def teams_paramset(i_expt=None):
     multiparams = teams_multiparams()
-    idx_multiparam = np.unravel_index(i_expt, tuple(len(mp) for mp in multiparams))
-    seed_inc,F4,delta_phys = (multiparams[i][i_param] for (i,i_param) in enumerate(idx_multiparam))
+    if i_expt is None:
+        idx_multiparam = (0,7,0)
+    else:
+        idx_multiparam = np.unravel_index(i_expt, tuple(len(mp) for mp in multiparams))
+    F4,delta_phys,seed_inc = (multiparams[i][i_param] for (i,i_param) in enumerate(idx_multiparam))
 
     config_sde = lorenz96.Lorenz96SDE.default_config()
     config_sde['frc']['white']['wavenumber_magnitudes'][0] = F4
@@ -79,14 +82,14 @@ def teams_paramset(i_expt):
         'seed_min': 1000,
         'seed_max': 100000,
         'seed_inc_init': seed_inc, 
-        'population_size': 128,
+        'population_size': 32,
         'time_horizon_phys': 8, #6 + delta_phys,
         'buffer_time_phys': 0,
         'advance_split_time_phys': delta_phys,
         'advance_split_time_max_phys': 2.0,
         'split_landmark': 'thx',
         'inherit_perts_after_split': False,
-        'num2drop': 1,
+        'num2drop': 4,
         'score': dict({
             'ks': [0],
             'kweights': [1],
@@ -122,9 +125,9 @@ def teams_single_workflow(i_expt):
         })
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/"
     date_str = "2024-04-12"
-    sub_date_str = "2"
+    sub_date_str = "3"
     dirdict = dict()
-    dirdict['expt'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_sde, param_abbrv_algo)
+    dirdict['expt'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_sde, param_abbrv_algo, r'si%d'%(config_algo['seed_inc_init']))
     dirdict['data'] = join(dirdict['expt'], 'data')
     dirdict['analysis'] = join(dirdict['expt'], 'analysis')
     dirdict['plots'] = join(dirdict['expt'], 'plots')
@@ -269,7 +272,7 @@ def run_teams(dirdict,filedict,config_sde,config_algo):
 def teams_single_procedure(i_expt):
 
     tododict = dict({
-        'run':             0,
+        'run':             1,
         'analysis': dict({
             'observable_spaghetti':     1,
             }),
@@ -446,32 +449,17 @@ def compute_integrated_returnstats_error_metrics(returnstats):
 
 if __name__ == "__main__":
     print(f'Got into Main')
-    multiparams = teams_multiparams()
-    shp = tuple(len(mp) for mp in multiparams)
-    seed_incs,F4s,deltas_phys = multiparams
-    nseeds,nFs,ndeltas = shp
     # The "procedure" argument determines how following arguments are interpreted
     if len(sys.argv) > 1:
         procedure = sys.argv[1]
     else:
         # This little section is for ad-hoc testing
         procedure = 'meta'
-        idx_multiparam = [
-                (i_seed,i_F4,i_delta) 
-                for i_seed in range(0,4)
-                for i_F4 in range(0,1) 
-                for i_delta in range(0,1) 
-                ]
-        idx_expt = []
-        for i_multiparam in idx_multiparam:
-            i_expt = np.ravel_multi_index(i_multiparam,shp)
-            idx_expt.append(i_expt) #list(range(1,21))
     if procedure == 'single':
-        i_F4,i_delta = np.unravel_index(int(sys.argv[2]), (nFs,ndeltas))
-        idx_expt = [
-                np.ravel_multi_index((i_seed,i_F4,i_delta), (len(seed_incs),len(F4s),len(deltas_phys)))
-                for i_seed in range(len(seed_incs))
-                ]
+        if len(sys.argv) > 2:
+            idx_expt = [int(sys.argv[i]) for i in range(2,len(sys.argv))]
+        else:
+            idx_expt = [None]
         for i_expt in idx_expt:
             teams_single_procedure(i_expt)
     elif procedure == 'multiseed':
