@@ -81,19 +81,40 @@ class CaneZebiakTEAMS(algorithms.TEAMS)
     Rather than writing a detailed input/output requirement for these functions, I'll let you try to fill them in considering how they are used by ../../algorithms.py, in "take_next_step". Refer also to the examples in ../lorenz96.py/algorithms_lorenz96 and ../frierson_gcm/algorithms_frierson.py. 
 
     """
-    @abstractmethod
-    def score_components(self, t, x):
-        # TODO 
+    def score_components(self, trajectory_output_in_whatever_format):
+        """
+        TL;DR: return nino3_from_dat_file(trajectory_output_in_whatever_format)
+
+
+        To understand how this is used in TEAMS, we need to follow this function as it's passed through a few layers of abstraction. Bear with me, and by the end you'll see it's very simple what to do.
+        1. Look c. line 1159 in ../../algorithms.py.n the class definition for TEAMS. The function "self.score_components" (where "self" is the algorithm object) is passed as an argument to "self.ens.branch_or_plant", which is implemented by the Ensemble class in ../../ensemble.py.
+        2. In ../../ensemble.py, The function "branch_or_plant" has the corresponding argument "obs_fun". Circa line 29, obs_fun is passed as an argument to "self.dynsys.run_trajectory" (where "self" now refers to the Ensemble object--remember we're looking at the Ensemble class definition now). Meanwhile, "self.dynsys" is the DynamicalSystem object, which is none other than CaneZebiak! And "run_trajectory" is a function you already implemented, so let's climb back down the ladder and look at that.
+        3. In cane_zebiak_sp.py, c. lines 132-160 currently implement "run_trajectory", with the corresponding argument "obs_fun". Right now, you don't use obs_fun, because its purpose was unclear. Hopefully it becomes clearer now: obs_fun is the function that computes the score (more specifically, the components of the score to be spliced together with those of the parent before computing a new fused score). See the additional comments in run_trajectory. As suggested by the last argument of this function, it is up to you how to format the inputs and outputs to self.score_components; but it must be consistent between here and in CaneZebiak.run_trajectory(...,obs_fun,...).
+
+        """
         pass
-    @abstractmethod
-    def score_combined(self, t, sccomps):
-        # sccomps is the output of score_components
-        # Scalar score used for splitting, which is derived from sccomp; e.g., a time average
-        # TODO 
-        pass
-    def merge_score_components(self):
-        # TODO 
-        pass
+    def merge_score_components(self, child, nino3_child): 
+        """
+        This is a modified version of merge_score_components from ../lorenz96/algorithms_lorenz96.py c. line 289. You will probably have to modify a bit to match your data format, but this hopefully gets you halfway. 
+
+        The purpose is toe splice together the child score with the parent score at the appropriate t_branch
+        """
+        init_time,fin_time = self.ens.get_member_timespan(child)
+        parent = next(self.ens.memgraph.predecessors(child))
+        init_time_parent,fin_time_parent = self.ens.get_member_timespan(parent)
+        while init_time_parent > init_time:
+            parent = next(self.ens.memgraph.predecessors(parent))
+            init_time_parent,fin_time_parent = self.ens.get_member_timespan(parent)
+        nino3_parent = self.branching_state['score_components_tdep'][parent]
+        nsteps2prepend = len(nino3_parent) - len(nino3_child) # how old the parent was when the child was born 
+        return np.concatenate((nino3_parent[:nsteps2prepend], nino3_child))
+
+
+    def score_combined(self, nino3):
+        """
+        In Lorenz96, the last argument is called "sccomps" for "score components", note the plural, which allows us to use both velocity and energy (for example). In your case, there is is really just one component: nino3, which was computed by self.score_components. So there's no combining to be done. Note that Lorenz96 returns a list (with one element); you have the freedom to simplify and return a single timeseries. Remember, you just need to make sure the score function is called in a consistent way in CaneZebiak and here. Think of algorithms_cane_zebiak.py and cane_zebiak_sp.py as people connected by cell phone; the abstract stuff in ../../algorithms.py and ../../ensemble.py is just the satellite, which transmits the message while staying as agnostic as possible to the details of the speech.
+        """
+        return nino3
     def generate_icandf_from_parent(self, parent, branch_time):
         # TODO
         """

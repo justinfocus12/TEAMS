@@ -150,7 +150,19 @@ class CaneZebiak(DynamicalSystem):
         run_label = icandf["run_label"]
         os.chdir('/n/home09/spackman/el_nino/CZ_model')
         os.system('./run_exp '+run_label+' Standard_'+run_label)
-        observables = dict({"nino_3" : np.genfromtxt(root_dir+run_label+'/nino3_'+run_label+'.dat')})
+        # First try by SP:
+        #observables = dict({"nino_3" : np.genfromtxt(root_dir+run_label+'/nino3_'+run_label+'.dat')})
+        # Modification by JF:
+        nino3_filename = np.genfromtxt(root_dir+run_label+'/nino3_'+run_label+'.dat'
+        nino3 = read_datfile_and_return_nino3_as_numpy_array(nino3_filename)
+        # Another dummy observable to illustrate a point 
+        westerly_wind_filename = np.genfromtxt(root_dir+run_label+'/westerly_wind_'+run_label+'.dat') 
+        westerly_wind = read_datfile_and_return_westerly_wind_as_numpy_array(westerly_wind_filename)
+        observables = obs_fun(nino3, westerly_wind) # This function should provide what is asked for by the external caller. You get to choose what all aspects of the trajectory should count as "observable", and pass those as arguments to obs_fun; correspondingly, any external caller of run_trajectory (such as the TEAMS algorithm) should pass an obs_fun that takes those same arguments. 
+
+        # Further suggestion by JF: 'run_label' seems like a piece of information that falls under the category of "saveinfo", i.e., where to save the output file(s) and the corresponding filename(s). The icandf dictionary is meant to encode (1) initial conditions coming from an ancestor or coldstart, and (2) how to perturb those initial conditions to run the new member. Consider reorganizing the information, but it's probably not mandatory. Note you're also free to modify the keys and values of "metadata" to reflect the unique output format of the Cane-Zebiak model. Maybe there should be multiple keys for the output instead of just the single "filename_traj". 
+
+
         
         metadata = dict({
             'icandf': icandf, 
