@@ -1028,7 +1028,8 @@ class TEAMS(EnsembleAlgorithm):
         self.split_landmark = config['split_landmark'] # either 'max' or 'thx'
         self.inherit_perts_after_split = config['inherit_perts_after_split']
         self.population_size = config['population_size']
-        self.num2drop = config['num2drop']
+        self.drop_sched = config['drop_sched']
+        self.drop_rate = config['drop_rate']
         return
     def set_capacity(self, num_levels_max, num_members_max):
         print(f'Resetting capacity; before, {self.terminate = }')
@@ -1045,7 +1046,7 @@ class TEAMS(EnsembleAlgorithm):
             self.num_levels_max = num_levels_max
             self.num_members_max = num_members_max
             self.terminate = False
-        print(f'Resetting cpacity; after, {self.terminate = }')
+        print(f'Resetting capacity; after, {self.terminate = }')
         return
     def set_init_conds(self, init_times, init_conds):
         self.init_times = init_times
@@ -1054,19 +1055,25 @@ class TEAMS(EnsembleAlgorithm):
     @staticmethod
     def label_from_config(config):
         abbrv = (
-                r'TEAMS_N%d_T%g_ast%gb4%s_drop%d_ipas%d'%(
+                r'TEAMS_N%d_T%g_ast%gb4%s_drop%s%g_ipas%d'%(
                     config['population_size'],
                     config['time_horizon_phys'],
                     config['advance_split_time_phys'],
                     config['split_landmark'],
-                    config['num2drop'],
+                    config['drop_sched'],
+                    config['drop_rate'],
                     int(config['inherit_perts_after_split']),
                     )
                 ).replace('.','p')
         split_landmark_display = {'lmx': 'loc. max', 'gmx': 'glob. max', 'thx': 'lev. cross.'}[config['split_landmark']]
-        label = r'TEAMS ($N=%d,\kappa=%d,T=%g,\delta=%g$ before %s)'%(
+        if config['drop_sched'] == 'num':
+            drop_abbrv = r'$\kappa=%d$'%(config['drop_rate']),
+        elif config['drop_sched'] == 'frac':
+            drop_abbrv = r'$\kappa=%.2fN'%(config['drop_rate']),
+
+        label = r'TEAMS ($N=%d,%s,T=%g,\delta=%g$ before %s)'%(
                     config['population_size'],
-                    config['num2drop'],
+                    drop_abbrv,
                     config['time_horizon_phys'],
                     config['advance_split_time_phys'],
                     config['split_landmark'],
@@ -1192,7 +1199,7 @@ class TEAMS(EnsembleAlgorithm):
         success = (new_score_max > self.branching_state['score_levels'][-1])
         memact = self.branching_state['members_active']
         # Update the weights
-        if parent is None:
+        if parent is None: # still building the initial population of ancestors
             self.branching_state['log_weights'].append(0.0)
         else:
             logZ = np.log1p(np.exp(self.branching_state['log_weights'][parent] - log_active_weight_old))
@@ -1229,7 +1236,12 @@ class TEAMS(EnsembleAlgorithm):
         if nmem >= self.population_size: # Past the startup phase
             order = np.argsort(scores_active)
             num_leq = np.cumsum([self.branching_state['multiplicities'][order[j]] for j in range(len(order))])
-            next_level = scores_active[order[np.where(num_leq >= self.num2drop)[0][0]]]
+            num2drop = 1
+            if "num" == self.drop_sched:
+                num2drop = max(num2drop, self.drop_rate)
+            elif "frac" == self.drop_sched:
+                num2drop = max(num2drop, int(round(self.drop_rate * len(scores_active)))) # TODO figure out whether we should count multiplicities in this fraction 
+            next_level = scores_active[order[np.where(num_leq >= num2drop)[0][0]]]
             self.branching_state['score_levels'].append(next_level)
             # Check termination conditions
             if next_level >= scores_active[order[-1]]:
@@ -1938,7 +1950,7 @@ class SDETEAMS(TEAMS):
                 'frc': forcing.SuperposedForcing([frc_vector,frc_reseed]),
                 })
             obs_fun = lambda t,x: x
-            saveinfo = {'filename': f'spinup_{i}.nc'} # TODO remove .nc
+            saveinfo = {'filename': f'spinup_{i}.npz'} # TODO remove .nc
             metadata,x = ens.dynsys.run_trajectory(icandf, obs_fun, saveinfo, ens.root_dir)
             init_conds.append(x[-1,:])
             init_times.append(ens.dynsys.t_burnin)

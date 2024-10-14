@@ -57,11 +57,11 @@ print(f'{i = }'); i += 1
 
 def teams_multiparams():
     # Physical
-    F4s = [0.25,0.5,1.0,3.0]
+    F4s = [0.5, 1.5] # [0.0, 0.25, 0.5, 1.0, 3.0]
     # Algorithmic
-    deltas_phys = list(np.linspace(0.0,2.0,11))
+    deltas_phys = [0.5,1.5] #list(np.linspace(0.0,2.0,11))
     # Random seed
-    seed_incs = list(range(64)) 
+    seed_incs = list(range(8)) 
     return F4s,deltas_phys,seed_incs
 
 def teams_paramset(i_expt=None):
@@ -89,13 +89,20 @@ def teams_paramset(i_expt=None):
         'advance_split_time_max_phys': 2.0,
         'split_landmark': 'thx',
         'inherit_perts_after_split': False,
-        'num2drop': 4,
         'score': dict({
             'ks': [0],
             'kweights': [1],
             'tavg_phys': 0.0,
             }),
         })
+    """
+    Set level-raising schedule through two parameters: 'drop_sched' sets the type of level-raising protocol, while 'drop_rate' sets how fast, and is interpreted differently depending on 'drop_sched'. 
+    1. drop_sched='num' means kill a constant number of ensemble members each iteration, given by 'drop_rate' (an integer).
+    2. drop_sched='frac' means kill a constant fraction of the surviving population, given by 'drop_rate' (a fraction). 
+
+    """
+    config_algo['drop_sched'] = 'frac'
+    config_algo['drop_rate'] = 0.5
     expt_label = r'$F_4=%g$, seed %d'%(F4,seed_inc)
     expt_abbrv = (r'F%g_seed%d'%(F4,seed_inc)).replace('.','p')
     return config_sde,config_algo,expt_label,expt_abbrv
@@ -124,8 +131,8 @@ def teams_single_workflow(i_expt):
             }),
         })
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/"
-    date_str = "2024-04-12"
-    sub_date_str = "3"
+    date_str = "2024-10-14"
+    sub_date_str = "0"
     dirdict = dict()
     dirdict['expt'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_sde, param_abbrv_algo, r'si%d'%(config_algo['seed_inc_init']))
     dirdict['data'] = join(dirdict['expt'], 'data')
