@@ -57,12 +57,13 @@ print(f'{i = }'); i += 1
 
 def teams_multiparams():
     # Physical
-    F4s = [0.5, 1.5] # [0.0, 0.25, 0.5, 1.0, 3.0]
+    F4s = [0.5] # [0.0, 0.25, 0.5, 1.0, 3.0]
     # Algorithmic
-    deltas_phys = [0.5,1.5] #list(np.linspace(0.0,2.0,11))
+    deltas_phys = [0.2,1.0] #list(np.linspace(0.0,2.0,11))
+    drop_params = [('frac',0.1),('frac',0.5),('frac_once_then_num',(0.5,1))]
     # Random seed
     seed_incs = list(range(8)) 
-    return F4s,deltas_phys,seed_incs
+    return F4s,deltas_phys,drop_params,seed_incs
 
 def teams_paramset(i_expt=None):
     multiparams = teams_multiparams()
@@ -70,7 +71,7 @@ def teams_paramset(i_expt=None):
         idx_multiparam = (0,7,0)
     else:
         idx_multiparam = np.unravel_index(i_expt, tuple(len(mp) for mp in multiparams))
-    F4,delta_phys,seed_inc = (multiparams[i][i_param] for (i,i_param) in enumerate(idx_multiparam))
+    F4,delta_phys,drop_params,seed_inc = (multiparams[i][i_param] for (i,i_param) in enumerate(idx_multiparam))
 
     config_sde = lorenz96.Lorenz96SDE.default_config()
     config_sde['frc']['white']['wavenumber_magnitudes'][0] = F4
@@ -101,14 +102,13 @@ def teams_paramset(i_expt=None):
     2. drop_sched='frac' means kill a constant fraction of the surviving population, given by 'drop_rate' (a fraction). 
 
     """
-    config_algo['drop_sched'] = 'frac'
-    config_algo['drop_rate'] = 0.5
+    config_algo['drop_sched'],config_algo['drop_rate'] = drop_params
     expt_label = r'$F_4=%g$, seed %d'%(F4,seed_inc)
     expt_abbrv = (r'F%g_seed%d'%(F4,seed_inc)).replace('.','p')
     return config_sde,config_algo,expt_label,expt_abbrv
 
 
-def teams_single_workflow(i_expt):
+def teams_single_workflow(i_expt,expt_dir):
     config_sde,config_algo,expt_label,expt_abbrv = teams_paramset(i_expt)
     param_abbrv_sde,param_label_sde = lorenz96.Lorenz96SDE.label_from_config(config_sde)
     param_abbrv_algo,param_label_algo = algorithms_lorenz96.Lorenz96SDETEAMS.label_from_config(config_algo)
@@ -130,11 +130,10 @@ def teams_single_workflow(i_expt):
             'label': r'$\frac{1}{2}\sum_kx_k^2$',
             }),
         })
-    scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/"
-    date_str = "2024-10-14"
+    date_str = "2024-10-15"
     sub_date_str = "0"
     dirdict = dict()
-    dirdict['expt'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_sde, param_abbrv_algo, r'si%d'%(config_algo['seed_inc_init']))
+    dirdict['expt'] = join(expt_dir, date_str, sub_date_str, param_abbrv_sde, param_abbrv_algo, r'si%d'%(config_algo['seed_inc_init']))
     dirdict['data'] = join(dirdict['expt'], 'data')
     dirdict['analysis'] = join(dirdict['expt'], 'analysis')
     dirdict['plots'] = join(dirdict['expt'], 'plots')
@@ -219,17 +218,25 @@ def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, param_
     if (not exists(scmax_dns_file)) or overwrite_dns:
         print(f'About to compute DNS scores')
         dns = pickle.load(open(filedict['dns'], 'rb'))
+        tu = dns.ens.dynsys.dt_save
         sccomp_dns = []
         # TODO multi-thread this computation, and build in rotational symmetry
         nmem_dns = dns.ens.get_nmem()
-        for mem in range(nmem_dns):
-            if mem % 100 == 0: print(f'Scoring member {mem} out of {nmem_dns}')
+        all_starts,all_ends = dns.ens.get_all_timespans()
+        cost_teams = sum([alg.ens.get_nmem() * alg.time_horizon for alg in algs])
+        spinup_dns = int(100.0/tu) 
+        dns_firstmem = np.argmax(all_starts > spinup_dns)
+        dns_lastmem = np.argmax(all_ends >= spinup_dns + cost_teams)
+        print(f'{dns_firstmem = }, {dns_lastmem = }')
+        dns_mems = range(dns_firstmem,dns_lastmem+1)
+        for (i_mem,mem) in enumerate(dns_mems):
+            if (i_mem) % 100 == 0: print(f'Scoring member {i_mem} out of {dns_mems}')
             sccomp_dns.append(
                     dns.ens.compute_observables([algs[0].score_components],mem)[0])
         ncomp = len(sccomp_dns[0])
         sccomp_dns = [
                 np.concatenate([
-                    sccomp_dns[mem][i] for mem in range(dns.ens.get_nmem())
+                    sccomp_dns[i_mem][i] for (i_mem,mem) in enumerate(dns_mems)
                     ])
                 for i in range(ncomp)
                 ]
@@ -244,14 +251,15 @@ def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, param_
 
     # ---------------- Calculate TEAMS statistics -------------------
     returnstats_file = join(dirdict['analysis'],r'returnstats_%s.npz'%(param_suffix))
-    figfile = join(dirdict['plots'],r'returnstats_%s.png'%(param_suffix))
+    figfileh = join(dirdict['plots'],r'returnstats_%s_horz.png'%(param_suffix))
+    figfilev = join(dirdict['plots'],r'returnstats_%s_vert.png'%(param_suffix))
     delta_phys = config_algo['advance_split_time_phys']
     F4 = algs[0].ens.dynsys.config['frc']['white']['wavenumber_magnitudes'][0]
     param_display = '\n'.join([
         r'$\delta=%g$'%(delta_phys),
         r'$F_4=%g$'%(F4),
         ])
-    algorithms_lorenz96.Lorenz96SDETEAMS.measure_plot_score_distribution(config_algo, algs, scmax_dns, returnstats_file, figfile, param_display=param_display)
+    algorithms_lorenz96.Lorenz96SDETEAMS.measure_plot_score_distribution(config_algo, algs, scmax_dns, returnstats_file, figfileh, figfilev, param_display=param_display)
     return
 
 
@@ -303,7 +311,7 @@ def teams_multiseed_procedure(i_F4,i_delta,idx_seed,overwrite_dns=False): # Just
         })
     # Figure out which flat indices corresond to this set of seeds
     multiparams = teams_multiparams()
-    idx_multiparam = [(i_seed,i_F4,i_delta) for i_seed in idx_seed]
+    idx_multiparam = [(i_F4,i_delta,i_seed) for i_seed in idx_seed]
     idx_expt = []
     for i_multiparam in idx_multiparam:
         i_expt = np.ravel_multi_index(i_multiparam,tuple(len(mp) for mp in multiparams))
@@ -319,10 +327,10 @@ def teams_multiseed_procedure(i_F4,i_delta,idx_seed,overwrite_dns=False): # Just
     param_abbrv_algo,param_label_algo = algorithms_lorenz96.Lorenz96SDETEAMS.label_from_config(config_algo)
     # Set up a meta-dirdict 
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/"
-    date_str = "2024-04-12"
-    sub_date_str = "2"
+    date_str = "2024-10-14"
+    sub_date_str = "0"
     dirdict = dict()
-    dirdict['meta'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_sde, 'meta')
+    dirdict['meta'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_sde, param_abbrv_algo, 'meta')
     dirdict['data'] = join(dirdict['meta'], 'data')
     dirdict['analysis'] = join(dirdict['meta'], 'analysis')
     dirdict['plots'] = join(dirdict['meta'], 'plots')
@@ -456,6 +464,7 @@ def compute_integrated_returnstats_error_metrics(returnstats):
 
 if __name__ == "__main__":
     print(f'Got into Main')
+    scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/"
     # The "procedure" argument determines how following arguments are interpreted
     if len(sys.argv) > 1:
         procedure = sys.argv[1]
@@ -468,11 +477,14 @@ if __name__ == "__main__":
         else:
             idx_expt = [None]
         for i_expt in idx_expt:
-            teams_single_procedure(i_expt)
+            teams_single_procedure(i_expt,scratch_dir)
     elif procedure == 'multiseed':
+        multiparams = teams_multiparams()
+        nFs,ndeltas,nseeds = (len(mp) for mp in multiparams)
+        print(f'{nFs = }, {ndeltas = }, {nseeds = }')
         idx_seed = list(range(nseeds))
         i_F4,i_delta = np.unravel_index(int(sys.argv[2]),(nFs,ndeltas))
-        teams_multiseed_procedure(i_F4,i_delta,idx_seed,overwrite_dns=True)
+        teams_multiseed_procedure(i_F4,i_delta,idx_seed,scratch_dir,overwrite_dns=True)
     elif procedure == 'multidelta':
         i_F4 = int(sys.argv[2])
         idx_delta = list(range(len(deltas_phys)))

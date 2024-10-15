@@ -1054,6 +1054,17 @@ class TEAMS(EnsembleAlgorithm):
         return
     @staticmethod
     def label_from_config(config):
+        if config['drop_sched'] == 'num':
+            drop_label = r'$\kappa=%d$'%(config['drop_rate']),
+            drop_abbrv = r'kill%d'%(config['drop_rate'])
+        elif config['drop_sched'] == 'frac':
+            drop_label = r'$\kappa=%.2fN'%(config['drop_rate']),
+            drop_abbrv = r'kill%gN'%(config['drop_rate'])
+        elif config['drop_sched'] == 'frac_once_then_num':
+            drop_frac_init,drop_num = config['drop_rate']
+            drop_label = r'$\kappa=%.2fN$ then $%d$'%(drop_frac_init,drop_num)
+            drop_abbrv = r'kill%.2fNthen%d'%(drop_frac_init,drop_num)
+
         abbrv = (
                 r'TEAMS_N%d_T%g_ast%gb4%s_drop%s%g_ipas%d'%(
                     config['population_size'],
@@ -1061,22 +1072,17 @@ class TEAMS(EnsembleAlgorithm):
                     config['advance_split_time_phys'],
                     config['split_landmark'],
                     config['drop_sched'],
-                    config['drop_rate'],
+                    drop_abbrv,
                     int(config['inherit_perts_after_split']),
                     )
                 ).replace('.','p')
-        split_landmark_display = {'lmx': 'loc. max', 'gmx': 'glob. max', 'thx': 'lev. cross.'}[config['split_landmark']]
-        if config['drop_sched'] == 'num':
-            drop_abbrv = r'$\kappa=%d$'%(config['drop_rate']),
-        elif config['drop_sched'] == 'frac':
-            drop_abbrv = r'$\kappa=%.2fN'%(config['drop_rate']),
-
+        split_landmark_label = {'lmx': 'loc. max', 'gmx': 'glob. max', 'thx': 'lev. cross.'}[config['split_landmark']]
         label = r'TEAMS ($N=%d,%s,T=%g,\delta=%g$ before %s)'%(
                     config['population_size'],
-                    drop_abbrv,
+                    drop_label,
                     config['time_horizon_phys'],
                     config['advance_split_time_phys'],
-                    config['split_landmark'],
+                    split_landmark_label,
                     )
 
         return abbrv, label 

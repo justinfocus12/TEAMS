@@ -23,15 +23,15 @@ from algorithms_lorenz96 import Lorenz96ODEDirectNumericalSimulation as L96ODEDN
 import utils
 
 def dns_multiparams():
-    seed_incs = [0]
     F4s = [0.0,0.25,0.5,1.0,3.0]
-    return seed_incs,F4s
+    seed_incs = [0]
+    return F4s,seed_incs
 
 def dns_paramset(i_expt):
     # Organize the array of parameters as well as the output files 
     multiparams = dns_multiparams()
     idx_multiparam = np.unravel_index(i_expt, tuple(len(mp) for mp in multiparams))
-    seed_inc,F4 = (multiparams[i][i_param] for (i,i_param) in enumerate(idx_multiparam))
+    F4,seed_inc = (multiparams[i][i_param] for (i,i_param) in enumerate(idx_multiparam))
     # Minimal labels to differentiate them 
     expt_label = r'$F_4=%g$'%(F4)
     expt_abbrv = (r'F%g'%(F4)).replace('.','p') 
@@ -44,18 +44,15 @@ def dns_paramset(i_expt):
         'seed_max': 100000,
         'seed_inc_init': seed_inc,
         'max_member_duration_phys': 1000.0,
-        'num_chunks_max': 2500,
+        'num_chunks_max': 25, #2500,
         })
 
 
     return config_dynsys,config_algo,expt_label,expt_abbrv
 
-def dns_single_workflow(i_expt):
+def dns_single_workflow(i_expt,expt_supdir):
     config_dynsys,config_algo,expt_label,expt_abbrv = dns_paramset(i_expt)
     # Organize output directories
-    scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/"
-    date_str = "2024-04-12"
-    sub_date_str = "0"
     param_abbrv_dynsys,param_label_dynsys = Lorenz96SDE.label_from_config(config_dynsys)
     param_abbrv_algo,param_label_algo = L96SDEDNS.label_from_config(config_algo)
     config_analysis = dict({
@@ -80,7 +77,7 @@ def dns_single_workflow(i_expt):
         })
 
     dirdict = dict()
-    dirdict['expt'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_dynsys, param_abbrv_algo)
+    dirdict['expt'] = join(expt_supdir, param_abbrv_dynsys, param_abbrv_algo)
     dirdict['data'] = join(dirdict['expt'], 'data')
     dirdict['analysis'] = join(dirdict['expt'], 'analysis')
     dirdict['plots'] = join(dirdict['expt'], 'plots')
@@ -97,18 +94,15 @@ def dns_single_workflow(i_expt):
     # Basic analysis
     return config_dynsys,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict
 
-def dns_meta_workflow(idx_param):
+def dns_meta_workflow(idx_param,expt_supdir):
     num_expt = len(idx_param)
-    workflow_tuple = tuple(dns_single_workflow(i_param) for i_param in idx_param)
+    workflow_tuple = tuple(dns_single_workflow(i_param,expt_supdir) for i_param in idx_param)
     workflows = dict()
     for i_key,key in enumerate(('configs_dynsys,configs_algo,configs_analysis,expt_labels,expt_abbrvs,dirdicts,filedicts').split(',')):
         workflows[key] = tuple(workflow_tuple[j][i_key] for j in range(len(workflow_tuple)))
     print(f'{workflows.keys() = }')
-    scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/"
-    date_str = "2024-04-12"
-    sub_date_str = "0"
     meta_dirdict = dict()
-    meta_dirdict['meta'] = join(scratch_dir,date_str,sub_date_str,'meta')
+    meta_dirdict['meta'] = join(expt_supdir,'meta')
     for subdir in ['data','analysis','plots']:
         meta_dirdict[subdir] = join(meta_dirdict['meta'],subdir)
         makedirs(meta_dirdict[subdir],exist_ok=True)
@@ -117,11 +111,11 @@ def dns_meta_workflow(idx_param):
         config_meta_analysis[key] = workflows['configs_analysis'][0][key]
     return workflows,config_meta_analysis,meta_dirdict
 
-def dns_meta_procedure(idx_expt):
+def dns_meta_procedure(idx_expt,expt_supdir):
     tododict = dict({
         'compare_extreme_stats':           1,
         })
-    workflows,config_meta_analysis,meta_dirdict = dns_meta_workflow(idx_expt)
+    workflows,config_meta_analysis,meta_dirdict = dns_meta_workflow(idx_expt,expt_supdir)
     if tododict['compare_extreme_stats']:
         compare_extreme_stats(workflows,config_meta_analysis,meta_dirdict)
     return
@@ -260,16 +254,16 @@ def compare_extreme_stats(workflows,config_meta_analysis, dirdict):
 
 
 
-def dns_single_procedure(i_expt):
+def dns_single_procedure(i_expt, expt_supdir):
     tododict = dict({
-        'run':                   0,
-        'plot_segment':          0,
+        'run':                   1,
+        'plot_segment':          1,
         'return_stats':          1,
         })
 
     # Quantities of interest for statistics. These should be registered as observables under the system.
     print(f'Workflow setup...',end='')
-    config_dynsys,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = dns_single_workflow(i_expt)
+    config_dynsys,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = dns_single_workflow(i_expt,expt_supdir)
     print('done')
 
     if tododict['run']:
@@ -286,9 +280,13 @@ def dns_single_procedure(i_expt):
 
 if __name__ == "__main__":
     procedure = sys.argv[1]
+    scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/"
+    date_str = "2024-10-15"
+    sub_date_str = "0"
+    expt_supdir = join(scratch_dir,date_str,sub_date_str)
     idx_expt = [int(v) for v in sys.argv[2:]]
     if procedure == 'single':
         for i_expt in idx_expt:
-            dns_single_procedure(i_expt)
+            dns_single_procedure(i_expt,expt_supdir)
     elif procedure == 'meta':
-        dns_meta_procedure(idx_expt)
+        dns_meta_procedure(idx_expt,expt_supdir)
