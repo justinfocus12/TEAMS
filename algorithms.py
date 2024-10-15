@@ -1066,12 +1066,11 @@ class TEAMS(EnsembleAlgorithm):
             drop_abbrv = r'kill%.2fNthen%d'%(drop_frac_init,drop_num)
 
         abbrv = (
-                r'TEAMS_N%d_T%g_ast%gb4%s_drop%s%g_ipas%d'%(
+                r'TEAMS_N%d_T%g_ast%gb4%s_%s_ipas%d'%(
                     config['population_size'],
                     config['time_horizon_phys'],
                     config['advance_split_time_phys'],
                     config['split_landmark'],
-                    config['drop_sched'],
                     drop_abbrv,
                     int(config['inherit_perts_after_split']),
                     )
@@ -1247,6 +1246,13 @@ class TEAMS(EnsembleAlgorithm):
                 num2drop = max(num2drop, self.drop_rate)
             elif "frac" == self.drop_sched:
                 num2drop = max(num2drop, int(round(self.drop_rate * len(scores_active)))) # TODO figure out whether we should count multiplicities in this fraction 
+            elif "frac_once_then_num" == self.drop_sched:
+                if len(self.branching_state['score_levels']) == 1: # this is the first time raising the level
+                    num2drop = max(num2drop, int(round(self.drop_rate[0] * len(scores_active))))
+                else:
+                    num2drop = 1
+
+
             next_level = scores_active[order[np.where(num_leq >= num2drop)[0][0]]]
             self.branching_state['score_levels'].append(next_level)
             # Check termination conditions
