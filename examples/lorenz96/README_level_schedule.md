@@ -9,10 +9,10 @@
     b. In the terminal, enter "teams_lorenz96_coldstart.py single <i_expt>" where i_expt is an integer representing a flat index in the multi-dimensional array of parameter settings laid out in "teams_multiparams()":
         i. F4s: stochastic forcing strengths
         ii. deltas_phys: advance split time in *physical* units
-        iii. drop_params: three simple specifications of the level-raising schedule. Each specification is an ordered pair (drop_sched,drop_rate)
-            - ('frac',0.37): drop a fraction 0.37 of active members at each round.
-            - ('num',3): drop 3 active members at each round.
-            - ('frac_then_num',(0.5,2)): drop half the members at the first round, then 2 members in each subsequent round.
+        iii. population_params: three simple specifications of the level-raising schedule. Each specification is an ordered triple (drop_sched,drop_rate,birth_sched)
+            - ('frac',0.37,'const_pop'): drop a fraction 0.37 of active members at each round, and replenish entirely.
+            - ('num',3,'one_birth'): drop 3 active members at each round, and create one.
+            - ('frac_then_num',(0.5,2),'cull_first_then_const_pop'): drop half the members at the first round, then 2 members in each subsequent round. Replenish only one member after the first round, but afterward replenish to a constant population.
             - Feel free to add your own schedule designs. If you do, two additional code modifications are necessary in ../../algorithms.py:
                 * TEAMS.raise_level_replenish_queue() (c. lines 1245-1253): add a new 'elif "your_new_schedule_name" == self.drop_sched' to the if-statements to compute a new num2drop, given the set of active scores. Make sure you arrive at an integer no smaller than 1. 
                 * TEAMS.label_from_config (c. lines 1056-1087): add a new 'elif config["drop_sched"] == "your_new_schedule_name"' and specify a drop_label and a drop_abbrv for annotating figures and output directory names, respectively. 
