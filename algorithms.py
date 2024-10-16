@@ -1030,6 +1030,7 @@ class TEAMS(EnsembleAlgorithm):
         self.population_size = config['population_size']
         self.drop_sched = config['drop_sched']
         self.drop_rate = config['drop_rate']
+        self.birth_sched = config['birth_sched']
         return
     def set_capacity(self, num_levels_max, num_members_max):
         print(f'Resetting capacity; before, {self.terminate = }')
@@ -1065,13 +1066,25 @@ class TEAMS(EnsembleAlgorithm):
             drop_label = r'$\kappa=%.2fN$ then $%d$'%(drop_frac_init,drop_num)
             drop_abbrv = r'kill%.2fNthen%d'%(drop_frac_init,drop_num)
 
+        if config['birth_sched'] == 'const_pop':
+            birth_label = r'$\beta=N-\kappa$'
+            birth_abbrv = 'kpop'
+        elif config['birth_sched'] == 'one_birth':
+            birth_label = r'$\beta=1$'
+            birth_abbrv = '1birth'
+        elif config['birth_sched'] == 'cull_once_then_const_pop':
+            birth_label = '$\beta=1$ then $N-\kappa$'
+            birth_abbrv = 'cullthenkpop'
+
+
         abbrv = (
-                r'TEAMS_N%d_T%g_ast%gb4%s_%s_ipas%d'%(
+                r'TEAMS_N%d_T%g_ast%gb4%s_%s_%s_ipas%d'%(
                     config['population_size'],
                     config['time_horizon_phys'],
                     config['advance_split_time_phys'],
                     config['split_landmark'],
                     drop_abbrv,
+                    birth_abbrv,
                     int(config['inherit_perts_after_split']),
                     )
                 ).replace('.','p')
@@ -1266,11 +1279,21 @@ class TEAMS(EnsembleAlgorithm):
                 termination_reasons['ancestor_diversity'] = True
 
             # Re-populate the parent queue
+            members2drop = [ma for ma in self.branching_state['members_active'] if self.branching_state['scores_max'][ma] <= next_level]
+            num2drop_actual = len(members2drop)
             self.branching_state['members_active'] = [ma for ma in self.branching_state['members_active'] if self.branching_state['scores_max'][ma] > next_level]
         if not termination_reasons['extinction']:
             parent_pool = self.rng.permutation(np.concatenate(tuple([parent]*self.branching_state['multiplicities'][parent] for parent in self.branching_state['members_active']))) # TODO consider weighting parents' occurrence in this pool by weight
             lenpp = len(parent_pool)
-            deficit = self.population_size - len(self.branching_state['members_active'])
+            if "const_pop" == self.birth_sched:
+                deficit = self.population_size - len(self.branching_state['members_active'])
+            elif "one_birth" == self.birth_sched: # could generalize to a constant number of births 
+                deficit = 1
+            elif "cull_once_then_const_pop" == self.birth_sched:
+                if len(self.branching_state['score_levels']) == 2: # this is the first time raising the level
+                    deficit = 1
+                else:
+                    deficit = num2drop_actual
             for i in range(deficit):
                 self.branching_state['parent_queue'].append(parent_pool[i % lenpp])
             print(f'The replenished queue is {self.branching_state["parent_queue"] = }')

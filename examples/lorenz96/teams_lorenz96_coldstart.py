@@ -60,10 +60,14 @@ def teams_multiparams():
     F4s = [0.5] # [0.0, 0.25, 0.5, 1.0, 3.0]
     # Algorithmic
     deltas_phys = [0.2,1.0] #list(np.linspace(0.0,2.0,11))
-    drop_params = [('frac',0.1),('frac',0.5),('frac_once_then_num',(0.5,1))]
+    population_params = [
+            ('frac',0.1,'const_pop'),
+            ('frac',0.5,'one_birth'),
+            ('frac_once_then_num',(0.5,1),'cull_once_then_const_pop')
+            ]
     # Random seed
     seed_incs = list(range(8)) 
-    return F4s,deltas_phys,drop_params,seed_incs
+    return F4s,deltas_phys,population_params,seed_incs
 
 def teams_paramset(i_expt=None):
     multiparams = teams_multiparams()
@@ -71,7 +75,7 @@ def teams_paramset(i_expt=None):
         idx_multiparam = (0,7,0)
     else:
         idx_multiparam = np.unravel_index(i_expt, tuple(len(mp) for mp in multiparams))
-    F4,delta_phys,drop_params,seed_inc = (multiparams[i][i_param] for (i,i_param) in enumerate(idx_multiparam))
+    F4,delta_phys,population_params,seed_inc = (multiparams[i][i_param] for (i,i_param) in enumerate(idx_multiparam))
 
     config_sde = lorenz96.Lorenz96SDE.default_config()
     config_sde['frc']['white']['wavenumber_magnitudes'][0] = F4
@@ -97,14 +101,23 @@ def teams_paramset(i_expt=None):
             }),
         })
     """
-    Set level-raising schedule through two parameters: 'drop_sched' sets the type of level-raising protocol, while 'drop_rate' sets how fast, and is interpreted differently depending on 'drop_sched'. 
-    1. drop_sched='num' means kill a constant number of ensemble members each iteration, given by 'drop_rate' (an integer).
+    Set level-raising and re-birthing schedules through three parameters: 'drop_sched' sets the type of level-raising protocol; 'drop_rate' sets how fast, and is interpreted differently depending on 'drop_sched'; and 'birth_sched' sets how to choose the number of re-births at every round.
+
+    The drop_sched options are as follows:
+    1. drop_sched='num' means kill a constant number of ensemble members each iteration, given by 'drop_rate' (an integer). 
     2. drop_sched='frac' means kill a constant fraction of the surviving population, given by 'drop_rate' (a fraction). 
     3. drop_sched='frac_then_num' means kill a fixed fraction at the first round, then a fixed number thereafter. Since we need two numbers to specify this, drop_rate has to be an ordered pair also (real, int). 
     4. Feel free to design new schedules and rates by adding more parameters. There's no fixed format, but you will have to add two corresponding pieces of code in ../../algorithms.py:
 
+    The birth_sched option sare as follows:
+    1. birth_sched='const_pop' means always replenish the population to its original level.
+    2. birth_sched='one_birth' means always re-birth exactly once. 
+    3. birth_sched='cull_once_then_const_pop' means only re-birth once at the first round, but replenish the (reduced-size) population thereafter. 
+
+
+
     """
-    config_algo['drop_sched'],config_algo['drop_rate'] = drop_params
+    config_algo['drop_sched'],config_algo['drop_rate'],config_algo['birth_sched'] = population_params
     expt_label = r'$F_4=%g$, seed %d'%(F4,seed_inc)
     expt_abbrv = (r'F%g_seed%d'%(F4,seed_inc)).replace('.','p')
     return config_sde,config_algo,expt_label,expt_abbrv
