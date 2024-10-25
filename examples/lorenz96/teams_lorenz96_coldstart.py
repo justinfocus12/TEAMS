@@ -57,22 +57,23 @@ print(f'{i = }'); i += 1
 
 def teams_multiparams():
     # Physical
-    F4s = [0.5] # [0.0, 0.25, 0.5, 1.0, 3.0]
+    F4s = [0.25] # [0.0, 0.25, 0.5, 1.0, 3.0]
     # Algorithmic
-    deltas_phys = [0.2,1.0] #list(np.linspace(0.0,2.0,11))
+    deltas_phys = [1.4] #list(np.linspace(0.0,2.0,11))
     population_params = [
+            ('num',1,'const_pop'),
             ('frac',0.1,'const_pop'),
             ('frac',0.5,'one_birth'),
             ('frac_once_then_num',(0.5,1),'cull_once_then_const_pop')
             ]
     # Random seed
-    seed_incs = list(range(8)) 
+    seed_incs = list(range(3)) 
     return F4s,deltas_phys,population_params,seed_incs
 
 def teams_paramset(i_expt=None):
     multiparams = teams_multiparams()
     if i_expt is None:
-        idx_multiparam = (0,7,0)
+        idx_multiparam = (0,0,0)
     else:
         idx_multiparam = np.unravel_index(i_expt, tuple(len(mp) for mp in multiparams))
     F4,delta_phys,population_params,seed_inc = (multiparams[i][i_param] for (i,i_param) in enumerate(idx_multiparam))

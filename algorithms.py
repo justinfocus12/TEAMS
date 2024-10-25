@@ -1555,12 +1555,12 @@ class TEAMS(EnsembleAlgorithm):
             logw_boot = np.concatenate([logws[i] for i in idx_alg_boot[i_boot]])
             mults_boot = np.concatenate([mults[i] for i in idx_alg_boot[i_boot]])
             xord,logccdf_emp = utils.compute_logsf_empirical_with_multiplicities(scmax_boot,logw=logw_boot,mults=mults_boot)
-            rlevs_fin_pooled_boot[i_boot,:] = np.interp(logccdf_grid[::-1], logccdf_emp[::-1], xord[::-1])[::-1]
+            rlevs_fin_pooled_boot[i_boot,:] = np.interp(logccdf_grid[::-1], logccdf_emp[::-1], xord[::-1], left=np.nan, right=np.nan)[::-1]
             # DNS 
             xord,logccdf_emp = utils.compute_logsf_empirical_with_multiplicities(scmax_dns[idx_dns_boot_init[i_boot]])
-            rlevs_dns_boot_init[i_boot,:] = np.interp(logccdf_grid[::-1], logccdf_emp[::-1], xord[::-1])[::-1]
+            rlevs_dns_boot_init[i_boot,:] = np.interp(logccdf_grid[::-1], logccdf_emp[::-1], xord[::-1], left=np.nan, right=np.nan)[::-1]
             xord,logccdf_emp = utils.compute_logsf_empirical_with_multiplicities(scmax_dns[idx_dns_boot_fin[i_boot]])
-            rlevs_dns_boot_fin[i_boot,:] = np.interp(logccdf_grid[::-1], logccdf_emp[::-1], xord[::-1])[::-1]
+            rlevs_dns_boot_fin[i_boot,:] = np.interp(logccdf_grid[::-1], logccdf_emp[::-1], xord[::-1], left=np.nan, right=np.nan)[::-1]
             
         ccdf_fin_wted_pooled_lower = np.nanquantile(ccdf_fin_wted_boot,alpha/2,axis=0)
         ccdf_fin_wted_pooled_upper = np.nanquantile(ccdf_fin_wted_boot,1-alpha/2,axis=0)
@@ -1649,7 +1649,7 @@ class TEAMS(EnsembleAlgorithm):
         figv,axesv = plt.subplots(ncols=3, figsize=(18,4), sharex=False, sharey=True) # vertically oriented errbars
 
         for axes in (axesh,axesv):
-            axes[0].text(-0.3,0.5,display,fontsize=15,transform=axesh[0].transAxes,horizontalalignment='right',verticalalignment='center')
+            axes[0].text(-0.3,0.5,display,fontsize=15,transform=axes[0].transAxes,horizontalalignment='right',verticalalignment='center')
 
         # ++++ Column 0: individual curves ++++
 
