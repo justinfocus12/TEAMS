@@ -1705,12 +1705,12 @@ class TEAMS(EnsembleAlgorithm):
 
         ax = axesv[1]
         ax.plot(rt_grid, cliprlev(rlev_fin_pooled), color='red')
-        qlo = np.quantile(rlevs_fin_pooled_boot, alpha/2, axis=0)
-        qhi = np.quantile(rlevs_fin_pooled_boot, 1-alpha/2, axis=0)
+        qlo = np.nanquantile(rlevs_fin_pooled_boot, alpha/2, axis=0)
+        qhi = np.nanquantile(rlevs_fin_pooled_boot, 1-alpha/2, axis=0)
         ax.fill_between(rt_grid, cliprlev(2*rlev_fin_pooled-qhi), cliprlev(2*rlev_fin_pooled-qlo), color='red', alpha=0.25, zorder=-1)
         ax.plot(rt_grid, cliprlev(rlev_dns), color='black')
-        qlo_dns = np.quantile(rlevs_dns_boot_fin, alpha/2, axis=0)
-        qhi_dns = np.quantile(rlevs_dns_boot_fin, 1-alpha/2, axis=0)
+        qlo_dns = np.nanquantile(rlevs_dns_boot_fin, alpha/2, axis=0)
+        qhi_dns = np.nanquantile(rlevs_dns_boot_fin, 1-alpha/2, axis=0)
         ax.fill_between(rt_grid, cliprlev(2*rlev_fin_pooled-qhi), cliprlev(2*rlev_fin_pooled-qlo), color='red', alpha=0.25, zorder=-1)
         ax.fill_between(rt_grid, cliprlev(2*rlev_dns-qhi_dns), cliprlev(2*rlev_dns-qlo_dns), color='gray', alpha=0.5, zorder=-2)
         ax.set_xscale('log')

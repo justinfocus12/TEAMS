@@ -67,7 +67,7 @@ def teams_multiparams():
             ('frac_once_then_num',(0.5,1),'cull_once_then_const_pop')
             ]
     # Random seed
-    seed_incs = list(range(3)) 
+    seed_incs = list(range(64)) 
     return F4s,deltas_phys,population_params,seed_incs
 
 def teams_paramset(i_expt=None):
