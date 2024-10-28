@@ -44,7 +44,7 @@ def dns_paramset(i_expt):
         'seed_max': 100000,
         'seed_inc_init': seed_inc,
         'max_member_duration_phys': 1000.0,
-        'num_chunks_max': 25, #2500,
+        'num_chunks_max': 500, #2500,
         })
 
 
