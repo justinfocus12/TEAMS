@@ -36,7 +36,8 @@ def integrate_monotone_external(
         flowdim,Nparticles,Nx,Ny,dx,dy,Lx,Ly,b,
         forcing_term,linear_term,bilinear_term,
         gamma_t,gamma_tilde_t, # for simplicity, we will have no orography cycle 
-        basis_u,basis_v,source,sink,
+        basis_u,basis_v,
+        source_flag,source_mean,source_amplitude,source_period,sink,
         s_rk4_1,s_rk4_2,s_rk4_3,s_rk4_4,
         s_next_temp,
         s_tendency_total,
@@ -54,8 +55,10 @@ def integrate_monotone_external(
     state_next = np.zeros(len(init_cond))
     tp = init_time_phys 
 
+    timestep_counter = 0
     
     while tp < tp_save[-1]:
+        verbose = 0 #1*(i_save <= 2)
         #print(f'{tp = }')
         dt_step = timestep_monotone_external(
                 state_next,
@@ -64,7 +67,8 @@ def integrate_monotone_external(
                 flowdim,Nparticles,Nx,Ny,dx,dy,Lx,Ly,b,
                 forcing_term,linear_term,bilinear_term,
                 gamma_t,gamma_tilde_t,
-                basis_u,basis_v,source,sink,
+                basis_u,basis_v,
+                source_flag,source_mean,source_amplitude,source_period,sink,
                 s_rk4_1,s_rk4_2,s_rk4_3,s_rk4_4,
                 s_next_temp,
                 s_tendency_total,
@@ -73,18 +77,28 @@ def integrate_monotone_external(
                 flux_coefs_center,flux_coefs_right,flux_coefs_left,flux_coefs_up,flux_coefs_down,
                 s_lag,u_lag,v_lag,death_flag,
                 c1x_lag,s1x_lag,c1y_lag,s1y_lag,c2y_lag,s2y_lag,
+                verbose,
                 )
+        #d_xlag = flowdim + Nx*Ny + np.arange(Nparticles, dtype=int)
+        #if verbose == 1:
+        #    print(np.max(np.abs(state_next[d_xlag] - state[d_xlag])))
         #print(f'{dt_step = }')
         tpnew = tp + dt_step
+        timestep_counter += 1
 
         if tpnew > tp_save_next:
+            #print(f'--------------------------- {i_save = }-----------------')
+            #print(f'{timestep_counter = }')
             new_weight = (tp_save_next - tp)/dt_step 
             #print(f'{dt_step = }')
             # TODO: save out an observable instead of the full state? Depends on a specified frequency
             state_save[i_save,:] = (1-new_weight)*state + new_weight*state_next 
+            #if i_save >= 1:
+            #    print(np.max(np.abs(state_save[i_save,d_xlag] - state_save[i_save-1,d_xlag])))
             i_save += 1
             if i_save < Nt_save:
                 tp_save_next = tp_save[i_save]
+            timestep_counter = 0
         state[:] = state_next
         tp = tpnew
     return
@@ -101,7 +115,8 @@ def timestep_monotone_external(
     flowdim,Nparticles,Nx,Ny,dx,dy,Lx,Ly,aspect,
     forcing_term,linear_term,bilinear_term,
     gamma,gamma_tilde,
-    basis_u, basis_v, source, sink,
+    basis_u, basis_v, 
+    source_flag,source_mean,source_amplitude,source_period,sink,
     # intent(inout)
     # for streamfunction coefficient update
     s_rk4_1,s_rk4_2,s_rk4_3,s_rk4_4,
@@ -114,6 +129,7 @@ def timestep_monotone_external(
     # for Lagrangian advection update 
     s_lag,u_lag,v_lag,death_flag,
     c1x,s1x,c1y,s1y,c2y,s2y,
+    verbose,
     ):
 
     # Make convenience aliases for the components of the state vector
@@ -134,7 +150,8 @@ def timestep_monotone_external(
         v_eul[:,:] += s[i] * basis_v[i,:,:]
     max_abs_u = np.max(np.abs(u_eul))
     max_abs_v = np.max(np.abs(v_eul))
-    dt = min(dt_max, min(dx,dy)/max(max_abs_u,max_abs_v)) / 4
+    dt = min(dt_max, min(dx,dy)/max(max_abs_u,max_abs_v)) / 4 # ends up being 0.00625
+    #print(dt) 
 
 
     # ------------- Update flow field with Runge-Kutta ------------
@@ -218,16 +235,10 @@ def timestep_monotone_external(
             conc_next[iflat] += flux_coefs_down[ix,iy] * (conc[iflat_down] - conc[iflat])
         if iy < Ny-1:
             conc_next[iflat] += flux_coefs_up[ix,iy] * (conc[iflat_up] - conc[iflat])
-        #conc_next[iflat] = (
-        #        #(1+flux_coefs_center[ix,iy]) * conc[iflat] 
-        #        (1 - flux_coefs_right[ix,iy] - flux_coefs_left[ix,iy] - flux_coefs_up[ix,iy] - flux_coefs_down[ix,iy]) * conc[iflat]
-        #        + flux_coefs_right[ix,iy] * conc[iflat_right]
-        #        + flux_coefs_left[ix,iy] * conc[iflat_left]
-        #        + flux_coefs_up[ix,iy] * conc[iflat_up]
-        #        + flux_coefs_down[ix,iy] * conc[iflat_down]
-        #        )
+        # source and sink 
         conc_next[iflat] *= np.exp(-sink*dt)
-        conc_next[iflat] += source[ix,iy]/sink*(-np.expm1(-sink*dt))
+        if source_flag[ix,iy]:
+            conc_next[iflat] += (source_mean + source_amplitude*np.cos(2*np.pi*t/source_period))/sink*(-np.expm1(-sink*dt))
     # --------- Forward Euler for particles -------------
     compute_streamfunction_lagrangian_external(
             s_lag, u_lag, v_lag, 
@@ -235,8 +246,33 @@ def timestep_monotone_external(
             aspect,
             c1x,s1x,c1y,s1y,c2y,s2y
             )
+    #print(f'{np.max(np.abs(dt*u_lag)) = }')
+    #print(f'{np.max(np.abs(dt*v_lag)) = }')
     x_lag_next[:] = np.mod(x_lag + dt*u_lag, Lx)
     y_lag_next[:] = y_lag + dt*v_lag
+
+    #if verbose == 1:
+    #    print(np.max(np.abs(x_lag_next - x_lag)))
+
+    # ---------------- DEBUGGING ------------------- 
+    #ix_lag = np.mod((x_lag / dx).astype(int), Nx)
+    #x_rem = np.mod(x_lag, dx)/dx
+    #iy_lag = np.mod((y_lag / dy).astype(int), Ny)
+    #y_rem = np.mod(y_lag, dy)/dy
+
+    #u_lag_eul = (1-x_rem)*u_eul[ix_lag,iy_lag] + x_rem*u_eul[ix_lag+1,iy_lag]
+    #v_lag_eul = (1-y_rem)*v_eul[ix_lag,iy_lag] + y_rem*v_eul[ix_lag,iy_lag+1]
+
+    #ustacked = np.array([u_lag, u_lag_eul])
+    #vstacked = np.array([v_lag, v_lag_eul])
+
+    #print('ustacked = ')
+    #print(ustacked)
+    #print('vstacked = ')
+    #print(vstacked)
+
+
+    # ----------------------------------------------
 
     # Account for sources and sinks 
     death_flag[:] = False # TODO implement 
@@ -465,14 +501,14 @@ def compute_streamfunction_lagrangian_external(
     u_lag -= b*sqrt2 *       (s[0]*(-s1y/b) + s[3]*(-s2y*2/b))
 
     # Wave-1 in y direction
-    s_lag += 2*b     *  s1y * (s[1]*c1x + s[2]*s1x)
-    v_lag += 2*b   *  s1y * (s[1]*(-s1x) + s[2]*c1x)
-    u_lag -= 2*b   *  c1y/b * (s[1]*c1x + s[2]*s1x)
+    s_lag += 2*b     *  s1y * (s[1]*c1x - s[2]*s1x)
+    v_lag += 2*b   *  s1y * (s[1]*(-s1x) - s[2]*c1x)
+    u_lag -= 2*b   *  c1y/b * (s[1]*c1x - s[2]*s1x)
 
     # Wave-2 in y direction
-    s_lag += 2*b     *  s2y * (s[4]*c1x + s[5]*s1x)
-    v_lag += 2*b   *  s2y * (s[4]*(-s1x) + s[5]*c1x)
-    u_lag -= 2*b   *  c2y*(2/b) * (s[4]*c1x + s[5]*s1x)
+    s_lag += 2*b     *  s2y * (s[4]*c1x - s[5]*s1x)
+    v_lag += 2*b   *  s2y * (s[4]*(-s1x) - s[5]*c1x)
+    u_lag -= 2*b   *  c2y*(2/b) * (s[4]*c1x - s[5]*s1x)
     return 
 
         
@@ -480,7 +516,7 @@ def compute_streamfunction_lagrangian_external(
 
 class Crommelin2004TracerODE(ODESystem): 
     def __init__(self, cfg):
-        self.state_dim = 6 + 2*cfg["Nparticles"] + cfg["Nxfv"]*cfg["Nyfv"]
+        self.state_dim = 6 + cfg["Nxfv"]*cfg["Nyfv"] + 2*cfg["Nparticles"]
         super().__init__(cfg)
     @staticmethod
     def default_config():
@@ -489,9 +525,9 @@ class Crommelin2004TracerODE(ODESystem):
             "C": 0.1, "x1star": 0.95, "r": -0.801, "year_length": 400.0,
             })
         cfg['t_burnin_phys'] = 10.0
-        cfg['dt_step'] = 0.05
-        cfg['dt_save'] = 0.5
-        cfg["dt_plot"] = 0.5
+        cfg['dt_step'] = 0.025
+        cfg['dt_save'] = 0.1
+        cfg["dt_plot"] = 0.25
         cfg['timestepper'] = 'monotone'
         cfg['frc'] = dict({
             'type': 'impulsive',
@@ -508,13 +544,17 @@ class Crommelin2004TracerODE(ODESystem):
             Nyfv = int(round(Nxfv*cfg['b']/2)),
             source_relative_width = 1/32,
             Nparticles = 128,
-            low_lat_prod_rate = 1.0,
-            glob_diss_rate = 1/400,
+            # Vary concentration source periodically
+            # TODO have a Dirichlet option 
+            source_mean = 1.0,
+            source_amplitude = 0.25,
+            source_period = 50.0,
+            glob_diss_rate = 1/40,
             ))
         return cfg
     @staticmethod
     def label_from_config(cfg):
-        abbrv_x1star = (r"x1st%g_r%g_src%g_sink%g"%(cfg['x1star'],cfg['r'],cfg['low_lat_prod_rate'],cfg['glob_diss_rate'],)).replace(".","p")
+        abbrv_x1star = (r"x1st%g_r%g_src%gpm%g_sink%g"%(cfg['x1star'],cfg['r'],cfg['source_mean'],cfg['source_amplitude'],cfg['glob_diss_rate'],)).replace(".","p")
         abbrv_gamma = (r'gam%gto%g'%(cfg['gamma_limits'][0],cfg['gamma_limits'][1])).replace('.','p')
         label_physpar = r"$x_1^*=%g,\ r=%g \n \gamma\in[%g,%g],\ \beta=%g$"%(
                 cfg['x1star'],
@@ -608,13 +648,6 @@ class Crommelin2004TracerODE(ODESystem):
         q['x_s'],q['y_s'],q['basis_s'],q['x_u'],q['y_u'],q['basis_u'],q['x_v'],q['y_v'],q['basis_v'],q['x_c'],q['y_c'] = self.basis_functions(q['Nx'],q['Ny'])
 
         # source and sink
-        q['source'] = np.zeros((q['Nx'],q['Ny']), dtype=bool)
-        source_width = cfg['source_relative_width']*q['Ly']
-        num_edge_cells = max(1, int(round(source_width/q['dy'])))
-        q['source'][:,:num_edge_cells] = cfg['low_lat_prod_rate']
-        q['sink'] = cfg['glob_diss_rate']
-        #q['source_conc'] = np.zeros((q['Nx'],q['Ny']))
-        #q['source_conc'][:,:num_edge_cells] = 1.0
         self.timestep_constants = q
         # Impulse matrix
         imp_modes = cfg['frc']['impulsive']['modes']
@@ -628,6 +661,14 @@ class Crommelin2004TracerODE(ODESystem):
 
         # Intermediate arrays allocated to store computations 
         # Runge-Kutta for streamfunction coefficients
+        self.source_flag = np.zeros((q['Nx'],q['Ny']), dtype=bool)
+        source_width = cfg['source_relative_width']*q['Ly']
+        num_edge_cells = max(1, int(round(source_width/q['dy'])))
+        self.source_flag[:,:num_edge_cells] = True
+        self.source_mean = cfg['source_mean']
+        self.source_amplitude = cfg['source_amplitude']
+        self.source_period = cfg['source_period']
+        self.sink = cfg['glob_diss_rate']
         self.s_rk4_1,self.s_rk4_2,self.s_rk4_3,self.s_rk4_4 = (np.zeros(flowdim) for _ in range(4))
         self.s_tendency_total,self.s_tendency_advection,self.s_tendency_dissipation,self.s_tendency_forcing = (np.zeros(flowdim) for _ in range(4))
         (self.s_temp, self.s_next_temp) = (np.zeros(flowdim) for _ in range(2))
@@ -643,8 +684,8 @@ class Crommelin2004TracerODE(ODESystem):
         (self.s_lag,self.u_lag,self.v_lag) = (np.zeros(Nparticles) for _ in range(3))
         self.death_flag = np.zeros(Nparticles, dtype=bool)
         return 
-    # This is the non-numba version
     def timestep_finvol(self, state_next, t, state):
+        # This is the non-numba version
         q = self.timestep_constants
 
         gamma_t,gamma_tilde_t,gamma_cfg_t,gammadot_t,gammadot_tilde_t,gammadot_cfg_t = self.orography_cycle(t)
@@ -663,6 +704,7 @@ class Crommelin2004TracerODE(ODESystem):
                 )
         return dt #t+self.dt_step, np.concatenate((strfn_next, conc_next, x_lag_next, y_lag_next))
 
+
     def integrate_monotone(self, state_save, tp_save, init_time, init_cond):
         q = self.timestep_constants
         init_time_phys = init_time * self.dt_save
@@ -677,7 +719,8 @@ class Crommelin2004TracerODE(ODESystem):
             *(q[key] for key in 'flowdim,Nparticles,Nx,Ny,dx,dy,Lx,Ly,b'.split(',')),
             *(q[key] for key in 'forcing_term,linear_term,bilinear_term'.split(',')),
             gamma_t,gamma_tilde_t, # for simplicity, we will have no orography cycle 
-            *(q[key] for key in 'basis_u,basis_v,source,sink'.split(',')),
+            *(q[key] for key in 'basis_u,basis_v'.split(',')),
+            *(getattr(self, f'source_{spec}') for spec in ('flag,mean,amplitude,period').split(',')), self.sink,
             *(getattr(self, f's_rk4_{i}') for i in [1,2,3,4]),
             self.s_next_temp,
             self.s_tendency_total,
@@ -754,24 +797,24 @@ class Crommelin2004TracerODE(ODESystem):
         basis_s = np.zeros((6,Nx+1,Ny+1)) 
         basis_s[0,:,:] = b*sqrt2 * np.outer(np.ones_like(x_s), c1y_s)
         basis_s[3,:,:] = b*sqrt2 * np.outer(np.ones_like(x_s), c2y_s)
-        basis_s[1,:,:] = 2*b     * np.outer(c1x_s, s1y_s)
-        basis_s[2,:,:] = 2*b     * np.outer(s1x_s, s1y_s)
-        basis_s[4,:,:] = 2*b     * np.outer(c1x_s, s2y_s)
-        basis_s[5,:,:] = 2*b     * np.outer(s1x_s, s2y_s)
+        basis_s[1,:,:] =  2*b     * np.outer(c1x_s, s1y_s)
+        basis_s[2,:,:] = -2*b     * np.outer(s1x_s, s1y_s)
+        basis_s[4,:,:] =  2*b     * np.outer(c1x_s, s2y_s)
+        basis_s[5,:,:] = -2*b     * np.outer(s1x_s, s2y_s)
         # zonal velocity 
         basis_u = np.zeros((6,Nx+1,Ny)) 
         basis_u[0,:,:] = -b*sqrt2 * np.outer(np.ones_like(x_u), -s1y_u/b)
         basis_u[3,:,:] = -b*sqrt2 * np.outer(np.ones_like(x_u), -s2y_u*2/b)
         basis_u[1,:,:] = -2*b    * np.outer(c1x_u, c1y_u/b)
-        basis_u[2,:,:] = -2*b    * np.outer(s1x_u, c1y_u/b)
+        basis_u[2,:,:] =  2*b    * np.outer(s1x_u, c1y_u/b)
         basis_u[4,:,:] = -2*b    * np.outer(c1x_u, c2y_u*2/b)
-        basis_u[5,:,:] = -2*b    * np.outer(s1x_u, c2y_u*2/b)
+        basis_u[5,:,:] =  2*b    * np.outer(s1x_u, c2y_u*2/b)
         # meridional velocity 
         basis_v = np.zeros((6,Nx,Ny+1)) 
-        basis_v[1,:,:] = 2*b     * np.outer(-s1x_v/b, s1y_v)
-        basis_v[2,:,:] = 2*b     * np.outer(c1x_v/b, s1y_v)
-        basis_v[4,:,:] = 2*b     * np.outer(-s1x_v/b, s2y_v)
-        basis_v[5,:,:] = 2*b     * np.outer(c1x_v/b, s2y_v)
+        basis_v[1,:,:] =  2*b     * np.outer(-s1x_v/b, s1y_v)
+        basis_v[2,:,:] = -2*b     * np.outer(c1x_v/b, s1y_v)
+        basis_v[4,:,:] =  2*b     * np.outer(-s1x_v/b, s2y_v)
+        basis_v[5,:,:] = -2*b     * np.outer(c1x_v/b, s2y_v)
         return (
                 x_s,y_s,basis_s,
                 x_u,y_u,basis_u,
@@ -943,5 +986,12 @@ class Crommelin2004TracerODE(ODESystem):
         return fig,ax,h
 
 
+if __name__ == "__main__":
+    cfg = Crommelin2004TracerODE.default_config()
+    crom = Crommelin2004TracerODE(cfg)
+    tp_init = 0.0
+    tp_fin = 100.0
+    tp_save = np.arange(tp_init, tp_fin, step=crom.dt_save)
+    
 
 
