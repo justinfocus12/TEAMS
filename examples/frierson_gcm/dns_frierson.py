@@ -86,7 +86,7 @@ def dns_paramset(i_expt):
         'seed_max': 100000,
         'seed_inc_init': seed_inc, # will be added to seed_min
         'max_member_duration_phys': 30.0,
-        'num_chunks_max': 2048,
+        'num_chunks_max': 30,
         })
 
     return config_gcm,config_algo,expt_label,expt_abbrv
@@ -306,8 +306,8 @@ def dns_single_workflow(i_expt):
             'label': r'Column water vapor $(\phi,\lambda)=(45\pm10,180\pm30)$',
             }),
         })
-    scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
-    date_str = "2024-09-10" #"2024-09-10"
+    scratch_dir = "/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
+    date_str = "2024-12-19" #"2024-09-10"
     sub_date_str = "0"
     dirdict = dict()
     dirdict['expt'] = join(scratch_dir,date_str,sub_date_str,param_abbrv_gcm,param_abbrv_algo)
@@ -640,8 +640,8 @@ def dns_meta_workflow(idx_param):
     for i_key,key in enumerate(('configs_gcm,configs_algo,configs_analysis,expt_labels,expt_abbrvs,dirdicts,filedicts').split(',')):
         workflows[key] = tuple(workflow_tuple[j][i_key] for j in range(len(workflow_tuple)))
     print(f'{workflows.keys() = }')
-    scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
-    date_str = "2024-09-10"
+    scratch_dir = "/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
+    date_str = "2024-12-13"
     sub_date_str = "0"
     meta_dirdict = dict()
     meta_dirdict['meta'] = join(scratch_dir,date_str,sub_date_str,'meta')
