@@ -15,6 +15,7 @@ from os import mkdir, makedirs
 import sys
 import shutil
 import glob
+import pdb
 import subprocess
 import resource
 import pickle
@@ -333,6 +334,7 @@ class FriersonGCM(DynamicalSystem):
 
 
     def run_trajectory(self, icandf, obs_fun, saveinfo, root_dir):
+        # TODO modify this so temp dir never interferes 
         self.setup_directories(join(root_dir,saveinfo['temp_dir']))
         wd = join(root_dir,saveinfo['temp_dir'],'work')
         od = join(root_dir,saveinfo['temp_dir'],'output')
@@ -366,7 +368,8 @@ class FriersonGCM(DynamicalSystem):
             else:
                 nml['spectral_dynamics_nml'].update(dict({
                     'do_perturbation': True,
-                    'seconds_to_perturb': [int(round(t*self.dt_save*86400)) for t in icandf['frc'].reseed_times], # TODO will have to modify for intra-day disturbances 
+                    'days_to_perturb': [int(t*self.dt_save) for t in icandf['frc'].reseed_times], 
+                    'seconds_to_perturb': [int(round(86400*((t*self.dt_save) % 1))) for t in icandf['frc'].reseed_times], 
                     'seed_values': icandf['frc'].seeds,
                     'perturbation_fraction': [self.config['IMP']['pert_frac'] for ipert in range(numperts)],
                     }))
@@ -379,12 +382,15 @@ class FriersonGCM(DynamicalSystem):
                 'tau_sppt': self.config['SPPT']['tau_sppt'], 
                 'L_sppt': self.config['SPPT']['L_sppt'],
                 'num_reseeds_sppt_actual': numperts,
-                'reseed_times_sppt': [int(round(t*self.dt_save*86400)) for t in icandf['frc'].reseed_times],
+                'reseed_days_sppt': [int(t*self.dt_save) for t in icandf['frc'].reseed_times],
+                'reseed_seconds_sppt': [int(round(86400*((t*self.dt_save) % 1))) for t in icandf['frc'].reseed_times],
+                #'reseed_times_sppt': [int(round(t*self.dt_save*86400)) for t in icandf['frc'].reseed_times],
                 'seed_seq_sppt': icandf['frc'].seeds,
                 }))
             # Also nullify the old kind of perturbation
             nml['spectral_dynamics_nml'].update(dict({
                 'do_perturbation': False,
+                'days_to_perturb': [-1],
                 'seconds_to_perturb': [-1],
                 'seed_values': [-1],
                 'perturbation_fraction': [0.0],
@@ -397,6 +403,7 @@ class FriersonGCM(DynamicalSystem):
         mpirun_output = subprocess.run(f'cd {wd}; /home/software/gcc/6.2.0/pkg/openmpi/4.0.4/bin/mpirun -np {self.nproc} fms.x', shell=True, executable='/bin/csh', capture_output=True)
         print(mpirun_output)
         print(f'--------------- Finished MPIRUN --------')
+        #pdb.set_trace()
 
         # Move output files to output directory with informative names
         date_range_name = f'days{icandf["frc"].init_time}-{icandf["frc"].fin_time}'

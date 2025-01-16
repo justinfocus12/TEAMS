@@ -85,8 +85,8 @@ def dns_paramset(i_expt):
         'seed_min': 1000,
         'seed_max': 100000,
         'seed_inc_init': seed_inc, # will be added to seed_min
-        'max_member_duration_phys': 30.0,
-        'num_chunks_max': 30,
+        'max_member_duration_phys': 360.0,
+        'num_chunks_max': 100,
         })
 
     return config_gcm,config_algo,expt_label,expt_abbrv
@@ -97,7 +97,7 @@ def dns_single_workflow(i_expt):
     param_abbrv_algo,param_label_algo = algorithms_frierson.FriersonGCMDirectNumericalSimulation.label_from_config(config_algo)
     config_analysis = dict()
     config_analysis['spinup_phys'] = 500 # at what time to start computing statistics
-    config_analysis['time_block_size_phys'] = 20 # size of block for method of block maxima
+    config_analysis['time_block_size_phys'] = 360 # size of block for method of block maxima
     config_analysis['lon_roll_step'] = 30 # size of longitudinal shift for purposes of zonal symmetry augmentation in method of block maxima
     # Basic statistics to compute
     config_analysis['basic_stats'] = dict({
@@ -307,7 +307,7 @@ def dns_single_workflow(i_expt):
             }),
         })
     scratch_dir = "/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
-    date_str = "2024-12-19" #"2024-09-10"
+    date_str = "2025-01-16" #"2024-09-10"
     sub_date_str = "0"
     dirdict = dict()
     dirdict['expt'] = join(scratch_dir,date_str,sub_date_str,param_abbrv_gcm,param_abbrv_algo)
@@ -324,7 +324,7 @@ def dns_single_workflow(i_expt):
 
 def run_dns(dirdict,filedict,config_gcm,config_algo):
     nproc = 4
-    recompile = False
+    recompile = True
     root_dir = dirdict['data']
     obs_fun = lambda t,x: None
 
