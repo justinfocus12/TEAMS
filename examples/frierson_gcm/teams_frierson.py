@@ -38,6 +38,8 @@ print(f'{i = }'); i += 1
 import pprint
 print(f'{i = }'); i += 1
 from importlib import reload
+print(f'{i = }'); i += 1
+import pdb
 
 sys.path.append("../..")
 print(f'Now starting to import my own modules')
@@ -90,20 +92,22 @@ def teams_paramset(i_expt):
 
 
     config_algo = dict({
-        'num_levels_max': 768-64, # This parameter shouldn't affect the filenaming or anything like that 
-        'num_members_max': 768,
-        'num_active_families_min': 2,
+        'num_levels_max': 20, # This parameter shouldn't affect the filenaming or anything like that 
+        'num_members_max': 150,
+        'num_active_families_min': 1,
         'seed_min': 1000,
         'seed_max': 100000,
         'seed_inc_init': seed_incs[i_seed_inc],
-        'population_size': 64,
+        'population_size': 16,
         'time_horizon_phys': 30, #+ deltas_phys[i_delta],
         'buffer_time_phys': 0,
         'advance_split_time_phys': deltas_phys[i_delta], # TODO put this into a parameter
         'advance_split_time_max_phys': 10, # TODO put this into a parameter
         'split_landmark': split_landmarks[i_slm],
         'inherit_perts_after_split': False,
-        'num2drop': 1,
+        'drop_sched': 'frac',
+        'drop_rate': 0.5,
+        'birth_sched': 'const_pop',
         })
     if target_field == 'rainrate':
         config_algo['score_components'] = dict({
@@ -284,13 +288,13 @@ def teams_single_workflow(i_expt):
 
 
     # Set up directories
-    scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
+    scratch_dir = "/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
     target_field = next(iter(config_algo['score_components'].keys()))
     if "surf_pres_neg" == target_field:
-        date_str = "2024-09-23"
-        sub_date_str = "0"
+        date_str = "2025-01-16"
+        sub_date_str = "2"
     elif "rainrate" == target_field:
-        date_str = "2024-09-10"
+        date_str = "2025-01-16"
         sub_date_str = "2"
     else:
         raise Exception(f'Unsupported target field {target_field}')
@@ -304,7 +308,7 @@ def teams_single_workflow(i_expt):
     filedict = dict()
     # Initial conditions
     filedict['angel'] = join(
-            f'/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/2024-09-10/0',
+            f'/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/2025-01-16/1',
             param_abbrv_gcm, 'DNS_si0', 'data',
             'alg.pickle') 
     # Algorithm manager
@@ -486,12 +490,6 @@ def plot_scorrelations(config_analysis, alg, dirdict, filedict, expt_label):
     order = np.argsort(scmax[:alg.population_size])[::-1]
     score_fun = lambda ds: alg.score_combined(alg.score_components(ds['time'].to_numpy(),ds))
     angel = pickle.load(open(filedict['angel'],'rb'))
-    scmax_buick = np.zeros(alg.population_size)
-    for i in range(alg.population_size):
-        if angel.branching_state['num_branches_generated'][i] > 0:
-            # TODO fix this so it works on DNS sources too 
-            mem_buick = next(angel.ens.memgraph.successors(angel.branching_state['generation_0'][i]))
-            scmax_buick[i] = np.nanmax(angel.ens.compute_observables([score_fun], mem_buick)[0][:alg.time_horizon])
     fig,axes = plt.subplots(nrows=2, figsize=(6,12))
     ax = axes[0]
     hanc, = ax.plot(np.arange(alg.population_size), scmax[order], color='black', marker='o', label='Ancestors', zorder=0)
@@ -501,12 +499,10 @@ def plot_scorrelations(config_analysis, alg, dirdict, filedict, expt_label):
         desc = list(nx.descendants(alg.ens.memgraph, ancestor))
         print(f'{desc = }')
         if len(desc) > 0: desc_means[ancestor] = np.mean(scmax[desc])
-        ax.scatter(i*np.ones(len(desc)), scmax[desc], marker='.', color='red', s=8, zorder=2)
-        hbuick = ax.scatter([i], [scmax_buick[ancestor]], color='gray', marker='*', s=16, label='Buicks', zorder=1)
-        ax.plot([i,i], [scmax[ancestor], scmax_buick[ancestor]], color='gray')
+        ax.scatter(i*np.ones(len(desc)), scmax[desc], marker='.', color='red', s=12, zorder=2)
     nnidx = np.where(np.isfinite(desc_means[order]))[0]
     hdescmean, = ax.plot(nnidx, desc_means[order][nnidx], color='red', label='Descendants')
-    ax.legend(handles=[hanc,hdescmean,hbuick])
+    ax.legend(handles=[hanc,hdescmean])
     ax.set_xlabel('Ancestor rank')
     ax.set_ylabel('Score distribution')
     ax.set_title(expt_label)
@@ -514,16 +510,13 @@ def plot_scorrelations(config_analysis, alg, dirdict, filedict, expt_label):
     ax = axes[1]
     # Calculate R^2
     p_descmean = np.polyfit(scmax[:alg.population_size][order][nnidx], desc_means[order][nnidx], 1)
-    p_buick = np.polyfit(scmax[:alg.population_size], scmax_buick, 1)
-    print(f'{p_descmean = }')
-    print(f'{p_buick = }')
     R2_descmean = 1 - np.nansum((desc_means - p_descmean[1] - p_descmean[0]*scmax[:alg.population_size])**2) / np.nansum((desc_means - np.nanmean(desc_means))**2) 
-    R2_buick = 1 - np.nansum((desc_means - p_buick[1] - p_buick[0]*scmax[:alg.population_size])**2) / np.nansum((scmax_buick - np.nanmean(scmax_buick))**2) 
-    hdesc = ax.scatter(scmax[:alg.population_size], desc_means, color='red', marker='.', label=r'$R^2=%.2f$'%(R2_descmean))
-    hbuick = ax.scatter(scmax[:alg.population_size], scmax_buick, color='gray', marker='*', label=r'$R^2=%.2f$'%(R2_buick))
+    hdesc = ax.scatter(scmax[:alg.population_size], desc_means, color='red', marker='.', label=r'$R^2=%.2f$'%(R2_descmean), s=24)
+    scmax_bounds = [np.min(scmax[:alg.population_size]),np.max(scmax[:alg.population_size])]
+    ax.plot(scmax_bounds, scmax_bounds, color='black', linestyle='--')
     ax.set_xlabel('Ancestor score')
-    ax.set_ylabel('Buick and descendant scores')
-    ax.legend(handles=[hdesc,hbuick])
+    ax.set_ylabel('Descendant scores')
+    ax.legend(handles=[hdesc])
     fig.savefig(join(dirdict['plots'], 'scorrelation.png'), **pltkwargs)
     plt.close(fig)
     return
@@ -675,19 +668,19 @@ def teams_multiseed_procedure(i_field,i_sigma,idx_seed,i_delta,i_slm,overwrite_r
     
     filedict = dict({
         'angel': filedicts[0]['angel'],
-        'dns': filedicts[0]['angel'], #'/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/2024-07-07/0/abs1_resT21_pertSPPT_std0p3_clip2_tau6h_L500km/DNS_si0/data/alg.pickle',
+        'dns': filedicts[0]['angel'], #
         })
     config_analysis = configs_analysis[0]
     param_abbrv_gcm,param_label_gcm = frierson_gcm.FriersonGCM.label_from_config(config_gcm)
     param_abbrv_algo,param_label_algo = algorithms_frierson.FriersonGCMTEAMS.label_from_config(config_algo)
     # Set up a meta-dirdict 
-    scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
+    scratch_dir = "/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
     target_field = next(iter(config_algo['score_components'].keys()))
     if "surf_pres_neg" == target_field:
-        date_str = "2024-09-23"
-        sub_date_str = "0"
+        date_str = "2025-01-16"
+        sub_date_str = "2"
     elif "rainrate" == target_field:
-        date_str = "2024-09-10"
+        date_str = "2025-01-16"
         sub_date_str = "2"
     else:
         raise Exception(f'Unsupported target field {target_field}')
@@ -718,8 +711,8 @@ def teams_single_procedure(i_expt):
         'run':             1,
         'analysis': dict({
             'observable_spaghetti':     1,
-            'scorrelation':             0,
-            'fields_2d':                1,
+            'scorrelation':             1,
+            'fields_2d':                0,
             }),
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = teams_single_workflow(i_expt)
@@ -736,9 +729,9 @@ def teams_single_procedure(i_expt):
     return
 
 def teams_multidelta_procedure(i_sigma,idx_delta,idx_seed):
-    scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
-    date_str = "2024-04-04"
-    sub_date_str = "1"
+    scratch_dir = "/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
+    date_str = "2025-01-16"
+    sub_date_str = "2"
     multiparams = teams_multiparams()
     seed_incs,sigmas,deltas_phys,split_landmarks = multiparams
     kldiv_pooled = np.zeros(len(idx_delta))
@@ -770,7 +763,7 @@ def teams_multidelta_procedure(i_sigma,idx_delta,idx_seed):
         boost_family_mean[:,i_delta] = returnstats['boost_family_mean']
 
     plot_dir = join(
-            '/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/2024-04-12/2',
+            '/orcd/archive/pog/001/ju26596/TEAMS/examples/lorenz96/2025-01-16/2',
             param_abbrv_sde,
             'meta',
             'plots')

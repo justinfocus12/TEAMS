@@ -308,7 +308,7 @@ def dns_single_workflow(i_expt):
         })
     scratch_dir = "/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
     date_str = "2025-01-16" #"2024-09-10"
-    sub_date_str = "0"
+    sub_date_str = "1"
     dirdict = dict()
     dirdict['expt'] = join(scratch_dir,date_str,sub_date_str,param_abbrv_gcm,param_abbrv_algo)
     for subdir in ['data','analysis','plots']:
@@ -324,7 +324,7 @@ def dns_single_workflow(i_expt):
 
 def run_dns(dirdict,filedict,config_gcm,config_algo):
     nproc = 4
-    recompile = True
+    recompile = False
     root_dir = dirdict['data']
     obs_fun = lambda t,x: None
 

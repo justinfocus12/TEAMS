@@ -137,6 +137,7 @@ class FriersonGCMTEAMS(algorithms.TEAMS):
             init_cond = relpath(join(dns.ens.root_dir, dns.ens.traj_metadata[parent]['icandf']['init_cond']), ens.root_dir)
             init_conds.append(init_cond)
             init_times.append(dns_tinits[parent])
+        # TODO generate some nearer initial conditions 
         return cls(init_times, init_conds, config, ens)
     def derive_parameters(self, config):
         # Parameterize the score function in a simple way: the components will be area-averages of fields over specified regions. The combined score will be a linear combination.
