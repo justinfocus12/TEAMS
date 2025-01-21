@@ -587,7 +587,7 @@ def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, refere
         r'$\sigma=%g$'%(algs[0].ens.dynsys.config['SPPT']['std_sppt']),
         r'$\delta=%g$'%(config_algo['advance_split_time_phys']),
         ])
-    algorithms_frierson.FriersonGCMTEAMS.measure_plot_score_distribution(config_algo, algs, scmax_ref, returnstats_file, figfileh, figfilev, param_display=param_display)
+    algorithms_frierson.FriersonGCMTEAMS.measure_plot_score_distribution(config_algo, algs, scmax_ref, returnstats_file, figfileh, figfilev, param_display=param_display, time_unit=365, time_unit_name="years", severity_unit_name='mm/day')
 
     return
 

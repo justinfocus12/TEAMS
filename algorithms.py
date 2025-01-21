@@ -1450,7 +1450,7 @@ class TEAMS(EnsembleAlgorithm):
         plt.close(fig)
         
     @staticmethod
-    def measure_plot_score_distribution(config_algo, algs, scmax_dns, returnstats_file, figfileh, figfilev, alpha=0.05, param_display=''):
+    def measure_plot_score_distribution(config_algo, algs, scmax_dns, returnstats_file, figfileh, figfilev, alpha=0.05, param_display='', time_unit=1, time_unit_name="", severity_unit_name=""):
         N_dns = len(scmax_dns)
         print(f'{N_dns = }')
         time_horizon_effective = config_algo['time_horizon_phys'] - config_algo['advance_split_time_max_phys']
@@ -1628,12 +1628,12 @@ class TEAMS(EnsembleAlgorithm):
         # ++++ left-hand text label +++
         cost_display = '\n'.join([
             r'%s cost:'%(teams_abbrv),
-            r'%.1E'%(cost_teams_fin/len(algs)),
+            r'%.1E %s'%(cost_teams_fin/len(algs)/time_unit,time_unit_name),
             r'$\times$ %d runs'%(len(algs)),
-            r'$=$%.1E'%(cost_teams_fin),
+            r'$=$%.1E %s'%(cost_teams_fin/time_unit,time_unit_name),
             r' ',
             r'DNS cost:',
-            r'%.1E'%(cost_dns)
+            r'%.1E %s'%(cost_dns/time_unit,time_unit_name)
             ])
         display = '\n'.join([param_display,'',cost_display])
         sf2rt = lambda sf: utils.convert_sf_to_rtime(sf, returnstats['time_horizon_effective'])
@@ -1655,65 +1655,64 @@ class TEAMS(EnsembleAlgorithm):
 
         ax = axesv[0]
         for i_alg,alg in enumerate(algs):
-            ax.plot(rt_grid, cliprlev(rlevs_init[i_alg]), color='dodgerblue', linestyle='-', linewidth=1, alpha=0.5, label=r'Init')
-            ax.plot(rt_grid, cliprlev(rlevs_fin[i_alg]), color='red', linestyle='-', linewidth=1, alpha=0.5, label=teams_abbrv)
-        ax.plot(rt_grid, rlev_dns, color='black')
-        ax.set_ylabel(r'Return level')
-        ax.set_title(r'Single %s runs'%(teams_abbrv))
-        ax.set_xscale('log')
-        # TODO add DNS line 
+            ax.plot(rt_grid/time_unit, cliprlev(rlevs_init[i_alg]), color='dodgerblue', linestyle='-', linewidth=1, alpha=0.5, label=r'Init')
+            ax.plot(rt_grid/time_unit, cliprlev(rlevs_fin[i_alg]), color='red', linestyle='-', linewidth=1, alpha=0.5, label=teams_abbrv)
+        ax.plot(rt_grid/time_unit, rlev_dns, color='black')
 
 
         ax = axesh[0]
         # DNS, with equal-cost errorbars to compare to single DNS runs
-        hdns, = ax.plot(sf2rt(ccdf_dns), bin_edges[:-1], marker='.', color='black', label=r'DNS (cost %.1E)'%(cost_dns))
+        hdns, = ax.plot(sf2rt(ccdf_dns)/time_unit, bin_edges[:-1], marker='.', color='black', label=r'DNS (cost %.1E %s)'%(cost_dns/time_unit,time_unit_name))
         for i_alg,alg in enumerate(algs):
             # Initialization
-            hinit_sep, = ax.plot(sf2rt(ccdfs_init[i_alg]),bin_edges[:-1],color='dodgerblue',linestyle='-',linewidth=1,alpha=0.5,label=r'Init')
+            hinit_sep, = ax.plot(sf2rt(ccdfs_init[i_alg])/time_unit,bin_edges[:-1],color='dodgerblue',linestyle='-',linewidth=1,alpha=0.5,label=r'Init')
             # Final (weighted)
-            hfin_wted_sep, = ax.plot(sf2rt(ccdfs_fin_wted[i_alg]),bin_edges[:-1],color='red',linestyle='-',linewidth=1,alpha=0.5,label=teams_abbrv)
+            hfin_wted_sep, = ax.plot(sf2rt(ccdfs_fin_wted[i_alg])/time_unit,bin_edges[:-1],color='red',linestyle='-',linewidth=1,alpha=0.5,label=teams_abbrv)
         #ax.fill_betweenx(bin_edges[:-1],sf2rt(ccdf_fin_wted_lower),sf2rt(ccdf_fin_wted_upper),fc='red',ec='none',zorder=-1,alpha=0.5)
-        ax.set_ylabel(r'Return level')
+        ax.set_ylabel(r'Return level [%s]'%(severity_unit_name))
         ax.set_title(r'Single %s runs'%(teams_abbrv))
 
         # ++++ Column 1: pooled curves ++++
         ax = axesh[1]
         errbars_init_flag = False
         # DNS again, this time accounting for total cost 
-        hdns, = ax.plot(sf2rt(ccdf_dns), bin_edges[:-1], color='black', label=r'DNS')
-        ax.fill_betweenx(bin_edges[:-1], sf2rt(ccdf_dns_pooled_lower), sf2rt(ccdf_dns_pooled_upper), fc='gray', ec='none', zorder=-1, alpha=0.5)
+        hdns, = ax.plot(sf2rt(ccdf_dns)/time_unit, bin_edges[:-1], color='black', label=r'DNS')
+        ax.fill_betweenx(bin_edges[:-1], sf2rt(ccdf_dns_pooled_lower)/time_unit, sf2rt(ccdf_dns_pooled_upper)/time_unit, fc='gray', ec='none', zorder=-1, alpha=0.5)
         # Initialization
-        hinit, = ax.plot(sf2rt(ccdf_init), bin_edges[:-1], marker='.', color='dodgerblue', label=r'Init.')
+        hinit, = ax.plot(sf2rt(ccdf_init)/time_unit, bin_edges[:-1], marker='.', color='dodgerblue', label=r'Ancestors')
         if errbars_init_flag:
-            ax.fill_betweenx(bin_edges[:-1],sf2rt(ccdf_init_lower),sf2rt(ccdf_init_upper),fc='dodgerblue',ec='none',zorder=-1,alpha=0.5)
+            ax.fill_betweenx(bin_edges[:-1],sf2rt(ccdf_init_lower)/time_unit,sf2rt(ccdf_init_upper)/time_unit,fc='dodgerblue',ec='none',zorder=-1,alpha=0.5)
         # Final TEAMS (weighted)
-        hfin_wted, = ax.plot(sf2rt(ccdf_fin_wted), bin_edges[:-1], marker='.', color='red', label=teams_abbrv)
-        ax.fill_betweenx(bin_edges[:-1],sf2rt(ccdf_fin_wted_pooled_lower),sf2rt(ccdf_fin_wted_pooled_upper),fc='red',ec='none',zorder=-1,alpha=0.25)
+        hfin_wted, = ax.plot(sf2rt(ccdf_fin_wted)/time_unit, bin_edges[:-1], marker='.', color='red', label=teams_abbrv)
+        ax.fill_betweenx(bin_edges[:-1],sf2rt(ccdf_fin_wted_pooled_lower)/time_unit,sf2rt(ccdf_fin_wted_pooled_upper)/time_unit,fc='red',ec='none',zorder=-1,alpha=0.25)
         ax.legend(handles=[hinit,hfin_wted,hdns],bbox_to_anchor=(1,0),loc='lower right')
-        ax.set_ylabel('')
-        ax.yaxis.set_tick_params(which='both',labelbottom=True)
-        ax.set_title('Pooled results')
+        ax.set_title('Pooled TEAMS runs')
 
-        xlim = [returnstats['time_horizon_effective'],5*sf2rt(min(np.nanmin(ccdf_dns),np.nanmin(ccdf_fin_wted)))]
-        ylim = [bin_edges[np.argmax(sf2rt(ccdf_dns) > xlim[0])],bin_edges[-1]]
-        for ax in axesh[:2]:
-            ax.set_xscale('log')
-            print(f'{xlim = }')
-            ax.set_xlim(xlim)
-            ax.set_ylim(ylim)
-            ax.set_xlabel(r'Return time')
+        xlim = [returnstats['time_horizon_effective']/time_unit,5*sf2rt(min(np.nanmin(ccdf_dns),np.nanmin(ccdf_fin_wted)))/time_unit]
+        ylim = [bin_edges[np.argmax(sf2rt(ccdf_dns) > returnstats['time_horizon_effective'])],bin_edges[-1]]
 
         ax = axesv[1]
-        ax.plot(rt_grid, cliprlev(rlev_fin_pooled), color='red')
+        ax.plot(rt_grid/time_unit, cliprlev(rlev_fin_pooled), color='red')
         qlo = np.nanquantile(rlevs_fin_pooled_boot, alpha/2, axis=0)
         qhi = np.nanquantile(rlevs_fin_pooled_boot, 1-alpha/2, axis=0)
-        ax.fill_between(rt_grid, cliprlev(2*rlev_fin_pooled-qhi), cliprlev(2*rlev_fin_pooled-qlo), color='red', alpha=0.25, zorder=-1)
-        ax.plot(rt_grid, cliprlev(rlev_dns), color='black')
+        ax.fill_between(rt_grid/time_unit, cliprlev(2*rlev_fin_pooled-qhi), cliprlev(2*rlev_fin_pooled-qlo), color='red', alpha=0.25, zorder=-1)
+        ax.plot(rt_grid/time_unit, cliprlev(rlev_dns), color='black')
         qlo_dns = np.nanquantile(rlevs_dns_boot_fin, alpha/2, axis=0)
         qhi_dns = np.nanquantile(rlevs_dns_boot_fin, 1-alpha/2, axis=0)
-        ax.fill_between(rt_grid, cliprlev(2*rlev_fin_pooled-qhi), cliprlev(2*rlev_fin_pooled-qlo), color='red', alpha=0.25, zorder=-1)
-        ax.fill_between(rt_grid, cliprlev(2*rlev_dns-qhi_dns), cliprlev(2*rlev_dns-qlo_dns), color='gray', alpha=0.5, zorder=-2)
-        ax.set_xscale('log')
+        ax.fill_between(rt_grid/time_unit, cliprlev(2*rlev_fin_pooled-qhi), cliprlev(2*rlev_fin_pooled-qlo), color='red', alpha=0.25, zorder=-1)
+        ax.fill_between(rt_grid/time_unit, cliprlev(2*rlev_dns-qhi_dns), cliprlev(2*rlev_dns-qlo_dns), color='gray', alpha=0.5, zorder=-2)
+
+        for axes in (axesh,axesv):
+            axes[0].set_title(r'Single %s runs'%(teams_abbrv))
+            axes[1].set_title(r'Pooled %s runs'%(teams_abbrv))
+            for ax in axes[:2]:
+                ax.set_xscale('log')
+                print(f'{xlim = }')
+                ax.set_xlim(xlim)
+                ax.set_ylim(ylim)
+                ax.set_xlabel(r'Return period [%s]'%(time_unit_name))
+                ax.set_ylabel(r'Return level [%s]'%(severity_unit_name))
+                ax.yaxis.set_tick_params(which='both',labelbottom=True)
 
         # ++++ Column 2: Histograms ++++
         for ax in (axesh[2],axesv[2]):
@@ -1725,6 +1724,7 @@ class TEAMS(EnsembleAlgorithm):
             ax.set_ylim(ylim)
             ax.set_xlabel('Counts')
             ax.set_title('Score histograms')
+            ax.set_ylabel(r'Return level [%s]'%(severity_unit_name))
 
         figh.savefig(figfileh, **pltkwargs)
         plt.close(figh)
