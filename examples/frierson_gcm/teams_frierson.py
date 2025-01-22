@@ -139,6 +139,7 @@ def teams_single_workflow(i_expt):
     # i_expt is a flat index, from which both i_param and i_buick are derived
     # Cluge; rely on knowing the menu of options from the Buick dealership and from the parameter sets 
     config_gcm,config_algo,expt_label,expt_abbrv = teams_paramset(i_expt)
+    config_algo['population_control_version'] = 'pog'
     param_abbrv_gcm,param_label_gcm = frierson_gcm.FriersonGCM.label_from_config(config_gcm)
     param_abbrv_algo,param_label_algo = algorithms_frierson.FriersonGCMTEAMS.label_from_config(config_algo)
     config_analysis = dict()
@@ -170,7 +171,8 @@ def teams_single_workflow(i_expt):
                 'num_steps': config_gcm['outputs_per_day'],
                 }),
             'abbrv': 'Rloc1day',
-            'label': r'Rain rate (day avg) $(\phi,\lambda)=(45,180)$',
+            'label': r'Rain rate (1-day avg) $(\phi,\lambda)=(45,180)$',
+            'unit_symbol': 'mm/day',
             }),
         'area_rain_60x20': dict({
             'fun': frierson_gcm.FriersonGCM.regional_rain,
@@ -292,10 +294,10 @@ def teams_single_workflow(i_expt):
     target_field = next(iter(config_algo['score_components'].keys()))
     if "surf_pres_neg" == target_field:
         date_str = "2025-01-16"
-        sub_date_str = "2"
+        sub_date_str = "3"
     elif "rainrate" == target_field:
         date_str = "2025-01-16"
-        sub_date_str = "2"
+        sub_date_str = "3"
     else:
         raise Exception(f'Unsupported target field {target_field}')
     dirdict = dict()
@@ -475,6 +477,12 @@ def plot_observable_spaghetti(config_analysis, alg, dirdict, filedict, remove_ol
                     obs_buick = angel.ens.compute_observables([obs_fun], mem_buick)[0][:alg.time_horizon]
                     hbuick, = axes[0].plot((np.arange(len(obs_buick))+1)*tu, obs_buick, color='gray', linewidth=3, linestyle='--', zorder=-1, label='Buick')
                     if is_score: axes[1].axhline(np.nanmax(obs_buick), color='gray')
+                axes[0].set_xlabel("Time [days]")
+                axes[0].set_ylabel(r'[%s]'%(config_analysis['observables'][obs_name]['unit_symbol']))
+                axes[1].set_ylabel("")
+                axes[1].set_title("Peak value")
+                axes[1].yaxis.set_tick_params(which='both',labelbottom=True)
+                axes[1].set_ylabel(r'[%s]'%(config_analysis['observables'][obs_name]['unit_symbol']))
                 fig.savefig(outfile, **pltkwargs)
                 plt.close(fig)
                 print(f'{outfile = }')
