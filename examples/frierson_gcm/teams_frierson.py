@@ -686,10 +686,10 @@ def teams_multiseed_procedure(i_field,i_sigma,idx_seed,i_delta,i_slm,overwrite_r
     target_field = next(iter(config_algo['score_components'].keys()))
     if "surf_pres_neg" == target_field:
         date_str = "2025-01-16"
-        sub_date_str = "2"
+        sub_date_str = "3"
     elif "rainrate" == target_field:
         date_str = "2025-01-16"
-        sub_date_str = "2"
+        sub_date_str = "3"
     else:
         raise Exception(f'Unsupported target field {target_field}')
     dirdict = dict()
@@ -739,7 +739,7 @@ def teams_single_procedure(i_expt):
 def teams_multidelta_procedure(i_sigma,idx_delta,idx_seed):
     scratch_dir = "/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
     date_str = "2025-01-16"
-    sub_date_str = "2"
+    sub_date_str = "3"
     multiparams = teams_multiparams()
     seed_incs,sigmas,deltas_phys,split_landmarks = multiparams
     kldiv_pooled = np.zeros(len(idx_delta))
@@ -771,7 +771,7 @@ def teams_multidelta_procedure(i_sigma,idx_delta,idx_seed):
         boost_family_mean[:,i_delta] = returnstats['boost_family_mean']
 
     plot_dir = join(
-            '/orcd/archive/pog/001/ju26596/TEAMS/examples/lorenz96/2025-01-16/2',
+            '/orcd/archive/pog/001/ju26596/TEAMS/examples/lorenz96/2025-01-16/3',
             param_abbrv_sde,
             'meta',
             'plots')

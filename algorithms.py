@@ -11,6 +11,7 @@ from scipy.special import logsumexp, softmax
 from os.path import join, exists
 from os import makedirs
 import sys
+import pdb
 import copy as copylib
 from matplotlib import pyplot as plt, rcParams
 rcParams.update({
@@ -1151,7 +1152,8 @@ class TEAMS(EnsembleAlgorithm):
             ancestor = sorted(nx.ancestors(self.ens.memgraph, parent) | {parent})[0]
             init_time_parent,fin_time_parent = self.ens.get_member_timespan(parent)
             init_time_ancestor,fin_time_ancestor = self.ens.get_member_timespan(ancestor)
-            assert self.branching_state['scores_max'][parent] > self.branching_state['score_levels'][-1]
+            if not (self.branching_state['scores_max'][parent] > self.branching_state['score_levels'][-1]):
+                pdb.set_trace()
             score_parent = self.branching_state['scores_tdep'][parent]
             #print(f'{score_parent = }')
             level = self.branching_state['score_levels'][-1]
@@ -1266,7 +1268,7 @@ class TEAMS(EnsembleAlgorithm):
         if "jf" == self.population_control_version:
             assert len(self.branching_state['parent_queue']) == 0
         elif "pog" == self.population_control_version:
-            self.branching_state['perant_queue'] = deque()
+            self.branching_state['parent_queue'] = deque()
         scores_active = np.array([self.branching_state['scores_max'][ma] for ma in self.branching_state['members_active']])
         # Keep track of reasons for extinction
         termination_reasons = dict({
@@ -1850,7 +1852,8 @@ class ITEAMS(EnsembleAlgorithm):
             ancestor = sorted(nx.ancestors(self.ens.memgraph, parent) | {parent})[0]
             init_time_parent,fin_time_parent = self.ens.get_member_timespan(parent)
             init_time_ancestor,fin_time_ancestor = self.ens.get_member_timespan(ancestor)
-            assert self.branching_state['scores_max'][parent] > self.branching_state['score_levels'][-1]
+            if not (self.branching_state['scores_max'][parent] > self.branching_state['score_levels'][-1]):
+                pdb.set_trace()
             score_parent = self.branching_state['scores_tdep'][parent]
             level = self.branching_state['score_levels'][-1]
             exceedance_tidx_parent = np.where(score_parent > level)[0]

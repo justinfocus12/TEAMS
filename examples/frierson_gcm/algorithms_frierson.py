@@ -133,11 +133,13 @@ class FriersonGCMTEAMS(algorithms.TEAMS):
         tu = dns.ens.dynsys.dt_save
         spinup_phys = 500.0
         first_parent = np.where(dns_tinits*tu > spinup_phys)[0][0]
-        for parent in range(first_parent,first_parent+config['population_size']):
+        rng_parent_choice = default_rng(config['seed_min'] + config['seed_inc_init'])
+        parents = rng_parent_choice.permutation(np.arange(first_parent,dns.ens.get_nmem()))[:config['population_size']]
+        for parent in parents:
+            # TODO select a time at random, and put down a new restart there. 
             init_cond = relpath(join(dns.ens.root_dir, dns.ens.traj_metadata[parent]['icandf']['init_cond']), ens.root_dir)
             init_conds.append(init_cond)
             init_times.append(dns_tinits[parent])
-        # TODO generate some nearer initial conditions 
         return cls(init_times, init_conds, config, ens)
     def derive_parameters(self, config):
         # Parameterize the score function in a simple way: the components will be area-averages of fields over specified regions. The combined score will be a linear combination.
