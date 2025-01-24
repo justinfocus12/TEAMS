@@ -30,6 +30,51 @@ import algorithms; #reload(forcing)
 import frierson_gcm; #reload(frierson_gcm)
 from frierson_gcm import FriersonGCM
 
+class AncestorGeneratorDNSAppendages(algorithms.EnsembleAlgorithm):
+    def __init__(self, algfile_dns, config, ens):
+        # Get a list of restart files from which to sprinkle seeds 
+        alg_dns = pickle.load(open(algfile_dns, "rb"))
+        ens_dns = alg_dns.ens
+        nmem_dns = ens_dns.get_nmem()
+        # we will only use the INITIAL conditions from DNS, so that the RNGs are identical also. If an appendage wants to diverge from DNS, that should be modified afterward
+        self.icandfs_sparse = []
+        self.ictimes_sparse = []
+        for i_mem_dns in range(nmem_dns):
+            icandf = ens_dns.traj_metadata[i_mem_dns].icandf
+            self.icandfs_sparse.append(icandf)
+            self.ictimes_sparse.append(icandf['frc'].init_tim
+        super().__init__(config, ens)
+    @staticmethod
+    def label_from_config(config):
+        abbrv = (
+                r"AGENDA_Tburnin%g_dtrestart%g_"%(
+                    config["t_burnin_phys"]
+                    config["dt_restart_phys"],
+                    )
+                ).replace('.','p')
+        label = r'AGENDA ($\Delta t_0=%d$)'%(
+                config['dt_restart_phys']
+                )
+        return abbrv,label
+    def derive_parameters(self, config):
+        tu = self.ens.dynsys.dt_save
+        self.dt_restart = int(round(config['dt_restart_phys']/tu))
+        # mutable
+        self.num_restarts_max = config['num_restarts_max']
+        return
+    def take_next_step(self):
+        # 1. Generate the next icandf
+        start_times_dense,end_times_dense = self.ens.get_all_timespans()
+        next_end_time = end_times_dense[-1] + self.dt_restart
+
+        # 2. Run the new trajectory
+        nmem = self.ens.get_nmem()
+
+        next_end_time = t_times_dense[-1] + self.dt_restart
+
+
+
+
 
 class FriersonGCMPeriodicBranching(algorithms.PeriodicBranching):
     def obs_dict_names(self):

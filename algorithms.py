@@ -656,6 +656,8 @@ class SDEPeriodicBranching(PeriodicBranching):
 
 # --------------------- end PeriodicBranching section -------------------------
 
+
+
 class AncestorGenerator(EnsembleAlgorithm):
     # From one single initial condition (maybe even a coldstart), spawn off a branching ensemble long enough to generate totally independent samples
     def __init__(self, uic_time, uic, config, ens):
@@ -1490,15 +1492,22 @@ class TEAMS(EnsembleAlgorithm):
         sclim = [np.min(scmax_dns),np.max(scmax_dns)]
         scmaxs,logws,mults = ([] for i in range(3))
         Ns_init,Ns_fin = (np.zeros(len(algs),dtype=int) for i in range(2))
+        algs2keep = []
         for i_alg,alg in enumerate(algs):
+            Ns_init[i_alg] = alg.population_size
+            Ns_fin[i_alg] = alg.ens.get_nmem()
+            if Ns_fin[i_alg] <= Ns_init[i_alg]:
+                continue
+            algs2keep.append(i_alg)
             scmax,logw,mult = (alg.branching_state[s] for s in 'scores_max,log_weights,multiplicities'.split(','))
+            # discard if incomplete 
             scmaxs.append(scmax)
             logws.append(logw)
             mults.append(mult)
-            Ns_init[i_alg] = alg.population_size
-            Ns_fin[i_alg] = alg.ens.get_nmem()
-            assert int(round(np.exp(logsumexp(logw,b=mult)))) == Ns_init[i_alg]
+            if not (int(round(np.exp(logsumexp(logw,b=mult)))) == Ns_init[i_alg]):
+                pdb.set_trace()
             sclim[0],sclim[1] = min(sclim[0],np.min(scmax)),max(sclim[1],np.max(scmax))
+        algs = [algs[i_alg] for i_alg in algs2keep]
         N_teams_init = np.sum(Ns_init)
         N_teams_fin = np.sum(Ns_fin)
         bin_edges = np.linspace(sclim[0]-1e-10,sclim[1]+1e-10,16)

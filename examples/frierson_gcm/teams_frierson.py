@@ -139,7 +139,7 @@ def teams_single_workflow(i_expt):
     # i_expt is a flat index, from which both i_param and i_buick are derived
     # Cluge; rely on knowing the menu of options from the Buick dealership and from the parameter sets 
     config_gcm,config_algo,expt_label,expt_abbrv = teams_paramset(i_expt)
-    config_algo['population_control_version'] = 'pog'
+    config_algo['population_control_version'] = 'jf'
     param_abbrv_gcm,param_label_gcm = frierson_gcm.FriersonGCM.label_from_config(config_gcm)
     param_abbrv_algo,param_label_algo = algorithms_frierson.FriersonGCMTEAMS.label_from_config(config_algo)
     config_analysis = dict()
@@ -701,7 +701,10 @@ def teams_multiseed_procedure(i_field,i_sigma,idx_seed,i_delta,i_slm,overwrite_r
         makedirs(dirdict[dirname], exist_ok=True)
     algs = []
     for i_alg in range(len(workflows)):
-        algs.append(pickle.load(open(filedicts[i_alg]['alg'],'rb')))
+        alg = pickle.load(open(filedicts[i_alg]['alg'],'rb')) 
+        if alg.ens.get_nmem() < alg.population_size:
+            continue
+        algs.append(alg)
     param_suffix = (r'std%g_ast%g'%(config_gcm['SPPT']['std_sppt'],config_algo['advance_split_time_phys'])).replace('.','p')
     if tododict['score_distribution']:
         print(f'{dirdict = }')
