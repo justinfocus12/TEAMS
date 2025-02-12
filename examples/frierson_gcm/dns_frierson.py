@@ -86,7 +86,7 @@ def dns_paramset(i_expt):
         'seed_max': 100000,
         'seed_inc_init': seed_inc, # will be added to seed_min
         'max_member_duration_phys': 360.0,
-        'num_chunks_max': 100,
+        'num_chunks_max': 300,
         })
 
     return config_gcm,config_algo,expt_label,expt_abbrv

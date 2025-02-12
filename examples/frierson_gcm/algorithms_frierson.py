@@ -31,6 +31,7 @@ import frierson_gcm; #reload(frierson_gcm)
 from frierson_gcm import FriersonGCM
 
 class AncestorGeneratorDNSAppendages(algorithms.EnsembleAlgorithm):
+    # UNFINISHED
     def __init__(self, algfile_dns, config, ens):
         # Get a list of restart files from which to sprinkle seeds 
         alg_dns = pickle.load(open(algfile_dns, "rb"))
@@ -42,13 +43,13 @@ class AncestorGeneratorDNSAppendages(algorithms.EnsembleAlgorithm):
         for i_mem_dns in range(nmem_dns):
             icandf = ens_dns.traj_metadata[i_mem_dns].icandf
             self.icandfs_sparse.append(icandf)
-            self.ictimes_sparse.append(icandf['frc'].init_tim
+            #self.ictimes_sparse.append(icandf['frc'].init_tim
         super().__init__(config, ens)
     @staticmethod
     def label_from_config(config):
         abbrv = (
                 r"AGENDA_Tburnin%g_dtrestart%g_"%(
-                    config["t_burnin_phys"]
+                    config["t_burnin_phys"],
                     config["dt_restart_phys"],
                     )
                 ).replace('.','p')
@@ -71,6 +72,7 @@ class AncestorGeneratorDNSAppendages(algorithms.EnsembleAlgorithm):
         nmem = self.ens.get_nmem()
 
         next_end_time = t_times_dense[-1] + self.dt_restart
+        return
 
 
 
@@ -185,6 +187,86 @@ class FriersonGCMTEAMS(algorithms.TEAMS):
             init_cond = relpath(join(dns.ens.root_dir, dns.ens.traj_metadata[parent]['icandf']['init_cond']), ens.root_dir)
             init_conds.append(init_cond)
             init_times.append(dns_tinits[parent])
+        return cls(init_times, init_conds, config, ens)
+    @classmethod
+    def initialize_from_dns_appendage(cls, dns, config, ens, init_cond_dir, root_dir):
+        # Calculate the headspace remaining
+        dns_tinits,dns_tfins = dns.ens.get_all_timespans()
+        tu = dns.ens.dynsys.dt_save
+        spinup_phys = 500.0
+        first_dns_parent = np.argmax(dns_tinits*tu >= spinup_phys) 
+        Nmem_dns = dns.ens.get_nmem()
+        T = dns_tfins[Nmem_dns-1] - dns_tinits[first_dns_parent]
+        N = config['population_size']
+        H = int(round(config['time_horizon_phys'] / tu))
+        L = T - N*H
+        assert L > 0
+        # Distribute the remaining space among members
+        rng_parent_tinit = default_rng(config['seed_min'] + config['seed_inc_init'])
+        tinits = dns_tinits[first_dns_parent] + 2*H*np.arange(1,N+1, dtype=int)
+        # Make a chain of restarts
+        init_times = list(tinits)
+        init_conds = []
+        for i_anc in range(N):
+            print(f'\n\n--------------------- About to generate ancestor {i_anc} appendage = {init_times[i_anc]} ---------------------\n\n')
+            most_recent_dns_mem = np.argmax(dns_tfins > init_times[i_anc])
+            time_since_dns_restart = init_times[i_anc] - dns_tinits[most_recent_dns_mem]
+            if i_anc == 0:
+                prehistory_icandf = dns.ens.traj_metadata[most_recent_dns_mem]['icandf'].copy()
+                prehistory_icandf['frc'].fin_time = init_times[i_anc]
+            else:
+                prehistory_icandf = dns.ens.dynsys.generate_default_icandf(init_times[i_anc-1], init_times[i_anc], rng_parent_tinit.choice(range(config['seed_min'], config['seed_max'])))
+                prehistory_icandf['init_cond'] = init_conds[i_anc-1]
+
+            saveinfo = dict({
+                'temp_dir': join(init_cond_dir,f'anc{i_anc}_temp'),
+                'final_dir': join(init_cond_dir,f'anc{i_anc}'),
+                })
+            saveinfo.update(dict({
+                'filename_traj': join(saveinfo['final_dir'], f'prehistory_anc{i_anc}.nc'),
+                'filename_restart': join(saveinfo['final_dir'],f'restart_prehistory_anc{i_anc}.cpio'),
+                }))
+            obs_fun = lambda t,x: None
+            dns.ens.dynsys.run_trajectory(prehistory_icandf, obs_fun, saveinfo, root_dir)
+            init_conds.append(saveinfo['filename_restart'])
+        return cls(init_times, init_conds, config, ens)
+    @classmethod
+    def initialize_from_dns_anytime(cls, dns, config, ens, init_cond_dir, root_dir):
+        # Calculate the headspace remaining
+        dns_tinits,dns_tfins = dns.ens.get_all_timespans()
+        tu = dns.ens.dynsys.dt_save
+        spinup_phys = 500.0
+        first_dns_parent = np.argmax(dns_tinits*tu >= spinup_phys) 
+        Nmem_dns = dns.ens.get_nmem()
+        T = dns_tfins[Nmem_dns-1] - dns_tinits[first_dns_parent]
+        N = config['population_size']
+        H = int(round(config['time_horizon_phys'] / tu))
+        L = T - N*H
+        assert L > 0
+        # Distribute the remaining space among members
+        rng_parent_tinit = default_rng(config['seed_min'] + config['seed_inc_init'])
+        U = np.sort(rng_parent_tinit.choice(range(L), N+1))
+        tinits = dns_tinits[first_dns_parent] + H*np.arange(N, dtype=int) + np.diff(U)
+        # Make a chain of restarts
+        init_times = list(tinits)
+        init_conds = []
+        for i_anc in range(N):
+            print(f'\n\n--------------------- About to generate ancestor {i_anc} anytime = {init_times[i_anc]} ---------------------\n\n')
+            most_recent_dns_mem = np.argmax(dns_tfins > init_times[i_anc])
+            time_since_dns_restart = init_times[i_anc] - dns_tinits[most_recent_dns_mem]
+            prehistory_icandf = dns.ens.traj_metadata[most_recent_dns_mem]['icandf'].copy()
+            prehistory_icandf['frc'].fin_time = init_times[i_anc]
+            saveinfo = dict({
+                'temp_dir': join(init_cond_dir,f'anc{i_anc}_temp'),
+                'final_dir': join(init_cond_dir,f'anc{i_anc}'),
+                })
+            saveinfo.update(dict({
+                'filename_traj': join(saveinfo['final_dir'], f'prehistory_anc{i_anc}.nc'),
+                'filename_restart': join(saveinfo['final_dir'],f'restart_prehistory_anc{i_anc}.cpio'),
+                }))
+            obs_fun = lambda t,x: None
+            dns.ens.dynsys.run_trajectory(prehistory_icandf, obs_fun, saveinfo, root_dir)
+            init_conds.append(saveinfo['filename_restart'])
         return cls(init_times, init_conds, config, ens)
     def derive_parameters(self, config):
         # Parameterize the score function in a simple way: the components will be area-averages of fields over specified regions. The combined score will be a linear combination.

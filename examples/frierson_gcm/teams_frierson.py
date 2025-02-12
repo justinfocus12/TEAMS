@@ -58,8 +58,8 @@ import algorithms_frierson; reload(algorithms_frierson)
 def teams_multiparams():
     target_fields = ["surf_pres_neg","rainrate",][1:]
     sigmas = [0.3,0.4][:1]
-    seed_incs = list(range(32))
-    deltas_phys = [0.0,4.0,5.0,6.0,7.0,8.0,10.0]
+    seed_incs = list(range(48))
+    deltas_phys = [0.0,4.0,5.0,6.0,7.0,8.0,10.0][1:5]
     split_landmarks = ['thx']
     return target_fields,sigmas,seed_incs,deltas_phys,split_landmarks
 
@@ -296,8 +296,8 @@ def teams_single_workflow(i_expt):
         date_str = "2025-01-16"
         sub_date_str = "3"
     elif "rainrate" == target_field:
-        date_str = "2025-01-16"
-        sub_date_str = "3"
+        date_str = "2025-02-12"
+        sub_date_str = "0"
     else:
         raise Exception(f'Unsupported target field {target_field}')
     dirdict = dict()
@@ -613,8 +613,16 @@ def run_teams(dirdict,filedict,config_gcm,config_algo):
     else:
         gcm = frierson_gcm.FriersonGCM(config_gcm, recompile=recompile)
         ens = ensemble.Ensemble(gcm, root_dir=root_dir)
+        # ------------ Initialize from DNS appendage --------------
+        init_cond_dir = "init_conds"
+        makedirs(join(root_dir, init_cond_dir), exist_ok=True)
+        alg = algorithms_frierson.FriersonGCMTEAMS.initialize_from_dns_appendage(angel, config_algo, ens, init_cond_dir, root_dir)
+
+
+        # ------------ Initialize from DNS ------------
+        #alg = algorithms_frierson.FriersonGCMTEAMS.initialize_from_dns(angel, config_algo, ens)
+        # ------------ Initialize from AncestorGenerator ------------
         #alg = algorithms_frierson.FriersonGCMTEAMS.initialize_from_ancestorgenerator(angel, config_algo, ens)
-        alg = algorithms_frierson.FriersonGCMTEAMS.initialize_from_dns(angel, config_algo, ens)
 
     alg.ens.dynsys.set_nproc(nproc)
     alg.ens.set_root_dir(root_dir)
@@ -639,7 +647,7 @@ def run_teams(dirdict,filedict,config_gcm,config_algo):
 def teams_multiseed_procedure(i_field,i_sigma,idx_seed,i_delta,i_slm,overwrite_reference=False): # Just different seeds for now
     tododict = dict({
         'score_distribution': 1,
-        'boost_distribution': 1,
+        'boost_distribution': 0,
         'boost_composites':   0,
         })
     # Figure out which flat indices corresond to this set of seeds
@@ -879,7 +887,7 @@ if __name__ == "__main__":
         for i_field in [0]:
             idx_delta = [int(sys.argv[a]) for a in range(2,len(sys.argv))]
             for i_delta in idx_delta:
-                teams_multiseed_procedure(i_field,i_sigma,idx_seed,i_delta,i_slm,overwrite_reference=False)
+                teams_multiseed_procedure(i_field,i_sigma,idx_seed,i_delta,i_slm,overwrite_reference=True)
 
 
 
