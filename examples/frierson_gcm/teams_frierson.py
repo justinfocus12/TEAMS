@@ -58,7 +58,7 @@ import algorithms_frierson; reload(algorithms_frierson)
 def teams_multiparams():
     target_fields = ["surf_pres_neg","rainrate",][1:]
     sigmas = [0.3,0.4][:1]
-    seed_incs = list(range(48))
+    seed_incs = list(range(48))[:1]
     deltas_phys = [0.0,4.0,5.0,6.0,7.0,8.0,10.0][1:5]
     split_landmarks = ['thx']
     return target_fields,sigmas,seed_incs,deltas_phys,split_landmarks
@@ -335,7 +335,8 @@ def plot_fields_2d(config_analysis, alg, dirdict, filedict, expt_label, remove_o
     # Get the most-split ancestors
     order_famsize = np.argsort(desc_per_anc)[::-1]
     # Select some ancestors to plot based on two criteria: (1) largest ancestral scores, (2) largest child scores
-    ancs2plot = np.unique(np.concatenate((order_ancscores[:4], order_descscores[:4])))
+    #ancs2plot = np.unique(np.concatenate((order_ancscores[:4], order_descscores[:4])))
+    ancs2plot = order_descscores[:1] #np.unique(np.concatenate((order_ancscores[:4], order_descscores[:4])))
     print(f'{ancs2plot = }')
     if remove_old_plots:
         old_plot_filenames = glob.glob(join(dirdict['plots'],'fields*.png'))
@@ -362,11 +363,15 @@ def plot_fields_2d(config_analysis, alg, dirdict, filedict, expt_label, remove_o
             vmin,vmax = min((f.min().item() for f in (f_anc,f_desc))),max((f.max().item() for f in (f_anc,f_desc)))
             vmax_diff = np.abs(f_desc - f_anc).max().item() 
             score_lineage = tuple(alg.branching_state['scores_tdep'][mem] for mem in lineage)
-            tmx = alg.branching_state['scores_max_timing'][ancestor]
+            tmx_anc = alg.branching_state['scores_max_timing'][ancestor]
+            tmx_dsc = alg.branching_state['scores_max_timing'][best_desc]
             tbr = alg.branching_state['branch_times'][best_desc]
             tinit,tfin = alg.ens.get_member_timespan(ancestor)
 
-            for time2plot in range(max(tmx-int(4/tu),tinit+1),tmx+int(3/tu)):
+            for time2plot in np.unique([tmx_anc,tmx_dsc]): #range(
+                    #max(tinit+1, min(tmx_anc,tmx_dsc)-int(4/tu)),
+                    #min(tinit+alg.time_horizon, max(tmx_anc,tmx_dsc)+int(3/tu))
+                    #):
                 fig = plt.figure(tight_layout=True, figsize=(12,6))
                 gs = gridspec.GridSpec(3,2)
                 ax0 = fig.add_subplot(gs[0,0]) # Ancestor 2D field
@@ -557,7 +562,7 @@ def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, refere
         else:
             scmax_ref = np.load(scmax_buick_file)['scmax_buick']
     elif reference == 'dns':
-        spinup_phys = 700
+        spinup_phys = 500
         scmax_dns_file = join(dirdict['analysis'],'scmax_dns.npz')
         if (not exists(scmax_dns_file)) or overwrite_reference:
             dns = pickle.load(open(filedict['dns'], 'rb'))
@@ -566,7 +571,7 @@ def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, refere
             # TODO conctenate before taking score_dombined
             score_comp = lambda ds: algs[0].score_components(ds['time'].to_numpy(),ds)
             lonroll = lambda ds,dlon: ds.roll(lon=int(round(dlon/ds['lon'][:2].diff('lon').item())))
-            dlons = range(0,360,20) #[0,30,60,90,120,150,180,210,240,270,300,330]
+            dlons = range(0,360,1) #[0,30,60,90,120,150,180,210,240,270,300,330]
             score_comp_rolled = [lambda ds,dlon=dlon: score_comp(lonroll(ds,dlon)) for dlon in dlons]
             sccomp = []
             for mem in mems_dns:
@@ -646,9 +651,9 @@ def run_teams(dirdict,filedict,config_gcm,config_algo):
 
 def teams_multiseed_procedure(i_field,i_sigma,idx_seed,i_delta,i_slm,overwrite_reference=False): # Just different seeds for now
     tododict = dict({
-        'score_distribution': 1,
-        'boost_distribution': 0,
-        'boost_composites':   0,
+        'score_distribution': 0,
+        'boost_distribution': 1,
+        'boost_composites':   1,
         })
     # Figure out which flat indices corresond to this set of seeds
     multiparams = teams_multiparams()
@@ -696,8 +701,8 @@ def teams_multiseed_procedure(i_field,i_sigma,idx_seed,i_delta,i_slm,overwrite_r
         date_str = "2025-01-16"
         sub_date_str = "3"
     elif "rainrate" == target_field:
-        date_str = "2025-01-16"
-        sub_date_str = "3"
+        date_str = "2025-02-12"
+        sub_date_str = "0"
     else:
         raise Exception(f'Unsupported target field {target_field}')
     dirdict = dict()
@@ -729,9 +734,9 @@ def teams_single_procedure(i_expt):
     tododict = dict({
         'run':             1,
         'analysis': dict({
-            'observable_spaghetti':     1,
-            'scorrelation':             1,
-            'fields_2d':                0,
+            'observable_spaghetti':     0,
+            'scorrelation':             0,
+            'fields_2d':                1,
             }),
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = teams_single_workflow(i_expt)
@@ -881,13 +886,13 @@ if __name__ == "__main__":
         for i_expt in idx_expt:
             teams_single_procedure(i_expt)
     elif procedure == 'multiseed':
-        idx_seed = list(range(32))
+        idx_seed = list(range(48))
         i_sigma = 0
         i_slm = 0
         for i_field in [0]:
             idx_delta = [int(sys.argv[a]) for a in range(2,len(sys.argv))]
             for i_delta in idx_delta:
-                teams_multiseed_procedure(i_field,i_sigma,idx_seed,i_delta,i_slm,overwrite_reference=True)
+                teams_multiseed_procedure(i_field,i_sigma,idx_seed,i_delta,i_slm,overwrite_reference=False)
 
 
 

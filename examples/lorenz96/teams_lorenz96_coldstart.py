@@ -1,59 +1,38 @@
 i = 0
 print(f'--------------Beginning imports-------------')
 import numpy as np
-print(f'{i = }'); i += 1
 from numpy.random import default_rng
-print(f'{i = }'); i += 1
 from scipy.special import logsumexp,softmax
-print(f'{i = }'); i += 1
 import networkx as nx
-print(f'{i = }'); i += 1
 import xarray as xr
-print(f'{i = }'); i += 1
 from matplotlib import pyplot as plt, rcParams 
-print(f'{i = }'); i += 1
 rcParams.update({
     "font.family": "monospace",
     "font.size": 15
 })
 pltkwargs = dict(bbox_inches="tight",pad_inches=0.2)
 import os
-print(f'{i = }'); i += 1
 from os.path import join, exists, basename, relpath
-print(f'{i = }'); i += 1
 from os import mkdir, makedirs
-print(f'{i = }'); i += 1
 import sys
-print(f'{i = }'); i += 1
+import pdb
 import shutil
-print(f'{i = }'); i += 1
 import glob
-print(f'{i = }'); i += 1
 import subprocess
-print(f'{i = }'); i += 1
 import resource
-print(f'{i = }'); i += 1
 import pickle
-print(f'{i = }'); i += 1
 import copy as copylib
-print(f'{i = }'); i += 1
 from importlib import reload
 
 sys.path.append("../..")
 print(f'Now starting to import my own modules')
 import utils; reload(utils)
-print(f'{i = }'); i += 1
 import ensemble; reload(ensemble)
 from ensemble import Ensemble
-print(f'{i = }'); i += 1
 import forcing; reload(forcing)
-print(f'{i = }'); i += 1
 import algorithms; reload(algorithms)
-print(f'{i = }'); i += 1
 import lorenz96; reload(lorenz96)
-print(f'{i = }'); i += 1
 import algorithms_lorenz96; reload(algorithms_lorenz96)
-print(f'{i = }'); i += 1
 
 def teams_multiparams():
     # Physical
@@ -61,6 +40,7 @@ def teams_multiparams():
     # Algorithmic
     deltas_phys = [1.4] #list(np.linspace(0.0,2.0,11))
     population_params = [
+            ('frac',0.5,'const_pop'),
             ('num',1,'const_pop'),
             ('frac',0.1,'const_pop'),
             ('frac',0.5,'one_birth'),
@@ -73,7 +53,7 @@ def teams_multiparams():
 def teams_paramset(i_expt=None):
     multiparams = teams_multiparams()
     if i_expt is None:
-        idx_multiparam = (0,0,0)
+        idx_multiparam = (0,0,2)
     else:
         idx_multiparam = np.unravel_index(i_expt, tuple(len(mp) for mp in multiparams))
     F4,delta_phys,population_params,seed_inc = (multiparams[i][i_param] for (i,i_param) in enumerate(idx_multiparam))
@@ -81,14 +61,14 @@ def teams_paramset(i_expt=None):
     config_sde = lorenz96.Lorenz96SDE.default_config()
     config_sde['frc']['white']['wavenumber_magnitudes'][0] = F4
     config_algo = dict({
-        'num_levels_max': 1024,
-        'num_members_max': 1024,
-        'num_active_families_min': 2,
+        'num_levels_max': 20,
+        'num_members_max': 150,
+        'num_active_families_min': 1,
         #'buick_choices': [buicks[i_buick]],
         'seed_min': 1000,
         'seed_max': 100000,
         'seed_inc_init': seed_inc, 
-        'population_size': 32,
+        'population_size': 16,
         'time_horizon_phys': 8, #6 + delta_phys,
         'buffer_time_phys': 0,
         'advance_split_time_phys': delta_phys,
@@ -126,6 +106,7 @@ def teams_paramset(i_expt=None):
 
 def teams_single_workflow(i_expt,expt_supdir_teams,expt_supdir_dns):
     config_sde,config_algo,expt_label,expt_abbrv = teams_paramset(i_expt)
+    config_algo['population_control_version'] = 'pog'
     param_abbrv_sde,param_label_sde = lorenz96.Lorenz96SDE.label_from_config(config_sde)
     param_abbrv_algo,param_label_algo = algorithms_lorenz96.Lorenz96SDETEAMS.label_from_config(config_algo)
     config_analysis = dict()
@@ -230,6 +211,7 @@ def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, param_
 
     # ---------------------- Calculate DNS max scores ------------------------
     scmax_dns_file = join(dirdict['analysis'], 'scmax_dns.npz')
+    Nlon = algs[0].ens.dynsys.ode.K
     if (not exists(scmax_dns_file)) or overwrite_dns:
         print(f'About to compute DNS scores')
         dns = pickle.load(open(filedict['dns'], 'rb'))
@@ -247,20 +229,28 @@ def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, param_
             dns_lastmem = len(all_ends)-1
         print(f'{dns_firstmem = }, {dns_lastmem = }')
         dns_mems = range(dns_firstmem,dns_lastmem+1)
+        # TODO augment with longitudinal rolls
+        score_components_seplon_fun = lambda t, x: [algs[0].score_components(t, np.roll(x, dk, axis=1)) for dk in range(Nlon)]
+        score_components_seplon = [[] for _ in range(Nlon)]
+        Nt = 0
+        Ntburnin = algs[0].ens.dynsys.t_burnin
         for (i_mem,mem) in enumerate(dns_mems):
             if (i_mem) % 100 == 0: print(f'Scoring member {i_mem} out of {dns_mems}')
-            sccomp_dns.append(
-                    dns.ens.compute_observables([algs[0].score_components],mem)[0])
-        ncomp = len(sccomp_dns[0])
-        sccomp_dns = [
-                np.concatenate([
-                    sccomp_dns[i_mem][i] for (i_mem,mem) in enumerate(dns_mems)
-                    ])
-                for i in range(ncomp)
-                ]
-        score_dns = algs[0].score_combined(sccomp_dns)[algs[0].ens.dynsys.t_burnin:]
-        print(f'{score_dns.shape = }')
-        scmax_dns = utils.compute_block_maxima(score_dns, algs[0].time_horizon-max(algs[0].advance_split_time_max, (algs[0].score_params['tavg']-1)))
+            score_components_seplon_new = dns.ens.compute_observables([score_components_seplon_fun],mem)[0]
+            Nt += score_components_seplon_new[0][0].shape[0]
+            for i_lon in range(Nlon):
+                score_components_seplon[i_lon].append(score_components_seplon_new[i_lon])
+        score_dns_seplon = np.zeros((Nlon,Nt-Ntburnin))
+        Ncomp = len(score_components_seplon[i_lon][i_mem])
+        for i_lon in range(Nlon):
+            sccomps = [
+                    np.concatenate(tuple(score_components_seplon[i_lon][i_mem][i_comp] for i_mem in range(len(dns_mems))))
+                    for i_comp in range(Ncomp)
+                    ]
+            score_dns_seplon[i_lon,:] = algs[0].score_combined(sccomps)[algs[0].ens.dynsys.t_burnin:]
+        score_dns_agglon = score_dns_seplon.flatten()
+        print(f'{score_dns_agglon.shape = }')
+        scmax_dns = utils.compute_block_maxima(score_dns_agglon, algs[0].time_horizon-max(algs[0].advance_split_time_max, (algs[0].score_params['tavg']-1)))
         print(f'{np.min(scmax_dns) = }, {np.max(scmax_dns) = }, {scmax_dns.shape = }')
         np.savez(scmax_dns_file, scmax_dns=scmax_dns)
     else:
@@ -475,7 +465,7 @@ def compute_integrated_returnstats_error_metrics(returnstats):
 
 if __name__ == "__main__":
     print(f'Got into Main')
-    scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/"
+    scratch_dir = "/orcd/archive/pog/001/ju26596/TEAMS/examples/lorenz96/"
     date_str = '2024-10-15'
     sub_date_str = '0'
     expt_supdir_teams = join(scratch_dir,date_str,sub_date_str)

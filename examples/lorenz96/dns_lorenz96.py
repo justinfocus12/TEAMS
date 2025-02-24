@@ -280,7 +280,7 @@ def dns_single_procedure(i_expt, expt_supdir):
 
 if __name__ == "__main__":
     procedure = sys.argv[1]
-    scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/lorenz96/"
+    scratch_dir = "/orcd/archive/pog/001/ju26596/TEAMS/examples/lorenz96/"
     date_str = "2024-10-15"
     sub_date_str = "0"
     expt_supdir = join(scratch_dir,date_str,sub_date_str)
