@@ -1482,7 +1482,7 @@ class TEAMS(EnsembleAlgorithm):
         plt.close(fig)
         
     @staticmethod
-    def measure_plot_score_distribution(config_algo, algs, scmax_dns, returnstats_file, figfileh, figfilev, alpha=0.05, param_display='', time_unit=1, time_unit_name="", severity_unit_name=""):
+    def measure_plot_score_distribution(config_algo, algs, scmax_dns, returnstats_file, figfileh, figfilev, figfileseph, alpha=0.05, param_display=None, target_display=None, time_unit=1, time_unit_name="", severity_unit_name=""):
         N_dns = len(scmax_dns)
         print(f'{N_dns = }')
         time_horizon_effective = config_algo['time_horizon_phys'] - config_algo['advance_split_time_max_phys']
@@ -1506,10 +1506,12 @@ class TEAMS(EnsembleAlgorithm):
             mults.append(mult)
             if not (int(round(np.exp(logsumexp(logw,b=mult)))) == Ns_init[i_alg]):
                 pdb.set_trace()
+                raise Exception
             sclim[0],sclim[1] = min(sclim[0],np.min(scmax)),max(sclim[1],np.max(scmax))
         algs = [algs[i_alg] for i_alg in algs2keep]
         N_teams_init = np.sum(Ns_init)
         N_teams_fin = np.sum(Ns_fin)
+        Nalg = len(algs)
         bin_edges = np.linspace(sclim[0]-1e-10,sclim[1]+1e-10,16)
         hist_dns,_ = np.histogram(scmax_dns, bins=bin_edges, density=False)
         # determine bounds on measurable return periods 
@@ -1529,7 +1531,7 @@ class TEAMS(EnsembleAlgorithm):
         boost_population = np.zeros(len(algs))
         for i_alg,alg in enumerate(algs):
             # return periods as function of return levels
-            hists_init[i_alg],_ = np.histogram(scmaxs[i_alg][:alg.population_size], bins=bin_edges, density=False)
+            hists_init[i_alg,:],_ = np.histogram(scmaxs[i_alg][:alg.population_size], bins=bin_edges, density=False)
             hists_fin_unif[i_alg,:],_ = np.histogram(scmaxs[i_alg], bins=bin_edges, density=False)
             hists_fin_wted[i_alg,:],_ = np.histogram(scmaxs[i_alg], bins=bin_edges, weights=mults[i_alg]*np.exp(logws[i_alg]), density=False)
             ccdfs_init[i_alg] = utils.pmf2ccdf(hists_init[i_alg],bin_edges)
@@ -1662,7 +1664,18 @@ class TEAMS(EnsembleAlgorithm):
 
         np.savez(returnstats_file, **returnstats)
 
-        # ------------- Plot -------------------
+        # ---------------- PLOTTING -----------------
+        # useful things 
+        def sf2rt(sf):
+            if np.isscalar(sf):
+                sf = np.array([sf])
+            assert sf.ndim == 1
+            zidx = np.where(sf <= 0)[0]
+            nzidx = np.setdiff1d(np.arange(len(sf)),zidx)
+            rt = np.zeros(len(sf))
+            rt[zidx] = np.inf
+            rt[nzidx] = utils.convert_sf_to_rtime(sf[nzidx], returnstats['time_horizon_effective'])
+            return rt
         teams_abbrv = 'TEAMS' if algs[0].advance_split_time>0 else 'AMS'
         # ++++ left-hand text label +++
         cost_display = '\n'.join([
@@ -1674,8 +1687,39 @@ class TEAMS(EnsembleAlgorithm):
             r'DNS cost:',
             r'%.1E %s'%(cost_dns/time_unit,time_unit_name)
             ])
-        display = '\n'.join([param_display,'',cost_display])
-        sf2rt = lambda sf: utils.convert_sf_to_rtime(sf, returnstats['time_horizon_effective'])
+        if target_display is None:
+            target_display = ''
+        if param_display is None:
+            param_display = ''
+        display = '\n'.join([target_display,'',param_display,'',cost_display])
+
+        # -------------- Plot distribution of short DNS return curves ------------------
+        confint_seph = 0.5
+        alpha_seph = 1-confint_seph # less aggressive confidence intervals 
+        fig,ax = plt.subplots(figsize=(8,6))
+        ccdfmid,ccdflo,ccdfhi = (np.quantile(np.nan_to_num(ccdfs_fin_wted,nan=0), q, axis=0) for q in [0.5,alpha_seph/2,1-alpha_seph/2])
+        rtmid,rthi,rtlo = (sf2rt(ccdf) for ccdf in(ccdfmid,ccdflo,ccdfhi))
+        ax.fill_betweenx(bin_edges[:-1],rtlo/time_unit,rthi/time_unit,color='red',alpha=0.25,zorder=-1)
+        ax.plot(rtmid/time_unit,bin_edges[:-1],color='red')
+        ccdfmid,ccdflo,ccdfhi = utils.pmf2ccdf(hist_dns,bin_edges,return_errbars=True,alpha=alpha_seph,N_errbars=int(N_dns * cost_teams_fin/cost_dns * 1/len(algs)))
+        rtdnsmid,rtdnshi,rtdnslo = (sf2rt(ccdf) for ccdf in (ccdfmid,ccdflo,ccdfhi))
+        ax.fill_betweenx(bin_edges[:-1],rtdnslo/time_unit,rtdnshi/time_unit,color='gray',alpha=0.25,zorder=-1)
+        for i_alg in range(Nalg):
+            ax.plot(sf2rt(ccdfs_fin_wted[i_alg,:])/time_unit, bin_edges[:-1], color='red', linewidth=0.5)
+        ax.plot(rtdnsmid/time_unit,bin_edges[:-1],color='black')
+        ax.set_ylabel(r'Return level [%s]'%(severity_unit_name))
+        ax.set_xlabel(r'Return time [%s]'%(time_unit_name))
+        ax.set_title(r'Single %s runs & middle %d%s'%(teams_abbrv,int(100*confint_seph),"%"))
+        ax.set_xscale('log')
+        ax.set_xlim([returnstats['time_horizon_effective']/time_unit,5*sf2rt(min(np.nanmin(ccdf_dns),np.nanmin(ccdf_fin_wted)))/time_unit])
+
+        ax.set_title(r"%d%s error bars"%(int(alpha_seph*100),"%"))
+        ax.text(-0.3,0.5,display,fontsize=15,transform=ax.transAxes,horizontalalignment='right',verticalalignment='center')
+
+        fig.savefig(figfileseph, **pltkwargs)
+        plt.close(fig)
+
+        # ------------- Plot -------------------
 
         def cliprlev(rlev_curve):
             i0 = np.argmax(rlev_curve)
@@ -1858,6 +1902,7 @@ class ITEAMS(EnsembleAlgorithm):
             print(f'self.branching_state = ')
             pprint.pprint({bskey: bsval for (bskey,bsval) in self.branching_state.items() if bskey != 'scores_tdep'})
             parent = self.branching_state['parent_queue'].popleft() # this might not be the actual source of initial conditions!
+            # TODO for pog scheme, just put the parent back in the other side 
             ancestor = sorted(nx.ancestors(self.ens.memgraph, parent) | {parent})[0]
             init_time_parent,fin_time_parent = self.ens.get_member_timespan(parent)
             init_time_ancestor,fin_time_ancestor = self.ens.get_member_timespan(ancestor)

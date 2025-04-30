@@ -714,6 +714,16 @@ class FriersonGCM(DynamicalSystem):
             "clo": "gray",
             "chi": "yellow",
             })
+        obslib["horizontal_wind_speed"] = dict({
+            "abbrv": "UV",
+            "unit_symbol": "m/s",
+            "label": "Horizontal wind speed",
+            "cmap": "coolwarm",
+            "vmin": 0,
+            "vmax": None,
+            "clo": "gray",
+            "chi": "yello",
+            })
         obslib["exprec_scaling"] = dict({
             "abbrv": "XPS",
             "unit_symbol": "mm/day",
@@ -974,6 +984,9 @@ class FriersonGCM(DynamicalSystem):
     def temperature(ds):
         return ds["temp"] 
     @staticmethod
+    def surface_temperature(ds):
+        return ds["temp"].sel(pfull=1000) 
+    @staticmethod
     def specific_humidity(ds):
         return ds["sphum"] 
     @staticmethod
@@ -991,6 +1004,9 @@ class FriersonGCM(DynamicalSystem):
     @staticmethod
     def meridional_velocity(ds):
         return ds["vcomp"]
+    @staticmethod
+    def horizontal_wind_speed(ds):
+        return np.sqrt(ds["ucomp"]**2 + ds["vcomp"]**2)
     @staticmethod
     def exprec_scaling_wrapper(ds):
         # Swap the order of pressure to be increasing on all variables

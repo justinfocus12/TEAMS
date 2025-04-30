@@ -80,7 +80,7 @@ class AncestorGeneratorDNSAppendages(algorithms.EnsembleAlgorithm):
 
 class FriersonGCMPeriodicBranching(algorithms.PeriodicBranching):
     def obs_dict_names(self):
-        return ['total_rain','column_water_vapor','surface_pressure']
+        return ['total_rain','column_water_vapor','surface_pressure','surface_temperature']
     def obs_fun(self, t, ds):
         lat = 45.0
         lon = 180.0
@@ -199,11 +199,12 @@ class FriersonGCMTEAMS(algorithms.TEAMS):
         T = dns_tfins[Nmem_dns-1] - dns_tinits[first_dns_parent]
         N = config['population_size']
         H = int(round(config['time_horizon_phys'] / tu))
+        Amax = int(round(config['advance_split_time_max_phys'] / tu))
         L = T - N*H
         assert L > 0
         # Distribute the remaining space among members
         rng_parent_tinit = default_rng(config['seed_min'] + config['seed_inc_init'])
-        tinits = dns_tinits[first_dns_parent] + 2*H*np.arange(1,N+1, dtype=int)
+        tinits = dns_tinits[first_dns_parent] + (H+Amax)*np.arange(1,N+1, dtype=int)
         # Make a chain of restarts
         init_times = list(tinits)
         init_conds = []

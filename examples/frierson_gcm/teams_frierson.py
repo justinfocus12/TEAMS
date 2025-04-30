@@ -1,72 +1,66 @@
 i = 0
 print(f'--------------Beginning imports-------------')
 import numpy as np
-print(f'{i = }'); i += 1
 from numpy.random import default_rng
-print(f'{i = }'); i += 1
 import networkx as nx
-print(f'{i = }'); i += 1
 import xarray as xr
-print(f'{i = }'); i += 1
 from matplotlib import pyplot as plt, rcParams, gridspec
-print(f'{i = }'); i += 1
 rcParams.update({
     "font.family": "monospace",
     "font.size": 15
 })
 pltkwargs = dict(bbox_inches="tight",pad_inches=0.2)
 import os
-print(f'{i = }'); i += 1
 from os.path import join, exists, basename, relpath
-print(f'{i = }'); i += 1
 from os import mkdir, makedirs
-print(f'{i = }'); i += 1
 import sys
-print(f'{i = }'); i += 1
 import shutil
-print(f'{i = }'); i += 1
 import glob
-print(f'{i = }'); i += 1
 import subprocess
-print(f'{i = }'); i += 1
 import resource
-print(f'{i = }'); i += 1
 import pickle
-print(f'{i = }'); i += 1
 import copy as copylib
-print(f'{i = }'); i += 1
 import pprint
-print(f'{i = }'); i += 1
 from importlib import reload
-print(f'{i = }'); i += 1
 import pdb
 
 sys.path.append("../..")
 print(f'Now starting to import my own modules')
 import utils; reload(utils)
-print(f'{i = }'); i += 1
 import ensemble; reload(ensemble)
-print(f'{i = }'); i += 1
 import forcing; reload(forcing)
-print(f'{i = }'); i += 1
 import algorithms; reload(algorithms)
-print(f'{i = }'); i += 1
 import frierson_gcm; reload(frierson_gcm)
-print(f'{i = }'); i += 1
 import algorithms_frierson; reload(algorithms_frierson)
 
 def teams_multiparams():
-    target_fields = ["surf_pres_neg","rainrate",][1:]
-    sigmas = [0.3,0.4][:1]
-    seed_incs = list(range(48))[:1]
-    deltas_phys = [0.0,4.0,5.0,6.0,7.0,8.0,10.0][1:5]
-    split_landmarks = ['thx']
-    return target_fields,sigmas,seed_incs,deltas_phys,split_landmarks
+    multiparams = dict(
+            pop_ctrls = ["pog","jf"],
+            time_horizons = [30,50][1:],
+            target_fields = ["rainrate",'temp','surf_horz_wind',][:2],
+            sigmas = [0.3],
+            seed_incs = list(range(0,24)),
+            deltas_phys = np.sort(
+                np.concatenate((
+                    np.arange(0,17,step=4),
+                    [9,10,11,13,14,15]
+                    )).astype(float)
+                ),
+            #deltas_phys = [11],
+            split_landmarks = ['thx'],
+            )
+    return multiparams #target_fields,sigmas,seed_incs,deltas_phys,split_landmarks
 
 def teams_paramset(i_expt):
-    target_fields,sigmas,seed_incs,deltas_phys,split_landmarks = teams_multiparams()
+    multiparams = teams_multiparams()
+    pop_ctrls,time_horizons,target_fields,sigmas,seed_incs,deltas_phys,split_landmarks = (multiparams[key] for key in "pop_ctrls time_horizons target_fields sigmas seed_incs deltas_phys split_landmarks".split(" "))
     # TODO switch i_seed_inc with i_sigma below for the next round of runs, so as to avoid interference 
-    i_target_field,i_sigma,i_seed_inc,i_delta,i_slm = np.unravel_index(i_expt, (len(target_fields),len(sigmas),len(seed_incs),len(deltas_phys),len(split_landmarks)))
+    #pdb.set_trace()
+    try:
+        i_pop_ctrl,i_time_horizon,i_target_field,i_sigma,i_seed_inc,i_delta,i_slm = np.unravel_index(i_expt, (len(pop_ctrls),len(time_horizons),len(target_fields),len(sigmas),len(seed_incs),len(deltas_phys),len(split_landmarks)))
+    except ValueError:
+        pdb.set_trace()
+
     base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
     config_gcm = frierson_gcm.FriersonGCM.default_config(base_dir_absolute,base_dir_absolute)
     config_gcm['outputs_per_day'] = 4
@@ -82,6 +76,10 @@ def teams_paramset(i_expt):
         target_abbrv = "R" 
     elif target_field == "surf_pres_neg":
         target_abbrv = "NPS"
+    elif target_field == "temp":
+        target_abbrv = "T"
+    elif target_field == "surf_horz_wind":
+        target_abbrv = "HWS"
 
 
 
@@ -99,10 +97,11 @@ def teams_paramset(i_expt):
         'seed_max': 100000,
         'seed_inc_init': seed_incs[i_seed_inc],
         'population_size': 16,
-        'time_horizon_phys': 30, #+ deltas_phys[i_delta],
+        'time_horizon_phys': time_horizons[i_time_horizon], #+ deltas_phys[i_delta],
         'buffer_time_phys': 0,
         'advance_split_time_phys': deltas_phys[i_delta], # TODO put this into a parameter
-        'advance_split_time_max_phys': 10, # TODO put this into a parameter
+        'advance_split_time_max_phys': 20, # TODO put this into a parameter
+        "population_control_version": pop_ctrls[i_pop_ctrl],
         'split_landmark': split_landmarks[i_slm],
         'inherit_perts_after_split': False,
         'drop_sched': 'frac',
@@ -133,19 +132,55 @@ def teams_paramset(i_expt):
                 'weight': 1.0,
                 }),
             })
+    elif target_field == 'temp':
+        config_algo['score_components'] = dict({
+            'temp': dict({
+                'observable': 'temperature',
+                'roi': dict({
+                    'lat': 45,
+                    'lon': 180,
+                    'pfull': 1000,
+                    }),
+                'tavg': 1, # * config_gcm['outputs_per_day'],
+                'weight': 1.0,
+                }),
+            })
+    elif target_field == 'surf_horz_wind':
+        config_algo['score_components'] = dict({
+            'surf_horz_wind': dict({
+                'observable': 'horizontal_wind_speed',
+                'roi': dict({
+                    'lat': 45,
+                    'lon': 180,
+                    'pfull': 1000,
+                    }),
+                'tavg': 1, # * config_gcm['outputs_per_day'],
+                'weight': 1.0,
+                }),
+            })
+
     return config_gcm,config_algo,expt_label,expt_abbrv
 
 def teams_single_workflow(i_expt):
     # i_expt is a flat index, from which both i_param and i_buick are derived
     # Cluge; rely on knowing the menu of options from the Buick dealership and from the parameter sets 
     config_gcm,config_algo,expt_label,expt_abbrv = teams_paramset(i_expt)
-    config_algo['population_control_version'] = 'jf'
     param_abbrv_gcm,param_label_gcm = frierson_gcm.FriersonGCM.label_from_config(config_gcm)
     param_abbrv_algo,param_label_algo = algorithms_frierson.FriersonGCMTEAMS.label_from_config(config_algo)
     config_analysis = dict()
     config_analysis['target_location'] = dict(lat=45, lon=180)
     # observables (scalar quantities)
     observables = dict({
+        'local_temperature': dict({
+            'fun': lambda ds: frierson_gcm.FriersonGCM.sel_from_roi(
+                frierson_gcm.FriersonGCM.temperature(ds), 
+                dict(**config_analysis['target_location'], pfull=1000))
+                .to_numpy().flatten(),
+            'kwargs': dict(),
+            'abbrv': 'T1000loc',
+            'label': 'Temperature $(\phi,\lambda,\sigma)=(%d,%d,1.0)$'%(config_analysis['target_location']['lat'],config_analysis['target_location']['lon']),
+            'unit_symbol': 'K',
+            }),
         'local_surface_pressure_neg': dict({
             'fun': lambda ds: frierson_gcm.FriersonGCM.sel_from_roi(
                 frierson_gcm.FriersonGCM.surface_pressure_neg(ds), 
@@ -153,7 +188,8 @@ def teams_single_workflow(i_expt):
                 .to_numpy().flatten(),
             'kwargs': dict(),
             'abbrv': 'NPSloc',
-            'label': '-(surface pressure) $(\phi,\lambda)=(45,180)$',
+            'label': '-(surface pressure) $(\phi,\lambda)=(%d,%d)$'%(config_analysis['target_location']['lat'],config_analysis['target_location']['lon']),
+            'unit_symbol': 'Pa',
             }),
         'local_rain': dict({
             'fun': frierson_gcm.FriersonGCM.regional_rain,
@@ -161,7 +197,8 @@ def teams_single_workflow(i_expt):
                 'roi': config_analysis['target_location'],
                 }),
             'abbrv': 'Rloc',
-            'label': r'Rain rate $(\phi,\lambda)=(45,180)$',
+            'label': r'Rain rate $(\phi,\lambda)=(%d,%d)$'%(config_analysis['target_location']['lat'],config_analysis['target_location']['lon']),
+            'unit_symbol': 'mm/day',
             }),
         'local_dayavg_rain': dict({
             'fun': lambda ds,num_steps=1,roi=None: frierson_gcm.FriersonGCM.rolling_time_mean(
@@ -171,8 +208,18 @@ def teams_single_workflow(i_expt):
                 'num_steps': config_gcm['outputs_per_day'],
                 }),
             'abbrv': 'Rloc1day',
-            'label': r'Rain rate (1-day avg) $(\phi,\lambda)=(45,180)$',
+            'label': r'Rain rate (1-day avg) $(\phi,\lambda)=(%d,%d)$'%(config_analysis['target_location']['lat'],config_analysis['target_location']['lon']),
             'unit_symbol': 'mm/day',
+            }),
+        'horizontal_wind_speed': dict({
+            'fun': lambda ds,num_steps=1,roi=None: frierson_gcm.FriersonGCM.horizontal_wind_speed,
+            'kwargs': dict({
+                'roi': config_analysis['target_location'],
+                'num_steps': 1, 
+                }),
+            'abbrv': 'UV',
+            'label': r'Horizontal wind speed $(\phi,\lambda)=(%d,%d)$'%(config_analysis['target_location']['lat'],config_analysis['target_location']['lon']),
+            'unit_symbol': 'm/s',
             }),
         'area_rain_60x20': dict({
             'fun': frierson_gcm.FriersonGCM.regional_rain,
@@ -292,13 +339,9 @@ def teams_single_workflow(i_expt):
     # Set up directories
     scratch_dir = "/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
     target_field = next(iter(config_algo['score_components'].keys()))
-    if "surf_pres_neg" == target_field:
-        date_str = "2025-01-16"
-        sub_date_str = "3"
-    elif "rainrate" == target_field:
-        date_str = "2025-02-12"
-        sub_date_str = "0"
-    else:
+    date_str = "2025-04-09"
+    sub_date_str = "0"
+    if not (target_field in ["rainrate","temp","surf_horz_wind"]):
         raise Exception(f'Unsupported target field {target_field}')
     dirdict = dict()
     dirdict['expt'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_gcm, param_abbrv_algo, r'seedinc%d'%(config_algo['seed_inc_init']))
@@ -463,6 +506,10 @@ def plot_observable_spaghetti(config_analysis, alg, dirdict, filedict, remove_ol
             is_score = (obs_name == 'local_dayavg_rain')
         elif target_field == 'surf_pres_neg':
             is_score = (obs_name == 'local_surface_pressure_neg')
+        elif target_field == 'temp':
+            is_score = (obs_name == 'local_temperature')
+        elif target_field == 'surf_horz_wind':
+            is_score = (obs_name == 'horizontal_wind_speed')
         else:
             raise Exception(f"You need to plot score spaghetti. {obs_name = }")
 
@@ -571,10 +618,11 @@ def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, refere
             # TODO conctenate before taking score_dombined
             score_comp = lambda ds: algs[0].score_components(ds['time'].to_numpy(),ds)
             lonroll = lambda ds,dlon: ds.roll(lon=int(round(dlon/ds['lon'][:2].diff('lon').item())))
-            dlons = range(0,360,1) #[0,30,60,90,120,150,180,210,240,270,300,330]
+            dlons = range(0,360,6) 
             score_comp_rolled = [lambda ds,dlon=dlon: score_comp(lonroll(ds,dlon)) for dlon in dlons]
             sccomp = []
             for mem in mems_dns:
+                print(f'Appending score for {mem = }')
                 sccomp.append(dns.ens.compute_observables(score_comp_rolled,mem))
             scmax_alllon = []
             for i_lon in range(len(dlons)): 
@@ -596,11 +644,27 @@ def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, refere
     returnstats_file = join(dirdict['analysis'],'returnstats_%s.npz'%(param_suffix))
     figfileh = join(dirdict['plots'],r'returnstats_h_%s.png'%(param_suffix))
     figfilev = join(dirdict['plots'],r'returnstats_v_%s.png'%(param_suffix))
+    figfileseph = join(dirdict['plots'],r'returnstats_sehv_%s.png'%(param_suffix))
     param_display = '\n'.join([
         r'$\sigma=%g$'%(algs[0].ens.dynsys.config['SPPT']['std_sppt']),
         r'$\delta=%g$'%(config_algo['advance_split_time_phys']),
         ])
-    algorithms_frierson.FriersonGCMTEAMS.measure_plot_score_distribution(config_algo, algs, scmax_ref, returnstats_file, figfileh, figfilev, param_display=param_display, time_unit=365, time_unit_name="years", severity_unit_name='mm/day')
+    obsprop = frierson_gcm.FriersonGCM.observable_props()
+    obspropkey = next(iter(config_algo['score_components'].values()))['observable']
+    print("obspropkey = ")
+    print(obspropkey)
+    target_display = (
+    r"""
+    Target = %s
+    T = %d
+    """
+    )%(
+            obsprop[obspropkey]['label'], 
+            config_algo['time_horizon_phys']
+      )
+    target_field = list(algs[0].score_params['components'].keys())[0]
+    unit_symbol = obsprop[config_algo['score_components'][target_field]['observable']]['unit_symbol']
+    algorithms_frierson.FriersonGCMTEAMS.measure_plot_score_distribution(config_algo, algs, scmax_ref, returnstats_file, figfileh, figfilev, figfileseph, param_display=param_display, target_display=target_display, time_unit=365, time_unit_name="years", severity_unit_name=unit_symbol)
 
     return
 
@@ -649,19 +713,19 @@ def run_teams(dirdict,filedict,config_gcm,config_algo):
     return
 
 
-def teams_multiseed_procedure(i_field,i_sigma,idx_seed,i_delta,i_slm,overwrite_reference=False): # Just different seeds for now
+def teams_multiseed_procedure(i_pop_ctrl,i_time_horizon,i_field,i_sigma,idx_seed,i_delta,i_slm,overwrite_reference=False): # Just different seeds for now
     tododict = dict({
-        'score_distribution': 0,
-        'boost_distribution': 1,
-        'boost_composites':   1,
+        'score_distribution': 1,
+        'boost_distribution': 0,
+        'boost_composites':   0,
         })
     # Figure out which flat indices corresond to this set of seeds
     multiparams = teams_multiparams()
-    idx_multiparam = [(i_field,i_sigma,i_seed,i_delta,i_slm) for i_seed in idx_seed]
+    idx_multiparam = [(i_pop_ctrl,i_time_horizon,i_field,i_sigma,i_seed,i_delta,i_slm) for i_seed in idx_seed]
     print(f'{len(idx_multiparam) = }')
     idx_expt = []
     for i_multiparam in idx_multiparam:
-        i_expt = np.ravel_multi_index(i_multiparam,tuple(len(mp) for mp in multiparams))
+        i_expt = np.ravel_multi_index(i_multiparam,tuple(len(multiparams[key]) for key in multiparams.keys()))
         idx_expt.append(i_expt) #list(range(1,21))
     workflows = []
     configs_gcm,configs_algo,configs_analysis,expt_labels,expt_abbrvs,dirdicts,filedicts = [[] for _ in range(7)]
@@ -697,13 +761,9 @@ def teams_multiseed_procedure(i_field,i_sigma,idx_seed,i_delta,i_slm,overwrite_r
     # Set up a meta-dirdict 
     scratch_dir = "/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
     target_field = next(iter(config_algo['score_components'].keys()))
-    if "surf_pres_neg" == target_field:
-        date_str = "2025-01-16"
-        sub_date_str = "3"
-    elif "rainrate" == target_field:
-        date_str = "2025-02-12"
-        sub_date_str = "0"
-    else:
+    date_str = "2025-04-09"
+    sub_date_str = "0"
+    if not (target_field in ["rainrate","temp","surf_horz_wind"]):
         raise Exception(f'Unsupported target field {target_field}')
     dirdict = dict()
     dirdict['meta'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_gcm, param_abbrv_algo) 
@@ -732,10 +792,10 @@ def teams_multiseed_procedure(i_field,i_sigma,idx_seed,i_delta,i_slm,overwrite_r
 def teams_single_procedure(i_expt):
 
     tododict = dict({
-        'run':             1,
+        'run':                          1,
         'analysis': dict({
-            'observable_spaghetti':     0,
-            'scorrelation':             0,
+            'observable_spaghetti':     1,
+            'scorrelation':             1,
             'fields_2d':                1,
             }),
         })
@@ -752,93 +812,151 @@ def teams_single_procedure(i_expt):
         plot_fields_2d(config_analysis, alg, dirdict, filedict, expt_label, remove_old_plots=True)
     return
 
-def teams_multidelta_procedure(i_sigma,idx_delta,idx_seed):
+def teams_multidelta_procedure(i_pop_ctrl,i_time_horizon,i_field,i_sigma,idx_delta,i_slm):
     scratch_dir = "/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
-    date_str = "2025-01-16"
-    sub_date_str = "3"
+    date_str = "2025-04-09"
+    sub_date_str = "0"
     multiparams = teams_multiparams()
-    seed_incs,sigmas,deltas_phys,split_landmarks = multiparams
-    kldiv_pooled = np.zeros(len(idx_delta))
-    x2div_pooled = np.zeros(len(idx_delta))
-    kldiv_sep = np.zeros((len(idx_seed),len(idx_delta)))
-    x2div_sep = np.zeros((len(idx_seed),len(idx_delta)))
-    boost_family_mean = np.zeros((len(idx_seed),len(idx_delta)))
+    seed_incs,sigmas,deltas_phys,split_landmarks = [multiparams[v] for v in "seed_incs,sigmas,deltas_phys,split_landmarks".split(",")]
+
+    Ndelta = len(idx_delta)
+    Nseed = len(seed_incs)
+    kldiv_pooled = np.nan*np.ones(Ndelta)
+    x2div_pooled = np.nan*np.ones(Ndelta)
+    kldiv_sep = np.nan*np.ones((Nseed,Ndelta))
+    x2div_sep = np.nan*np.ones((Nseed,Ndelta))
+    boost_family_mean = np.zeros((Nseed,Ndelta))
+    plot_dir = ""
     for i_delta in idx_delta:
         param_suffix = (r'std%g_ast%g'%(sigmas[i_sigma],deltas_phys[i_delta])).replace('.','p')
-        idx_multiparam = [(i_seed,i_sigma,i_delta) for i_seed in idx_seed]
+        idx_multiparam = [(i_pop_ctrl,i_time_horizon,i_field,i_sigma,i_seed,i_delta,i_slm) for i_seed in seed_incs]
         idx_expt = []
         for i_multiparam in idx_multiparam:
-            i_expt = np.ravel_multi_index(i_multiparam,tuple(len(mp) for mp in multiparams))
+            i_expt = np.ravel_multi_index(i_multiparam,tuple(len(multiparams[key]) for key in multiparams.keys()))
             idx_expt.append(i_expt) #list(range(1,21))
         workflows = tuple(teams_single_workflow(i_expt) for i_expt in idx_expt)
         configs_gcm,configs_algo,configs_analysis,expt_labels,expt_abbrvs,dirdicts,filedicts = tuple(
             tuple(workflows[i][j] for i in range(len(workflows)))
             for j in range(len(workflows[0])))
         config_gcm = configs_gcm[0]
-        config_algo = configs_algo[0]
         param_abbrv_gcm,param_label_gcm = frierson_gcm.FriersonGCM.label_from_config(config_gcm)
-        returnstats_file = join(scratch_dir,date_str,sub_date_str,param_abbrv_gcm,'meta','analysis','returnstats_%s.npz'%(param_suffix))
+        config_algo = configs_algo[0]
+        param_abbrv_algo,param_label_algo = algorithms_frierson.FriersonGCMTEAMS.label_from_config(config_algo)
+        dir_meta = join(scratch_dir, date_str, sub_date_str, param_abbrv_gcm, param_abbrv_algo)
+        if i_delta == 0:
+            plot_dir = dir_meta.replace(r"ast%g"%deltas_phys[i_delta], "astall")
+        returnstats_file = join(dir_meta, 'analysis', 'returnstats_%s.npz'%(param_suffix))
+        #returnstats_file = join(scratch_dir,date_str,sub_date_str,param_abbrv_gcm,'meta','analysis','returnstats_%s.npz'%(param_suffix))
         print(f'{returnstats_file = }')
         returnstats = np.load(returnstats_file)
         print(f'{returnstats["hist_fin_wted"] = }')
         # Calculate the integrated error metrics 
-        kldiv_pooled[i_delta],kldiv_sep[:,i_delta],x2div_pooled[i_delta],x2div_sep[:,i_delta] = compute_integrated_returnstats_error_metrics(returnstats)
+        cirem = compute_integrated_returnstats_error_metrics(returnstats)
+        for ciremi in cirem:
+            print(ciremi.shape)
+        Nseed_actual = min(Nseed,len(cirem[1]))
+        kldiv_pooled[i_delta] = cirem[0]
+        kldiv_sep[:Nseed_actual,i_delta] = cirem[1][:Nseed_actual] 
+        x2div_pooled[i_delta] = cirem[2] 
+        x2div_sep[:Nseed_actual,i_delta] = cirem[3][:Nseed_actual]
         # Load the max-gains metrics
-        boost_family_mean[:,i_delta] = returnstats['boost_family_mean']
+        boost_family_mean[:Nseed_actual,i_delta] = returnstats['boost_family_mean'][:Nseed_actual]
 
-    plot_dir = join(
-            '/orcd/archive/pog/001/ju26596/TEAMS/examples/lorenz96/2025-01-16/3',
-            param_abbrv_sde,
-            'meta',
-            'plots')
+    # Make the meta-directory by replacing "ast<delta>" with "astall"
+    #plot_dir = join(scratch_dir, date_str, sub_date_str, param_abbrv_gcm, param_abbrv_algo)
+    #        scratch_dir,date_str,sub_date_str,param_abbrv_gcm,
+    #        'meta',
+    #        'plots')
+    makedirs(plot_dir, exist_ok=True)
 
     # Plot 
     alphas = [0.5] # Sets the width of the band for KL divergence
     transparencies = [0.5,0.2]
-    deltas = np.array([multiparams[2][i] for i in idx_delta])
+    deltas = multiparams["deltas_phys"]
     print(f'{x2div_sep[:,2] = }')
 
-    # ------------ Plot X2-divergence ------------
-    fig,ax = plt.subplots(figsize=(6,2))
+    # TODO unify figures into one, and add a descriptive label with all run parameters
+
+    fig,axes = plt.subplots(figsize=(9,9),nrows=3,ncols=2,width_ratios=[5,1],sharex='col') # left-hand column for labeling 
+    # chi2 divergence
     handles = []
-    h, = ax.plot(deltas,np.median(x2div_sep,axis=0),color='red',marker='.',label='Runwise median')
+    ax = axes[0,0]
+    h, = ax.plot(deltas,np.median(x2div_sep,axis=0),color='red',marker='.',label='median')
     handles.append(h)
-    h, = ax.plot(deltas,np.mean(x2div_sep,axis=0),color='black',marker='.',label='Runwise mean')
+    h, = ax.plot(deltas,np.nanmean(x2div_sep,axis=0),color='black',marker='.',label='mean')
     handles.append(h)
     print(f'{np.mean(x2div_sep,axis=0) = }')
     for i_alpha,alpha in enumerate(alphas):
-        lo,hi = np.quantile(x2div_sep, [alpha/2,1-alpha/2], axis=0)
+        lo,hi = np.nanquantile(x2div_sep, [alpha/2,1-alpha/2], axis=0)
         print(f'{alpha = }')
         print(f'{lo = }')
         print(f'{hi = }')
         h = ax.fill_between(deltas, lo, hi, fc='red', ec='none', alpha=transparencies[i_alpha], zorder=-i_alpha-1, label=r'{:d}% CI'.format(int(round((1-alpha)*100))))
         handles.append(h)
-    ax.set_xlabel(r'$\delta$')
-    ax.legend(handles=handles, bbox_to_anchor=(0.0,1.01), loc='lower left', title=r'$\chi^2$-divergence')
-    ax.text(-0.15,0.5,r'$F_4=%g$'%(F4s[i_F4]),ha='right',va='center',transform=ax.transAxes)
-    fig.savefig(join(plot_dir,'x2div.png'),**pltkwargs)
-    plt.close(fig)
-
-    # -------- Plot family gains ------------
-    fig,ax = plt.subplots(figsize=(6,2))
+    ax.set_xlabel(r'AST')
+    ax.set_ylabel(r'$\chi^2$')
+    ax = axes[0,1]
+    ax.axis('off')
+    ax.legend(handles=handles, bbox_to_anchor=(0,1), loc='upper left')
+    # kl divergence
     handles = []
-    h, = ax.plot(deltas,np.median(boost_family_mean,axis=0),color='red',marker='.',label='Runwise median')
+    ax = axes[1,0]
+    h, = ax.plot(deltas,np.median(kldiv_sep,axis=0),color='red',marker='.',label='median')
     handles.append(h)
-    h, = ax.plot(deltas,np.mean(boost_family_mean,axis=0),color='black',marker='.',label='Runwise mean')
+    h, = ax.plot(deltas,np.nanmean(kldiv_sep,axis=0),color='black',marker='.',label='mean')
     handles.append(h)
-    print(f'{np.mean(boost_family_mean,axis=0) = }')
+    print(f'{np.mean(kldiv_sep,axis=0) = }')
     for i_alpha,alpha in enumerate(alphas):
-        lo,hi = np.quantile(boost_family_mean, [alpha/2,1-alpha/2], axis=0)
+        lo,hi = np.nanquantile(kldiv_sep, [alpha/2,1-alpha/2], axis=0)
         print(f'{alpha = }')
         print(f'{lo = }')
         print(f'{hi = }')
         h = ax.fill_between(deltas, lo, hi, fc='red', ec='none', alpha=transparencies[i_alpha], zorder=-i_alpha-1, label=r'{:d}% CI'.format(int(round((1-alpha)*100))))
         handles.append(h)
-    ax.set_xlabel(r'$\delta$')
-    ax.legend(handles=handles, bbox_to_anchor=(0.0,1.01), loc='lower left', title=r'Mean family boost')
-    ax.text(-0.15,0.5,r'$F_4=%g$'%(F4s[i_F4]),ha='right',va='center',transform=ax.transAxes)
-    fig.savefig(join(plot_dir,'mean_family_boost.png'),**pltkwargs)
-
+    ax.set_xlabel(r'AST')
+    ax.set_ylabel(r'KL')
+    ax = axes[1,1]
+    ax.axis('off')
+    ax.legend(handles=handles, bbox_to_anchor=(0,1), loc='upper left')
+    # gain
+    ax = axes[2,0]
+    handles = []
+    h, = ax.plot(deltas,np.nanmedian(boost_family_mean,axis=0),color='red',marker='.',label='median')
+    handles.append(h)
+    h, = ax.plot(deltas,np.nanmean(boost_family_mean,axis=0),color='black',marker='.',label='mean')
+    handles.append(h)
+    print(f'{np.nanmean(boost_family_mean,axis=0) = }')
+    for i_alpha,alpha in enumerate(alphas):
+        lo,hi = np.nanquantile(boost_family_mean, [alpha/2,1-alpha/2], axis=0)
+        print(f'{alpha = }')
+        print(f'{lo = }')
+        print(f'{hi = }')
+        h = ax.fill_between(deltas, lo, hi, fc='red', ec='none', alpha=transparencies[i_alpha], zorder=-i_alpha-1, label=r'{:d}% CI'.format(int(round((1-alpha)*100))))
+        handles.append(h)
+    ax.set_xlabel(r'AST')
+    ax.set_ylabel(r'Boost')
+    ax = axes[2,1]
+    ax.legend(handles=handles, bbox_to_anchor=(0,1), loc='upper left')
+    ax.axis('off')
+    #ax.text(-0.15,0.5,r'$F_4=%g$'%(F4s[i_F4]),ha='right',va='center',transform=ax.transAxes)
+    obslib = frierson_gcm.FriersonGCM.observable_props()
+    obslibkey = next(iter(config_algo['score_components'].values()))['observable']
+    print("obslibkey = ")
+    print(obslibkey)
+    paramtext = (
+    r"""
+    Target = %s
+    T = %d
+    """
+    )%(
+            obslib[obslibkey]['label'], 
+            config_algo['time_horizon_phys']
+      )
+    axes[0,0].text(0, 1.05, paramtext, transform=axes[0,0].transAxes, va='bottom')
+    for ax in axes[:-1,0]:
+        ax.set_xlabel("")
+        ax.xaxis.set_tick_params(which='both', labelbottom=True)
+    fig.savefig(join(plot_dir,'fdivs_boosts.png'),**pltkwargs)
     return
 
 def compute_integrated_returnstats_error_metrics(returnstats):
@@ -886,13 +1004,25 @@ if __name__ == "__main__":
         for i_expt in idx_expt:
             teams_single_procedure(i_expt)
     elif procedure == 'multiseed':
-        idx_seed = list(range(48))
+        multiparams = teams_multiparams()
+        pop_ctrls,time_horizons,target_fields,sigmas,seed_incs,deltas_phys,split_landmarks = (multiparams[key] for key in "pop_ctrls time_horizons target_fields sigmas seed_incs deltas_phys split_landmarks".split(" "))
+        #pdb.set_trace()
         i_sigma = 0
         i_slm = 0
-        for i_field in [0]:
-            idx_delta = [int(sys.argv[a]) for a in range(2,len(sys.argv))]
-            for i_delta in idx_delta:
-                teams_multiseed_procedure(i_field,i_sigma,idx_seed,i_delta,i_slm,overwrite_reference=False)
+        i_expt = int(sys.argv[2])
+        i_pop_ctrl,i_time_horizon,i_target_field,i_sigma,i_delta,i_slm = np.unravel_index(i_expt, (len(pop_ctrls),len(time_horizons),len(target_fields),len(sigmas),len(deltas_phys),len(split_landmarks)))
+        teams_multiseed_procedure(i_pop_ctrl,i_time_horizon,i_target_field,i_sigma,seed_incs,i_delta,i_slm,overwrite_reference=False)
+    elif procedure == 'multidelta':
+        multiparams = teams_multiparams()
+        pop_ctrls,time_horizons,target_fields,sigmas,seed_incs,deltas_phys,split_landmarks = (multiparams[key] for key in "pop_ctrls time_horizons target_fields sigmas seed_incs deltas_phys split_landmarks".split(" "))
+        #pdb.set_trace()
+        i_sigma = 0
+        i_slm = 0
+        i_expt = int(sys.argv[2])
+        for i_expt in idx_expt:
+            i_pop_ctrl,i_time_horizon,i_target_field,i_sigma,i_slm = np.unravel_index(i_expt, (len(pop_ctrls),len(time_horizons),len(target_fields),len(sigmas),len(split_landmarks)))
+            idx_delta = range(len(deltas_phys))
+            teams_multidelta_procedure(i_pop_ctrl,i_time_horizon,i_target_field,i_sigma,idx_delta,i_slm)
 
 
 

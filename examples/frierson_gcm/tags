@@ -1,0 +1,525 @@
+!_TAG_FILE_FORMAT	2	/extended format; --format=1 will not append ;" to lines/
+!_TAG_FILE_SORTED	1	/0=unsorted, 1=sorted, 2=foldcase/
+!_TAG_PROGRAM_AUTHOR	Darren Hiebert	/dhiebert@users.sourceforge.net/
+!_TAG_PROGRAM_NAME	Exuberant Ctags	//
+!_TAG_PROGRAM_URL	http://ctags.sourceforge.net	/official site/
+!_TAG_PROGRAM_VERSION	5.8	//
+AncestorGeneratorDNSAppendages	algorithms_frierson.py	/^class AncestorGeneratorDNSAppendages(algorithms.EnsembleAlgorithm):$/;"	c
+DynamicalSystem	dns_frierson.py	/^from dynamicalsystem import DynamicalSystem$/;"	i
+DynamicalSystem	frierson_gcm.py	/^from dynamicalsystem import DynamicalSystem$/;"	i
+Ensemble	algorithms_frierson.py	/^from ensemble import Ensemble$/;"	i
+Ensemble	dns_frierson.py	/^from ensemble import Ensemble$/;"	i
+Ensemble	frierson_gcm.py	/^from ensemble import Ensemble$/;"	i
+Ensemble	pebr_frierson.py	/^from ensemble import Ensemble$/;"	i
+FriersonGCM	algorithms_frierson.py	/^from frierson_gcm import FriersonGCM$/;"	i
+FriersonGCM	frierson_gcm.py	/^class FriersonGCM(DynamicalSystem):$/;"	c
+FriersonGCM	pebr_frierson.py	/^from frierson_gcm import FriersonGCM$/;"	i
+FriersonGCMAncestorGenerator	algorithms_frierson.py	/^class FriersonGCMAncestorGenerator(algorithms.AncestorGenerator):$/;"	c
+FriersonGCMDirectNumericalSimulation	algorithms_frierson.py	/^class FriersonGCMDirectNumericalSimulation(algorithms.DirectNumericalSimulation):$/;"	c
+FriersonGCMITEAMS	algorithms_frierson.py	/^class FriersonGCMITEAMS(algorithms.ITEAMS):$/;"	c
+FriersonGCMPeriodicBranching	algorithms_frierson.py	/^class FriersonGCMPeriodicBranching(algorithms.PeriodicBranching):$/;"	c
+FriersonGCMPeriodicBranching	pebr_frierson.py	/^from algorithms_frierson import FriersonGCMPeriodicBranching$/;"	i
+FriersonGCMTEAMS	algorithms_frierson.py	/^class FriersonGCMTEAMS(algorithms.TEAMS):$/;"	c
+__init__	algorithms_frierson.py	/^    def __init__(self, algfile_dns, config, ens):$/;"	m	class:AncestorGeneratorDNSAppendages
+__init__	frierson_gcm.py	/^    def __init__(self, config, recompile=True):$/;"	m	class:FriersonGCM
+algorithms	algorithms_frierson.py	/^import algorithms; #reload(forcing)$/;"	i
+algorithms	ange_frierson.py	/^import algorithms; reload(algorithms)$/;"	i
+algorithms	iteams_frierson.py	/^import algorithms; reload(algorithms)$/;"	i
+algorithms	pebr_frierson.py	/^import algorithms; #reload(forcing)$/;"	i
+algorithms	teams_frierson.py	/^import algorithms; reload(algorithms)$/;"	i
+algorithms_frierson	ange_frierson.py	/^import algorithms_frierson; reload(algorithms_frierson)$/;"	i
+algorithms_frierson	dns_frierson.py	/^import algorithms_frierson$/;"	i
+algorithms_frierson	iteams_frierson.py	/^import algorithms_frierson; reload(algorithms_frierson)$/;"	i
+algorithms_frierson	teams_frierson.py	/^import algorithms_frierson; reload(algorithms_frierson)$/;"	i
+ange_paramset	ange_frierson.py	/^def ange_paramset(i_param):$/;"	f
+ange_single_procedure	ange_frierson.py	/^def ange_single_procedure(i_expt):$/;"	f
+ange_single_workflow	ange_frierson.py	/^def ange_single_workflow(i_param):$/;"	f
+area_avg	observable_functions.py	/^def area_avg(da, lat_bounds, lon_bounds):$/;"	f
+area_mean	frierson_gcm.py	/^    def area_mean(da):$/;"	m	class:FriersonGCM
+basename	algorithms_frierson.py	/^from os.path import join, exists, basename, relpath$/;"	i
+basename	ange_frierson.py	/^from os.path import join, exists, basename, relpath$/;"	i
+basename	dns_frierson.py	/^from os.path import join, exists, basename$/;"	i
+basename	frierson_gcm.py	/^from os.path import join, exists, basename$/;"	i
+basename	iteams_frierson.py	/^from os.path import join, exists, basename, relpath$/;"	i
+basename	pebr_frierson.py	/^from os.path import join, exists, basename, relpath$/;"	i
+basename	teams_frierson.py	/^from os.path import join, exists, basename, relpath$/;"	i
+boolstr	dns_frierson.py	/^def boolstr(b):$/;"	f
+boolstr	frierson_gcm.py	/^def boolstr(b):$/;"	f
+choose_buicks_for_initialization	algorithms_frierson.py	/^    def choose_buicks_for_initialization(config, angel):$/;"	m	class:FriersonGCMTEAMS
+column_relative_humidity	frierson_gcm.py	/^    def column_relative_humidity(ds):$/;"	m	class:FriersonGCM
+column_relative_humidity	observable_functions.py	/^def column_relative_humidity(ds):$/;"	f
+column_water_vapor	frierson_gcm.py	/^    def column_water_vapor(ds):$/;"	m	class:FriersonGCM
+column_water_vapor	observable_functions.py	/^def column_water_vapor(ds):$/;"	f
+combine_histograms	observable_functions.py	/^def combine_histograms(ds, fields2hist, durations2hist):$/;"	f
+compare_basic_stats	dns_frierson.py	/^def compare_basic_stats(workflows, config_meta_analysis, meta_dirdict):$/;"	f
+compare_elfs	pebr_frierson.py	/^def compare_elfs(workflows, config_meta_analysis, meta_dirdict):$/;"	f
+compare_extreme_stats	dns_frierson.py	/^def compare_extreme_stats(workflows,config_meta_analysis,meta_dirdict):$/;"	f
+compile_model	frierson_gcm.py	/^    def compile_model(self):$/;"	m	class:FriersonGCM
+compile_mppnccombine	frierson_gcm.py	/^    def compile_mppnccombine(self):$/;"	m	class:FriersonGCM
+compute_basic_stats	dns_frierson.py	/^def compute_basic_stats(config_analysis, alg, dirdict):$/;"	f
+compute_extreme_stats	dns_frierson.py	/^def compute_extreme_stats(config_analysis, alg, dirdict):$/;"	f
+compute_integrated_returnstats_error_metrics	teams_frierson.py	/^def compute_integrated_returnstats_error_metrics(returnstats):$/;"	f
+compute_observable_quantiles	observable_functions.py	/^def compute_observable_quantiles(da, durations=None, quantiles=None):$/;"	f
+compute_observables	frierson_gcm.py	/^    def compute_observables(self, obs_funs, metadata, root_dir, compute=False):$/;"	m	class:FriersonGCM
+compute_pairwise_observables	frierson_gcm.py	/^    def compute_pairwise_observables(self, pairwise_funs, md0, md1list, root_dir): # Distance is the main application here $/;"	m	class:FriersonGCM
+compute_precip_histograms	observable_functions.py	/^def compute_precip_histograms(ds,savefolder):$/;"	f
+compute_precip_quantiles	observable_functions.py	/^def compute_precip_quantiles(ds, durations=None, quantiles=None):$/;"	f
+compute_stats_dns_zonsym	frierson_gcm.py	/^    def compute_stats_dns_zonsym(self, fxt, lon_roll_step_requested, time_block_size, bounds=None):$/;"	m	class:FriersonGCM
+compute_temp_quantiles	observable_functions.py	/^def compute_temp_quantiles(ds):$/;"	f
+condensation_rain	frierson_gcm.py	/^    def condensation_rain(ds):$/;"	m	class:FriersonGCM
+condensation_rain	observable_functions.py	/^def condensation_rain(ds):$/;"	f
+configure_os_environment	frierson_gcm.py	/^    def configure_os_environment():$/;"	m	class:FriersonGCM
+conn_comp_periodic	observable_functions.py	/^def conn_comp_periodic(cube,verbose=False):$/;"	f
+convection_rain	frierson_gcm.py	/^    def convection_rain(ds):$/;"	m	class:FriersonGCM
+convection_rain	observable_functions.py	/^def convection_rain(ds):$/;"	f
+coord_stepsize	observable_functions.py	/^def coord_stepsize(ds):$/;"	f
+copylib	algorithms_frierson.py	/^import copy as copylib$/;"	i
+copylib	ange_frierson.py	/^import copy as copylib$/;"	i
+copylib	dns_frierson.py	/^import copy as copylib$/;"	i
+copylib	frierson_gcm.py	/^import copy as copylib$/;"	i
+copylib	iteams_frierson.py	/^import copy as copylib$/;"	i
+copylib	pebr_frierson.py	/^import copy as copylib$/;"	i
+copylib	teams_frierson.py	/^import copy as copylib$/;"	i
+csgraph	observable_functions.py	/^from scipy.sparse import csr_matrix, csgraph$/;"	i
+csr_matrix	observable_functions.py	/^from scipy.sparse import csr_matrix, csgraph$/;"	i
+curl	frierson_gcm.py	/^    def curl(u, v):$/;"	m	class:FriersonGCM
+curl	observable_functions.py	/^def curl(u, v):$/;"	f
+dask	observable_functions.py	/^import dask$/;"	i
+default_config	frierson_gcm.py	/^    def default_config(source_dir_absolute, base_dir_absolute):$/;"	m	class:FriersonGCM
+default_namelist	frierson_gcm.py	/^    def default_namelist():$/;"	m	class:FriersonGCM
+default_rng	algorithms_frierson.py	/^from numpy.random import default_rng$/;"	i
+default_rng	ange_frierson.py	/^from numpy.random import default_rng$/;"	i
+default_rng	iteams_frierson.py	/^from numpy.random import default_rng$/;"	i
+default_rng	pebr_frierson.py	/^from numpy.random import default_rng$/;"	i
+default_rng	teams_frierson.py	/^from numpy.random import default_rng$/;"	i
+derive_parameters	algorithms_frierson.py	/^    def derive_parameters(self, config):$/;"	m	class:AncestorGeneratorDNSAppendages
+derive_parameters	algorithms_frierson.py	/^    def derive_parameters(self, config):$/;"	m	class:FriersonGCMITEAMS
+derive_parameters	algorithms_frierson.py	/^    def derive_parameters(self, config):$/;"	m	class:FriersonGCMTEAMS
+derive_parameters	frierson_gcm.py	/^    def derive_parameters(self, config):$/;"	m	class:FriersonGCM
+dist_euc	frierson_gcm.py	/^    def dist_euc(da0,da1,roi): # Generic distance function$/;"	m	class:FriersonGCM
+dist_euc_cwv	frierson_gcm.py	/^    def dist_euc_cwv(ds0,ds1,roi):$/;"	m	class:FriersonGCM
+dist_euc_horzvel	frierson_gcm.py	/^    def dist_euc_horzvel(ds0,ds1,roi):$/;"	m	class:FriersonGCM
+dist_euc_ps	frierson_gcm.py	/^    def dist_euc_ps(ds0,ds1,roi):$/;"	m	class:FriersonGCM
+dist_euc_rain	frierson_gcm.py	/^    def dist_euc_rain(ds0,ds1,roi):$/;"	m	class:FriersonGCM
+dist_euc_temp	frierson_gcm.py	/^    def dist_euc_temp(ds0,ds1,roi):$/;"	m	class:FriersonGCM
+dist_fun	pebr_frierson.py	/^        def dist_fun(ds0,ds1):$/;"	f	function:quantify_dispersion_rates
+distance_props	frierson_gcm.py	/^    def distance_props(self):$/;"	m	class:FriersonGCM
+divergence	frierson_gcm.py	/^    def divergence(u, v):$/;"	m	class:FriersonGCM
+divergence	observable_functions.py	/^def divergence(u, v):$/;"	f
+dns_meta_procedure	dns_frierson.py	/^def dns_meta_procedure(idx_expt):$/;"	f
+dns_meta_workflow	dns_frierson.py	/^def dns_meta_workflow(idx_param):$/;"	f
+dns_multiparams	dns_frierson.py	/^def dns_multiparams():$/;"	f
+dns_paramset	dns_frierson.py	/^def dns_paramset(i_expt):$/;"	f
+dns_single_procedure	dns_frierson.py	/^def dns_single_procedure(i_expt):$/;"	f
+dns_single_workflow	dns_frierson.py	/^def dns_single_workflow(i_expt):$/;"	f
+dp_dpfull	precip_extremes_scaling.py	/^    dp_dpfull = p.differentiate("pfull")$/;"	v
+eff_stat_stab	observable_functions.py	/^def eff_stat_stab(ds):$/;"	f
+effective_static_stability	frierson_gcm.py	/^    def effective_static_stability(ds):$/;"	m	class:FriersonGCM
+ensemble	algorithms_frierson.py	/^import ensemble; #reload(ensemble)$/;"	i
+ensemble	ange_frierson.py	/^import ensemble; reload(ensemble)$/;"	i
+ensemble	iteams_frierson.py	/^import ensemble; reload(ensemble)$/;"	i
+ensemble	teams_frierson.py	/^import ensemble; reload(ensemble)$/;"	i
+estimate_return_time_dns	observable_functions.py	/^def estimate_return_time_dns(ds, func2max, block_size):$/;"	f
+exists	algorithms_frierson.py	/^from os.path import join, exists, basename, relpath$/;"	i
+exists	ange_frierson.py	/^from os.path import join, exists, basename, relpath$/;"	i
+exists	dns_frierson.py	/^from os.path import join, exists, basename$/;"	i
+exists	frierson_gcm.py	/^from os.path import join, exists, basename$/;"	i
+exists	iteams_frierson.py	/^from os.path import join, exists, basename, relpath$/;"	i
+exists	observable_functions.py	/^from os.path import exists, join$/;"	i
+exists	pebr_frierson.py	/^from os.path import join, exists, basename, relpath$/;"	i
+exists	teams_frierson.py	/^from os.path import join, exists, basename, relpath$/;"	i
+exprec_scaling_wrapper	frierson_gcm.py	/^    def exprec_scaling_wrapper(ds):$/;"	m	class:FriersonGCM
+exprec_scaling_wrapper	observable_functions.py	/^def exprec_scaling_wrapper(ds):$/;"	f
+f90nml	dns_frierson.py	/^import f90nml$/;"	i
+f90nml	frierson_gcm.py	/^import f90nml$/;"	i
+fields2comp	observable_functions.py	/^    fields2comp = dict({$/;"	v
+forcing	algorithms_frierson.py	/^import algorithms; #reload(forcing)$/;"	i
+forcing	algorithms_frierson.py	/^import forcing; #reload(forcing)$/;"	i
+forcing	ange_frierson.py	/^import forcing; reload(forcing)$/;"	i
+forcing	dns_frierson.py	/^import forcing$/;"	i
+forcing	frierson_gcm.py	/^import forcing$/;"	i
+forcing	iteams_frierson.py	/^import forcing; reload(forcing)$/;"	i
+forcing	pebr_frierson.py	/^import algorithms; #reload(forcing)$/;"	i
+forcing	pebr_frierson.py	/^import forcing; #reload(forcing)$/;"	i
+forcing	teams_frierson.py	/^import forcing; reload(forcing)$/;"	i
+frierson_gcm	algorithms_frierson.py	/^import frierson_gcm; #reload(frierson_gcm)$/;"	i
+frierson_gcm	ange_frierson.py	/^import frierson_gcm; reload(frierson_gcm)$/;"	i
+frierson_gcm	dns_frierson.py	/^import frierson_gcm$/;"	i
+frierson_gcm	iteams_frierson.py	/^import frierson_gcm; reload(frierson_gcm)$/;"	i
+frierson_gcm	teams_frierson.py	/^import frierson_gcm; reload(frierson_gcm)$/;"	i
+generate_default_icandf	frierson_gcm.py	/^    def generate_default_icandf(self, init_time, fin_time, seed=None):$/;"	m	class:FriersonGCM
+generate_icandf_from_buick	algorithms_frierson.py	/^    def generate_icandf_from_buick(self, parent):$/;"	m	class:FriersonGCMAncestorGenerator
+generate_icandf_from_parent	algorithms_frierson.py	/^    def generate_icandf_from_parent(self, parent):$/;"	m	class:FriersonGCMDirectNumericalSimulation
+generate_icandf_from_parent	algorithms_frierson.py	/^    def generate_icandf_from_parent(self, parent, branch_time):$/;"	m	class:FriersonGCMITEAMS
+generate_icandf_from_parent	algorithms_frierson.py	/^    def generate_icandf_from_parent(self, parent, branch_time):$/;"	m	class:FriersonGCMTEAMS
+generate_icandf_from_parent	algorithms_frierson.py	/^    def generate_icandf_from_parent(self, parent, branch_time, duration):$/;"	m	class:FriersonGCMPeriodicBranching
+generate_icandf_from_uic	algorithms_frierson.py	/^    def generate_icandf_from_uic(self):$/;"	m	class:FriersonGCMAncestorGenerator
+get_timespan	frierson_gcm.py	/^    def get_timespan(metadata):$/;"	m	class:FriersonGCM
+glob	algorithms_frierson.py	/^import glob$/;"	i
+glob	ange_frierson.py	/^import glob$/;"	i
+glob	cleanup.py	/^import glob$/;"	i
+glob	dns_frierson.py	/^import glob$/;"	i
+glob	frierson_gcm.py	/^import glob$/;"	i
+glob	iteams_frierson.py	/^import glob$/;"	i
+glob	observable_functions.py	/^import glob$/;"	i
+glob	pebr_frierson.py	/^import glob$/;"	i
+glob	teams_frierson.py	/^import glob$/;"	i
+gridspec	teams_frierson.py	/^from matplotlib import pyplot as plt, rcParams, gridspec$/;"	i
+histogram_over_days	observable_functions.py	/^def histogram_over_days(da, fmin=None, fmax=None, nbins=20):$/;"	f
+horizontal_wind_speed	frierson_gcm.py	/^    def horizontal_wind_speed(ds):$/;"	m	class:FriersonGCM
+i	ange_frierson.py	/^i = 0$/;"	v
+i	iteams_frierson.py	/^i = 0$/;"	v
+i	pebr_frierson.py	/^i = 0$/;"	v
+i	teams_frierson.py	/^i = 0$/;"	v
+i_expt	iteams_frierson.py	/^            i_expt = np.ravel_multi_index((i_seed_inc,i_param,i_buick,), shp)$/;"	v
+i_expt	teams_frierson.py	/^            i_expt = np.ravel_multi_index(i_multiparam,shp)$/;"	v
+i_expt	teams_frierson.py	/^        i_expt = int(sys.argv[2])$/;"	v
+i_sigma	teams_frierson.py	/^        i_sigma = 0$/;"	v
+i_slm	teams_frierson.py	/^        i_slm = 0$/;"	v
+idx_expt	dns_frierson.py	/^        idx_expt = [int(arg) for arg in sys.argv[2:]]$/;"	v
+idx_expt	dns_frierson.py	/^        idx_expt = list(range(1,21))$/;"	v
+idx_expt	iteams_frierson.py	/^        idx_expt = []$/;"	v
+idx_expt	iteams_frierson.py	/^        idx_expt = [int(arg) for arg in sys.argv[2:]]$/;"	v
+idx_expt	teams_frierson.py	/^        idx_expt = []$/;"	v
+idx_expt	teams_frierson.py	/^        idx_expt = [int(arg) for arg in sys.argv[2:]]$/;"	v
+idx_param	ange_frierson.py	/^        idx_param = [3] #list(range(1,21))$/;"	v
+idx_param	ange_frierson.py	/^        idx_param = [int(arg) for arg in sys.argv[2:]]$/;"	v
+idx_param	frierson_gcm.py	/^        idx_param = [int(v) for v in sys.argv[1:]]$/;"	v
+idx_param	pebr_frierson.py	/^        idx_param = [int(arg) for arg in sys.argv[2:]]$/;"	v
+idx_param	pebr_frierson.py	/^        idx_param = list(range(1,21))$/;"	v
+idx_seed_param_buick	iteams_frierson.py	/^        idx_seed_param_buick = [(0,2,i) for i in range(8)]$/;"	v
+ingest_history	observable_functions.py	/^def ingest_history(histdir,pattern="d*h00",verbose=False):$/;"	f
+ingest_history_aggregated	observable_functions.py	/^def ingest_history_aggregated(histdir, pattern="history*.nc"):$/;"	f
+ingest_multiple_histories	observable_functions.py	/^def ingest_multiple_histories(histdir_list, pattern="d*h00"):$/;"	f
+ingest_timechunks	observable_functions.py	/^def ingest_timechunks(chunk_dirs):$/;"	f
+initialize_from_ancestorgenerator	algorithms_frierson.py	/^    def initialize_from_ancestorgenerator(cls, angel, config, ens):$/;"	m	class:FriersonGCMITEAMS
+initialize_from_ancestorgenerator	algorithms_frierson.py	/^    def initialize_from_ancestorgenerator(cls, angel, config, ens):$/;"	m	class:FriersonGCMTEAMS
+initialize_from_dns	algorithms_frierson.py	/^    def initialize_from_dns(cls, dns, config, ens):$/;"	m	class:FriersonGCMTEAMS
+initialize_from_dns_anytime	algorithms_frierson.py	/^    def initialize_from_dns_anytime(cls, dns, config, ens, init_cond_dir, root_dir):$/;"	m	class:FriersonGCMTEAMS
+initialize_from_dns_appendage	algorithms_frierson.py	/^    def initialize_from_dns_appendage(cls, dns, config, ens, init_cond_dir, root_dir):$/;"	m	class:FriersonGCMTEAMS
+integrate	precip_extremes_scaling.py	/^def integrate(f, x):$/;"	f
+iseed_isigma_idelta_islm	teams_frierson.py	/^        iseed_isigma_idelta_islm = [$/;"	v
+iteams_paramset	iteams_frierson.py	/^def iteams_paramset(i_expt):$/;"	f
+iteams_single_procedure	iteams_frierson.py	/^def iteams_single_procedure(i_expt):$/;"	f
+iteams_single_workflow	iteams_frierson.py	/^def iteams_single_workflow(i_expt):$/;"	f
+join	algorithms_frierson.py	/^from os.path import join, exists, basename, relpath$/;"	i
+join	ange_frierson.py	/^from os.path import join, exists, basename, relpath$/;"	i
+join	dns_frierson.py	/^from os.path import join, exists, basename$/;"	i
+join	frierson_gcm.py	/^from os.path import join, exists, basename$/;"	i
+join	iteams_frierson.py	/^from os.path import join, exists, basename, relpath$/;"	i
+join	observable_functions.py	/^from os.path import exists, join$/;"	i
+join	pebr_frierson.py	/^from os.path import join, exists, basename, relpath$/;"	i
+join	teams_frierson.py	/^from os.path import join, exists, basename, relpath$/;"	i
+label_from_config	algorithms_frierson.py	/^    def label_from_config(config):$/;"	m	class:AncestorGeneratorDNSAppendages
+label_from_config	algorithms_frierson.py	/^    def label_from_config(config):$/;"	m	class:FriersonGCMITEAMS
+label_from_config	algorithms_frierson.py	/^    def label_from_config(config):$/;"	m	class:FriersonGCMTEAMS
+label_from_config	frierson_gcm.py	/^    def label_from_config(config):$/;"	m	class:FriersonGCM
+label_from_roi	frierson_gcm.py	/^    def label_from_roi(roi):$/;"	m	class:FriersonGCM
+lat	precip_extremes_scaling.py	/^    lat = np.linspace(-87,87,1)$/;"	v
+latband_cwv	frierson_gcm.py	/^    def latband_cwv(ds, roi):$/;"	m	class:FriersonGCM
+latband_mean	frierson_gcm.py	/^    def latband_mean(da):$/;"	m	class:FriersonGCM
+latband_rain	frierson_gcm.py	/^    def latband_rain(ds, roi):$/;"	m	class:FriersonGCM
+latband_temp	frierson_gcm.py	/^    def latband_temp(ds, roi):$/;"	m	class:FriersonGCM
+load_member_ancestry	frierson_gcm.py	/^    def load_member_ancestry(self, i_mem_leaf):$/;"	m	class:FriersonGCM
+logsumexp	algorithms_frierson.py	/^from scipy.special import logsumexp,softmax$/;"	i
+lon	precip_extremes_scaling.py	/^    lon = np.linspace(0,360,2)[:-1]$/;"	v
+lon_Linf_mean	observable_functions.py	/^def lon_Linf_mean(lon_arr):$/;"	f
+lon_Linf_mean_unit_test	observable_functions.py	/^def lon_Linf_mean_unit_test():$/;"	f
+lon_dist	observable_functions.py	/^def lon_dist(lon1, lon2):$/;"	f
+ls	observable_functions.py	/^from os import listdir as ls$/;"	i
+makedirs	algorithms_frierson.py	/^from os import mkdir, makedirs$/;"	i
+makedirs	ange_frierson.py	/^from os import mkdir, makedirs$/;"	i
+makedirs	dns_frierson.py	/^from os import mkdir, makedirs$/;"	i
+makedirs	frierson_gcm.py	/^from os import mkdir, makedirs$/;"	i
+makedirs	iteams_frierson.py	/^from os import mkdir, makedirs$/;"	i
+makedirs	pebr_frierson.py	/^from os import mkdir, makedirs$/;"	i
+makedirs	teams_frierson.py	/^from os import mkdir, makedirs$/;"	i
+matplotlib	observable_functions.py	/^import matplotlib.pyplot as plt$/;"	i
+measure_plot_score_distribution	teams_frierson.py	/^def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, reference='dns', param_suffix='', overwrite_reference=False):$/;"	f
+measure_running_max	ange_frierson.py	/^def measure_running_max(config_analysis, alg, dirdict):$/;"	f
+merge_score_components	algorithms_frierson.py	/^    def merge_score_components(self, comps0, comps1, nsteps2prepend):$/;"	m	class:FriersonGCMITEAMS
+merge_score_components	algorithms_frierson.py	/^    def merge_score_components(self, mem_leaf, score_components_leaf):$/;"	m	class:FriersonGCMTEAMS
+meridional_velocity	frierson_gcm.py	/^    def meridional_velocity(ds):$/;"	m	class:FriersonGCM
+meridional_velocity	observable_functions.py	/^def meridional_velocity(ds):$/;"	f
+meta_analyze_dns	frierson_gcm.py	/^def meta_analyze_dns():$/;"	f
+mkdir	algorithms_frierson.py	/^from os import mkdir, makedirs$/;"	i
+mkdir	ange_frierson.py	/^from os import mkdir, makedirs$/;"	i
+mkdir	dns_frierson.py	/^from os import mkdir, makedirs$/;"	i
+mkdir	frierson_gcm.py	/^from os import mkdir, makedirs$/;"	i
+mkdir	iteams_frierson.py	/^from os import mkdir, makedirs$/;"	i
+mkdir	observable_functions.py	/^from os import mkdir $/;"	i
+mkdir	pebr_frierson.py	/^from os import mkdir, makedirs$/;"	i
+mkdir	teams_frierson.py	/^from os import mkdir, makedirs$/;"	i
+modules	algorithms_frierson.py	/^print(f'Now starting to import my own modules')$/;"	i
+modules	ange_frierson.py	/^print(f'Now starting to import my own modules')$/;"	i
+modules	iteams_frierson.py	/^print(f'Now starting to import my own modules')$/;"	i
+modules	pebr_frierson.py	/^print(f'Now starting to import my own modules')$/;"	i
+modules	teams_frierson.py	/^print(f'Now starting to import my own modules')$/;"	i
+moist_adiabatic_lapse_rate	precip_extremes_scaling.py	/^def moist_adiabatic_lapse_rate(temp, plev, calc_type):$/;"	f
+moments_from_histogram	observable_functions.py	/^def moments_from_histogram(hist, mom=None):$/;"	f
+multiparams	teams_frierson.py	/^        multiparams = teams_multiparams()$/;"	v
+my	algorithms_frierson.py	/^print(f'Now starting to import my own modules')$/;"	i
+my	ange_frierson.py	/^print(f'Now starting to import my own modules')$/;"	i
+my	iteams_frierson.py	/^print(f'Now starting to import my own modules')$/;"	i
+my	pebr_frierson.py	/^print(f'Now starting to import my own modules')$/;"	i
+my	teams_frierson.py	/^print(f'Now starting to import my own modules')$/;"	i
+nc	observable_functions.py	/^import netCDF4 as nc$/;"	i
+ndimage	observable_functions.py	/^from scipy import ndimage$/;"	i
+np	algorithms_frierson.py	/^import numpy as np$/;"	i
+np	ange_frierson.py	/^import numpy as np$/;"	i
+np	dns_frierson.py	/^import numpy as np$/;"	i
+np	frierson_gcm.py	/^import numpy as np$/;"	i
+np	iteams_frierson.py	/^import numpy as np$/;"	i
+np	observable_functions.py	/^import numpy as np$/;"	i
+np	pebr_frierson.py	/^import numpy as np$/;"	i
+np	precip_extremes_scaling.py	/^import numpy as np$/;"	i
+np	teams_frierson.py	/^import numpy as np$/;"	i
+nproc	frierson_gcm.py	/^    nproc = 4$/;"	v
+nx	teams_frierson.py	/^import networkx as nx$/;"	i
+obs_dict_names	algorithms_frierson.py	/^    def obs_dict_names(self):$/;"	m	class:FriersonGCMPeriodicBranching
+obs_fun	algorithms_frierson.py	/^    def obs_fun(self, t, ds):$/;"	m	class:FriersonGCMPeriodicBranching
+observable_from_name	observable_functions.py	/^def observable_from_name(ds, field_name, t_runavg=1, pfull_target=None):$/;"	f
+observable_from_name_vertprof	observable_functions.py	/^def observable_from_name_vertprof(ds, field_name, latlonsel, t_runavg=1):$/;"	f
+observable_library	observable_functions.py	/^def observable_library():$/;"	f
+observable_props	frierson_gcm.py	/^    def observable_props():$/;"	m	class:FriersonGCM
+old_thing	pebr_frierson.py	/^def old_thing():$/;"	f
+omega	precip_extremes_scaling.py	/^    omega = xr.DataArray(coords={"pfull": plev,}, data=np.linspace(-0.3, 0.2, 10)).expand_dims({"lat": lat, "lon": lon})$/;"	v
+os	algorithms_frierson.py	/^import os$/;"	i
+os	ange_frierson.py	/^import os$/;"	i
+os	dns_frierson.py	/^import os$/;"	i
+os	frierson_gcm.py	/^import os$/;"	i
+os	iteams_frierson.py	/^import os$/;"	i
+os	observable_functions.py	/^import os$/;"	i
+os	pebr_frierson.py	/^import os$/;"	i
+os	teams_frierson.py	/^import os$/;"	i
+own	algorithms_frierson.py	/^print(f'Now starting to import my own modules')$/;"	i
+own	ange_frierson.py	/^print(f'Now starting to import my own modules')$/;"	i
+own	iteams_frierson.py	/^print(f'Now starting to import my own modules')$/;"	i
+own	pebr_frierson.py	/^print(f'Now starting to import my own modules')$/;"	i
+own	teams_frierson.py	/^print(f'Now starting to import my own modules')$/;"	i
+p	precip_extremes_scaling.py	/^    p = omega["pfull"]$/;"	v
+pars	precip_extremes_scaling.py	/^def pars(parstr):$/;"	f
+pathname_skeleton	cleanup.py	/^pathname_skeleton = "\/orcd\/archive\/pog\/001\/ju26596\/TEAMS\/examples\/frierson_gcm\/2024-0*"$/;"	v
+pdb	frierson_gcm.py	/^import pdb$/;"	i
+pdb	teams_frierson.py	/^import pdb$/;"	i
+pebr_meta_procedure	pebr_frierson.py	/^def pebr_meta_procedure(idx_param):$/;"	f
+pebr_meta_workflow	pebr_frierson.py	/^def pebr_meta_workflow(idx_param):$/;"	f
+pebr_paramset	pebr_frierson.py	/^def pebr_paramset(i_param):$/;"	f
+pebr_single_procedure	pebr_frierson.py	/^def pebr_single_procedure(i_param):$/;"	f
+pebr_single_workflow	pebr_frierson.py	/^def pebr_single_workflow(i_param):$/;"	f
+pickle	algorithms_frierson.py	/^import pickle$/;"	i
+pickle	ange_frierson.py	/^import pickle$/;"	i
+pickle	dns_frierson.py	/^import pickle$/;"	i
+pickle	frierson_gcm.py	/^import pickle$/;"	i
+pickle	iteams_frierson.py	/^import pickle$/;"	i
+pickle	pebr_frierson.py	/^import pickle$/;"	i
+pickle	teams_frierson.py	/^import pickle$/;"	i
+plev	precip_extremes_scaling.py	/^    plev = np.linspace(100000, 10000, 10)$/;"	v
+plot_boost_composites	algorithms_frierson.py	/^    def plot_boost_composites(algs, config_analysis, plotdir, param_suffix):$/;"	m	class:FriersonGCMTEAMS
+plot_fields_2d	teams_frierson.py	/^def plot_fields_2d(config_analysis, alg, dirdict, filedict, expt_label, remove_old_plots=False):$/;"	f
+plot_observable_distribution	ange_frierson.py	/^def plot_observable_distribution(config_analysis, alg, dirdict):$/;"	f
+plot_observable_spaghetti	ange_frierson.py	/^def plot_observable_spaghetti(config_analysis, alg, dirdict):$/;"	f
+plot_observable_spaghetti	iteams_frierson.py	/^def plot_observable_spaghetti(config_analysis, alg, dirdict):$/;"	f
+plot_observable_spaghetti	pebr_frierson.py	/^def plot_observable_spaghetti(config_analysis, alg, dirdict):$/;"	f
+plot_observable_spaghetti	teams_frierson.py	/^def plot_observable_spaghetti(config_analysis, alg, dirdict, filedict, remove_old_plots=False):$/;"	f
+plot_score_distribution	iteams_frierson.py	/^def plot_score_distribution(config_analysis, alg, dirdict):$/;"	f
+plot_score_spaghetti	iteams_frierson.py	/^def plot_score_spaghetti(config_analysis, alg, dirdict):$/;"	f
+plot_score_spaghetti	teams_frierson.py	/^def plot_score_spaghetti(config_analysis, alg, dirdict):$/;"	f
+plot_scorrelations	teams_frierson.py	/^def plot_scorrelations(config_analysis, alg, dirdict, filedict, expt_label):$/;"	f
+plot_snapshots	dns_frierson.py	/^def plot_snapshots(config_analysis, alg, dirdict):$/;"	f
+plot_timeseries	dns_frierson.py	/^def plot_timeseries(config_analysis, alg, dirdict):$/;"	f
+plt	algorithms_frierson.py	/^from matplotlib import pyplot as plt, rcParams $/;"	i
+plt	ange_frierson.py	/^from matplotlib import pyplot as plt, rcParams $/;"	i
+plt	dns_frierson.py	/^from matplotlib import pyplot as plt, rcParams $/;"	i
+plt	frierson_gcm.py	/^from matplotlib import pyplot as plt, rcParams $/;"	i
+plt	iteams_frierson.py	/^from matplotlib import pyplot as plt, rcParams $/;"	i
+plt	observable_functions.py	/^import matplotlib.pyplot as plt$/;"	i
+plt	pebr_frierson.py	/^from matplotlib import pyplot as plt, rcParams $/;"	i
+plt	teams_frierson.py	/^from matplotlib import pyplot as plt, rcParams, gridspec$/;"	i
+pltkwargs	algorithms_frierson.py	/^pltkwargs = dict(bbox_inches="tight",pad_inches=0.2)$/;"	v
+pltkwargs	ange_frierson.py	/^pltkwargs = dict(bbox_inches="tight",pad_inches=0.2)$/;"	v
+pltkwargs	dns_frierson.py	/^pltkwargs = dict(bbox_inches="tight",pad_inches=0.2)$/;"	v
+pltkwargs	frierson_gcm.py	/^pltkwargs = dict(bbox_inches="tight",pad_inches=0.2)$/;"	v
+pltkwargs	iteams_frierson.py	/^pltkwargs = dict(bbox_inches="tight",pad_inches=0.2)$/;"	v
+pltkwargs	pebr_frierson.py	/^pltkwargs = dict(bbox_inches="tight",pad_inches=0.2)$/;"	v
+pltkwargs	teams_frierson.py	/^pltkwargs = dict(bbox_inches="tight",pad_inches=0.2)$/;"	v
+pprint	ange_frierson.py	/^import pprint$/;"	i
+pprint	dns_frierson.py	/^import pprint$/;"	i
+pprint	frierson_gcm.py	/^import pprint$/;"	i
+pprint	iteams_frierson.py	/^import pprint$/;"	i
+pprint	pebr_frierson.py	/^import pprint$/;"	i
+pprint	teams_frierson.py	/^import pprint$/;"	i
+precip	precip_extremes_scaling.py	/^    precip = scaling(omega, temp, p, dp_dpfull, ps)  # result is 6.1e-05 kg\/m^2\/s.$/;"	v
+precip_extremes_scaling	dns_frierson.py	/^import precip_extremes_scaling$/;"	i
+precip_extremes_scaling	frierson_gcm.py	/^import precip_extremes_scaling$/;"	i
+precip_extremes_scaling	observable_functions.py	/^import precip_extremes_scaling$/;"	i
+precompute_features	observable_functions.py	/^def precompute_features(ds, fields2comp, savefolder, overwrite=False):$/;"	f
+precompute_features_vertprof	observable_functions.py	/^def precompute_features_vertprof(ds, fields2comp, savefolder, latlonbounds, overwrite=False):$/;"	f
+preprocess	observable_functions.py	/^def preprocess(ds):$/;"	f
+pressure	frierson_gcm.py	/^    def pressure(ds):$/;"	m	class:FriersonGCM
+pressure	observable_functions.py	/^def pressure(ds):$/;"	f
+print_comp_proc	dns_frierson.py	/^def print_comp_proc(compproc):$/;"	f
+print_comp_proc	frierson_gcm.py	/^def print_comp_proc(compproc):$/;"	f
+procedure	ange_frierson.py	/^        procedure = 'single'$/;"	v
+procedure	ange_frierson.py	/^        procedure = sys.argv[1]$/;"	v
+procedure	dns_frierson.py	/^        procedure = 'meta'$/;"	v
+procedure	dns_frierson.py	/^        procedure = sys.argv[1]$/;"	v
+procedure	frierson_gcm.py	/^    procedure = 'meta'$/;"	v
+procedure	iteams_frierson.py	/^        procedure = 'single'$/;"	v
+procedure	iteams_frierson.py	/^        procedure = sys.argv[1]$/;"	v
+procedure	pebr_frierson.py	/^        procedure = 'meta'$/;"	v
+procedure	pebr_frierson.py	/^        procedure = sys.argv[1]$/;"	v
+procedure	teams_frierson.py	/^        procedure = 'meta'$/;"	v
+procedure	teams_frierson.py	/^        procedure = sys.argv[1]$/;"	v
+process_history_folder	observable_functions.py	/^def process_history_folder(rundir, fields2comp, overwrite=False):$/;"	f
+ps	precip_extremes_scaling.py	/^    ps = xr.DataArray(coords={"lat": lat, "lon": lon}, dims=["lat","lon"], data=100000)$/;"	v
+quantify_dispersion_rate	ange_frierson.py	/^def quantify_dispersion_rate(config_analysis, alg, dirdict):$/;"	f
+quantify_dispersion_rates	pebr_frierson.py	/^def quantify_dispersion_rates(config_analysis, alg, dirdict):$/;"	f
+quantify_running_max_convergence	pebr_frierson.py	/^def quantify_running_max_convergence(config_analysis, alg, dirdict):$/;"	f
+quantiles_from_histogram	observable_functions.py	/^def quantiles_from_histogram(hist, qlevels=None):$/;"	f
+r_sppt_g	frierson_gcm.py	/^    def r_sppt_g(ds):$/;"	m	class:FriersonGCM
+rcParams	algorithms_frierson.py	/^from matplotlib import pyplot as plt, rcParams $/;"	i
+rcParams	ange_frierson.py	/^from matplotlib import pyplot as plt, rcParams $/;"	i
+rcParams	dns_frierson.py	/^from matplotlib import pyplot as plt, rcParams $/;"	i
+rcParams	frierson_gcm.py	/^from matplotlib import pyplot as plt, rcParams $/;"	i
+rcParams	iteams_frierson.py	/^from matplotlib import pyplot as plt, rcParams $/;"	i
+rcParams	pebr_frierson.py	/^from matplotlib import pyplot as plt, rcParams $/;"	i
+rcParams	teams_frierson.py	/^from matplotlib import pyplot as plt, rcParams, gridspec$/;"	i
+recompile	frierson_gcm.py	/^    recompile = False$/;"	v
+reduce_labels	observable_functions.py	/^def reduce_labels(labels0, labels1):$/;"	f
+regional_cwv	frierson_gcm.py	/^    def regional_cwv(ds, roi):$/;"	m	class:FriersonGCM
+regional_rain	frierson_gcm.py	/^    def regional_rain(ds, roi):$/;"	m	class:FriersonGCM
+regional_temp	frierson_gcm.py	/^    def regional_temp(ds, roi):$/;"	m	class:FriersonGCM
+reload	algorithms_frierson.py	/^import algorithms; #reload(forcing)$/;"	i
+reload	algorithms_frierson.py	/^import ensemble; #reload(ensemble)$/;"	i
+reload	algorithms_frierson.py	/^import forcing; #reload(forcing)$/;"	i
+reload	algorithms_frierson.py	/^import frierson_gcm; #reload(frierson_gcm)$/;"	i
+reload	algorithms_frierson.py	/^import utils; #reload(utils)$/;"	i
+reload	ange_frierson.py	/^import algorithms; reload(algorithms)$/;"	i
+reload	ange_frierson.py	/^import algorithms_frierson; reload(algorithms_frierson)$/;"	i
+reload	ange_frierson.py	/^import ensemble; reload(ensemble)$/;"	i
+reload	ange_frierson.py	/^import forcing; reload(forcing)$/;"	i
+reload	ange_frierson.py	/^import frierson_gcm; reload(frierson_gcm)$/;"	i
+reload	ange_frierson.py	/^import utils; reload(utils)$/;"	i
+reload	iteams_frierson.py	/^import algorithms; reload(algorithms)$/;"	i
+reload	iteams_frierson.py	/^import algorithms_frierson; reload(algorithms_frierson)$/;"	i
+reload	iteams_frierson.py	/^import ensemble; reload(ensemble)$/;"	i
+reload	iteams_frierson.py	/^import forcing; reload(forcing)$/;"	i
+reload	iteams_frierson.py	/^import frierson_gcm; reload(frierson_gcm)$/;"	i
+reload	iteams_frierson.py	/^import utils; reload(utils)$/;"	i
+reload	pebr_frierson.py	/^import algorithms; #reload(forcing)$/;"	i
+reload	pebr_frierson.py	/^import forcing; #reload(forcing)$/;"	i
+reload	pebr_frierson.py	/^import utils; #reload(utils)$/;"	i
+reload	teams_frierson.py	/^import algorithms; reload(algorithms)$/;"	i
+reload	teams_frierson.py	/^import algorithms_frierson; reload(algorithms_frierson)$/;"	i
+reload	teams_frierson.py	/^import ensemble; reload(ensemble)$/;"	i
+reload	teams_frierson.py	/^import forcing; reload(forcing)$/;"	i
+reload	teams_frierson.py	/^import frierson_gcm; reload(frierson_gcm)$/;"	i
+reload	teams_frierson.py	/^import utils; reload(utils)$/;"	i
+relpath	algorithms_frierson.py	/^from os.path import join, exists, basename, relpath$/;"	i
+relpath	ange_frierson.py	/^from os.path import join, exists, basename, relpath$/;"	i
+relpath	iteams_frierson.py	/^from os.path import join, exists, basename, relpath$/;"	i
+relpath	pebr_frierson.py	/^from os.path import join, exists, basename, relpath$/;"	i
+relpath	teams_frierson.py	/^from os.path import join, exists, basename, relpath$/;"	i
+resample_to_daily	frierson_gcm.py	/^    def resample_to_daily(da):$/;"	m	class:FriersonGCM
+resample_to_daily	observable_functions.py	/^def resample_to_daily(da):$/;"	f
+resource	algorithms_frierson.py	/^import resource$/;"	i
+resource	ange_frierson.py	/^import resource$/;"	i
+resource	dns_frierson.py	/^import resource$/;"	i
+resource	frierson_gcm.py	/^import resource$/;"	i
+resource	iteams_frierson.py	/^import resource$/;"	i
+resource	pebr_frierson.py	/^import resource$/;"	i
+resource	teams_frierson.py	/^import resource$/;"	i
+rolling_time_mean	frierson_gcm.py	/^    def rolling_time_mean(da,num_steps):$/;"	m	class:FriersonGCM
+rotate_to_central_lon	observable_functions.py	/^def rotate_to_central_lon(da, central_lon):$/;"	f
+run_ange	ange_frierson.py	/^def run_ange(dirdict,filedict,config_gcm,config_algo):$/;"	f
+run_dns	dns_frierson.py	/^def run_dns(dirdict,filedict,config_gcm,config_algo):$/;"	f
+run_iteams	iteams_frierson.py	/^def run_iteams(dirdict,filedict,config_gcm,config_algo):$/;"	f
+run_pebr	pebr_frierson.py	/^def run_pebr(dirdict,filedict,config_gcm,config_algo):$/;"	f
+run_teams	teams_frierson.py	/^def run_teams(dirdict,filedict,config_gcm,config_algo):$/;"	f
+run_trajectory	frierson_gcm.py	/^    def run_trajectory(self, icandf, obs_fun, saveinfo, root_dir):$/;"	m	class:FriersonGCM
+rundir	observable_functions.py	/^    rundir = "\/pool001\/ju26596\/fms_archive\/2022-12-13\/3\/ctrl_bmconv_21x100_8proc\/abs1.0_smooth\/mem_ctrl"$/;"	v
+sat_deriv	precip_extremes_scaling.py	/^def sat_deriv(plev, temp):$/;"	f
+sat_spec_hum	observable_functions.py	/^def sat_spec_hum(ds):$/;"	f
+saturation_thermodynamics	precip_extremes_scaling.py	/^def saturation_thermodynamics(temp, plev, calc_type='simple'):$/;"	f
+scaling	precip_extremes_scaling.py	/^def scaling(omega, temp, plev, dp_dpfull, ps):$/;"	f
+score_combined	algorithms_frierson.py	/^    def score_combined(self, sccomps):$/;"	m	class:FriersonGCMITEAMS
+score_combined	algorithms_frierson.py	/^    def score_combined(self, sccomps):$/;"	m	class:FriersonGCMTEAMS
+score_components	algorithms_frierson.py	/^    def score_components(self, t, ds):$/;"	m	class:FriersonGCMITEAMS
+score_components	algorithms_frierson.py	/^    def score_components(self, t, ds):$/;"	m	class:FriersonGCMTEAMS
+sel_from_roi	frierson_gcm.py	/^    def sel_from_roi(da,roi):$/;"	m	class:FriersonGCM
+selnear	observable_functions.py	/^def selnear(ds, coordname, coordval):$/;"	f
+set_nproc	frierson_gcm.py	/^    def set_nproc(self, nproc):$/;"	m	class:FriersonGCM
+setup_directories	frierson_gcm.py	/^    def setup_directories(self, temp_dir): # To be called by an Ensemble object $/;"	m	class:FriersonGCM
+shp	iteams_frierson.py	/^        shp = (12,21,8)$/;"	v
+shp	teams_frierson.py	/^        shp = (len(seed_incs),len(sigmas),len(deltas_phys),len(split_landmarks))$/;"	v
+shutil	algorithms_frierson.py	/^import shutil$/;"	i
+shutil	ange_frierson.py	/^import shutil$/;"	i
+shutil	cleanup.py	/^import shutil$/;"	i
+shutil	dns_frierson.py	/^import shutil$/;"	i
+shutil	frierson_gcm.py	/^import shutil$/;"	i
+shutil	iteams_frierson.py	/^import shutil$/;"	i
+shutil	pebr_frierson.py	/^import shutil$/;"	i
+shutil	teams_frierson.py	/^import shutil$/;"	i
+softmax	algorithms_frierson.py	/^from scipy.special import logsumexp,softmax$/;"	i
+specific_humidity	frierson_gcm.py	/^    def specific_humidity(ds):$/;"	m	class:FriersonGCM
+specific_humidity	observable_functions.py	/^def specific_humidity(ds):$/;"	f
+subprocess	algorithms_frierson.py	/^import subprocess$/;"	i
+subprocess	ange_frierson.py	/^import subprocess$/;"	i
+subprocess	dns_frierson.py	/^import subprocess$/;"	i
+subprocess	frierson_gcm.py	/^import subprocess$/;"	i
+subprocess	iteams_frierson.py	/^import subprocess$/;"	i
+subprocess	pebr_frierson.py	/^import subprocess$/;"	i
+subprocess	teams_frierson.py	/^import subprocess$/;"	i
+surface_pressure	frierson_gcm.py	/^    def surface_pressure(ds):$/;"	m	class:FriersonGCM
+surface_pressure	observable_functions.py	/^def surface_pressure(ds):$/;"	f
+surface_pressure_neg	frierson_gcm.py	/^    def surface_pressure_neg(ds):$/;"	m	class:FriersonGCM
+surface_temperature	frierson_gcm.py	/^    def surface_temperature(ds):$/;"	m	class:FriersonGCM
+sys	algorithms_frierson.py	/^import sys$/;"	i
+sys	ange_frierson.py	/^import sys$/;"	i
+sys	dns_frierson.py	/^import sys$/;"	i
+sys	frierson_gcm.py	/^import sys$/;"	i
+sys	iteams_frierson.py	/^import sys$/;"	i
+sys	pebr_frierson.py	/^import sys$/;"	i
+sys	teams_frierson.py	/^import sys$/;"	i
+take_next_step	algorithms_frierson.py	/^    def take_next_step(self):$/;"	m	class:AncestorGeneratorDNSAppendages
+teams_multidelta_procedure	teams_frierson.py	/^def teams_multidelta_procedure(i_sigma,idx_delta,idx_seed):$/;"	f
+teams_multiparams	teams_frierson.py	/^def teams_multiparams():$/;"	f
+teams_multiseed_procedure	teams_frierson.py	/^def teams_multiseed_procedure(i_pop_ctrl,i_time_horizon,i_field,i_sigma,idx_seed,i_delta,i_slm,overwrite_reference=False): # Just different seeds for now$/;"	f
+teams_paramset	teams_frierson.py	/^def teams_paramset(i_expt):$/;"	f
+teams_single_procedure	teams_frierson.py	/^def teams_single_procedure(i_expt):$/;"	f
+teams_single_workflow	teams_frierson.py	/^def teams_single_workflow(i_expt):$/;"	f
+temp	precip_extremes_scaling.py	/^    temp = xr.DataArray(coords={"pfull": plev,}, data=np.linspace(270, 220, 10)).expand_dims({"lat": lat, "lon": lon})$/;"	v
+temperature	frierson_gcm.py	/^    def temperature(ds):$/;"	m	class:FriersonGCM
+temperature	observable_functions.py	/^def temperature(ds):$/;"	f
+test_conn_comp_periodic	observable_functions.py	/^def test_conn_comp_periodic():$/;"	f
+time_avg	observable_functions.py	/^def time_avg(da, num_days):$/;"	f
+total_rain	frierson_gcm.py	/^    def total_rain(ds):$/;"	m	class:FriersonGCM
+total_rain	observable_functions.py	/^def total_rain(ds):$/;"	f
+utils	algorithms_frierson.py	/^import utils; #reload(utils)$/;"	i
+utils	ange_frierson.py	/^import utils; reload(utils)$/;"	i
+utils	dns_frierson.py	/^import utils $/;"	i
+utils	frierson_gcm.py	/^import utils $/;"	i
+utils	iteams_frierson.py	/^import utils; reload(utils)$/;"	i
+utils	pebr_frierson.py	/^import utils; #reload(utils)$/;"	i
+utils	teams_frierson.py	/^import utils; reload(utils)$/;"	i
+vert_deriv_sat_sphum	frierson_gcm.py	/^    def vert_deriv_sat_sphum(ds):$/;"	m	class:FriersonGCM
+vert_deriv_sat_sphum	observable_functions.py	/^def vert_deriv_sat_sphum(ds):$/;"	f
+vertical_velocity	frierson_gcm.py	/^    def vertical_velocity(ds):$/;"	m	class:FriersonGCM
+vertical_velocity	observable_functions.py	/^def vertical_velocity(ds):$/;"	f
+vorticity	frierson_gcm.py	/^    def vorticity(ds):$/;"	m	class:FriersonGCM
+vorticity	observable_functions.py	/^def vorticity(ds):$/;"	f
+water_vapor_convergence	frierson_gcm.py	/^    def water_vapor_convergence(ds):$/;"	m	class:FriersonGCM
+water_vapor_convergence	observable_functions.py	/^def water_vapor_convergence(ds):$/;"	f
+xr	algorithms_frierson.py	/^import xarray as xr$/;"	i
+xr	ange_frierson.py	/^import xarray as xr$/;"	i
+xr	dns_frierson.py	/^import xarray as xr$/;"	i
+xr	frierson_gcm.py	/^import xarray as xr$/;"	i
+xr	iteams_frierson.py	/^import xarray as xr$/;"	i
+xr	observable_functions.py	/^import xarray as xr$/;"	i
+xr	pebr_frierson.py	/^import xarray as xr$/;"	i
+xr	precip_extremes_scaling.py	/^import xarray as xr$/;"	i
+xr	teams_frierson.py	/^import xarray as xr$/;"	i
+zonal_mean_histogram	observable_functions.py	/^def zonal_mean_histogram(hist_dict):$/;"	f
+zonal_velocity	frierson_gcm.py	/^    def zonal_velocity(ds):$/;"	m	class:FriersonGCM
+zonal_velocity	observable_functions.py	/^def zonal_velocity(ds):$/;"	f
