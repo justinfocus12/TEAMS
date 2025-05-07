@@ -959,13 +959,29 @@ def teams_multidelta_procedure(i_pop_ctrl,i_time_horizon,i_field,i_sigma,idx_del
     fig.savefig(join(plot_dir,'fdivs_boosts.png'),**pltkwargs)
     return
 
+def sf2rt(sf, T):
+    scalar_flag = np.isscalar(sf)
+    if scalar_flag:
+        sf = np.array([sf])
+    assert sf.ndim == 1
+    zidx = np.where(sf <= 0)[0]
+    nzidx = np.setdiff1d(np.arange(len(sf)),zidx)
+    rt = np.zeros(len(sf))
+    rt[zidx] = np.inf
+    rt[nzidx] = utils.convert_sf_to_rtime(sf[nzidx], T)
+    if scalar_flag:
+        return rt[0]
+    return rt
+
 def compute_integrated_returnstats_error_metrics(returnstats):
     # -------- F-divergences --------
     hist_dns = returnstats['hist_dns'] / np.sum(returnstats['hist_dns'])
     hist_teams = returnstats['hist_fin_wted'] / np.sum(returnstats['hist_fin_wted'])
     hists_teams = np.diag(1/np.sum(returnstats['hists_fin_wted'], axis=1)) @ returnstats['hists_fin_wted'] 
+    # Set the lowest bin over which to sum 
+    i_bin_first = np.where(np.isfinite(utils.convert_sf_to_rtime(returnstats['ccdf_dns'],returnstats['time_horizon_effective'])))[0][0]
     nalgs = len(hists_teams)
-    nzidx_dns = np.where(hist_dns > 0)[0]
+    nzidx_dns = i_bin_first + np.where(hist_dns[i_bin_first:] > 0)[0]
     # Pooled
     nzidx_teams = np.where(hist_teams > 0)[0]
     nzidx_both = np.intersect1d(nzidx_dns, nzidx_teams)

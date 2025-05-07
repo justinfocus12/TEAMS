@@ -1664,6 +1664,9 @@ class TEAMS(EnsembleAlgorithm):
 
         np.savez(returnstats_file, **returnstats)
 
+        # Set lowest bin for which we want to start penalizing differences
+        i_bin_first = np.where(np.isfinite(utils.convert_sf_to_rtime(ccdf_dns,returnstats['time_horizon_effective'])))[0][0]
+
         # ---------------- PLOTTING -----------------
         # useful things 
         def sf2rt(sf):
@@ -1693,32 +1696,6 @@ class TEAMS(EnsembleAlgorithm):
             param_display = ''
         display = '\n'.join([target_display,'',param_display,'',cost_display])
 
-        # -------------- Plot distribution of short DNS return curves ------------------
-        confint_seph = 0.5
-        alpha_seph = 1-confint_seph # less aggressive confidence intervals 
-        fig,ax = plt.subplots(figsize=(8,6))
-        ccdfmid,ccdflo,ccdfhi = (np.quantile(np.nan_to_num(ccdfs_fin_wted,nan=0), q, axis=0) for q in [0.5,alpha_seph/2,1-alpha_seph/2])
-        rtmid,rthi,rtlo = (sf2rt(ccdf) for ccdf in(ccdfmid,ccdflo,ccdfhi))
-        ax.fill_betweenx(bin_edges[:-1],rtlo/time_unit,rthi/time_unit,color='red',alpha=0.25,zorder=-1)
-        ax.plot(rtmid/time_unit,bin_edges[:-1],color='red')
-        ccdfmid,ccdflo,ccdfhi = utils.pmf2ccdf(hist_dns,bin_edges,return_errbars=True,alpha=alpha_seph,N_errbars=int(N_dns * cost_teams_fin/cost_dns * 1/len(algs)))
-        rtdnsmid,rtdnshi,rtdnslo = (sf2rt(ccdf) for ccdf in (ccdfmid,ccdflo,ccdfhi))
-        ax.fill_betweenx(bin_edges[:-1],rtdnslo/time_unit,rtdnshi/time_unit,color='gray',alpha=0.25,zorder=-1)
-        for i_alg in range(Nalg):
-            ax.plot(sf2rt(ccdfs_fin_wted[i_alg,:])/time_unit, bin_edges[:-1], color='red', linewidth=0.5)
-        ax.plot(rtdnsmid/time_unit,bin_edges[:-1],color='black')
-        ax.set_ylabel(r'Return level [%s]'%(severity_unit_name))
-        ax.set_xlabel(r'Return time [%s]'%(time_unit_name))
-        ax.set_title(r'Single %s runs & middle %d%s'%(teams_abbrv,int(100*confint_seph),"%"))
-        ax.set_xscale('log')
-        ax.set_xlim([returnstats['time_horizon_effective']/time_unit,5*sf2rt(min(np.nanmin(ccdf_dns),np.nanmin(ccdf_fin_wted)))/time_unit])
-
-        ax.set_title(r"%d%s error bars"%(int(alpha_seph*100),"%"))
-        ax.text(-0.3,0.5,display,fontsize=15,transform=ax.transAxes,horizontalalignment='right',verticalalignment='center')
-
-        fig.savefig(figfileseph, **pltkwargs)
-        plt.close(fig)
-
         # ------------- Plot -------------------
 
         def cliprlev(rlev_curve):
@@ -1726,6 +1703,79 @@ class TEAMS(EnsembleAlgorithm):
             rlev_clipped = np.copy(rlev_curve)
             rlev_clipped[i0+1:] = np.NaN
             return rlev_clipped
+
+        def caprlev(rlev_curve):
+            i0 = np.argmax(rlev_curve)
+            rlev_clipped = np.copy(rlev_curve)
+            rlev_clipped[i0+1:] = rlev_curve[i0]
+            return rlev_clipped
+        # -------------- Plot distribution of short DNS return curves ------------------
+        confint_sep = 0.5
+        alpha_sep = 1-confint_sep # less aggressive confidence intervals 
+
+        figh,axesh = plt.subplots(figsize=(12,9),ncols=2,nrows=2,width_ratios=[3,1],height_ratios=[3,1],sharex='col',sharey='row')
+        figv,axesv = plt.subplots(figsize=(12,9),ncols=2,nrows=2,width_ratios=[3,1],height_ratios=[3,1],sharex='col',sharey='row')
+        ccdflo,ccdfhi = (np.quantile(np.nan_to_num(ccdfs_fin_wted,nan=0), q, axis=0) for q in [alpha_sep/2,1-alpha_sep/2])
+        ccdfmid = np.nanmean(ccdfs_fin_wted, axis=0)
+        rtmid,rthi,rtlo = (sf2rt(ccdf) for ccdf in(ccdfmid,ccdflo,ccdfhi))
+        rlevlo,rlevmid,rlevhi = (np.nanquantile(rlevs_fin, q, axis=0) for q in [alpha_sep/2,0.5,1-alpha_sep/2)
+
+        axh = axesh[0,0]
+        axv = axesv[0,0]
+        axh.axhline(bin_edges[i_bin_first], color='gray')
+        axv.axhline(bin_edges[i_bin_first], color='gray')
+        axh.fill_betweenx(bin_edges[:-1],rtlo/time_unit,rthi/time_unit,color='red',alpha=0.25,zorder=-1)
+        axv.fill_between(rt_grid/time_unit, rlevlo,rlevhi,color='red', alpha=0.25, zorder=-1)
+        axh.plot(rtmid/time_unit,bin_edges[:-1],color='purple',linestyle='-',linewidth=2.0,zorder=3)
+        axv.plot(rt_grid/time_unit, rlevmid, color='red', color='purple', linestyle='-', linewidth=2.0, zorder=3)
+        ccdfmid,ccdflo,ccdfhi = utils.pmf2ccdf(hist_dns,bin_edges,return_errbars=True,alpha=alpha_sep,N_errbars=int(N_dns * cost_teams_fin/cost_dns * 1/len(algs)))
+        rtdnsmid,rtdnshi,rtdnslo = (sf2rt(ccdf) for ccdf in (ccdfmid,ccdflo,ccdfhi))
+        axh.fill_betweenx(bin_edges[:-1],rtdnslo/time_unit,rtdnshi/time_unit,color='gray',alpha=0.25,zorder=-1)
+        rlevdnsmid = np.interp(rt_grid, rtdnsmid, bin_edges)
+        rlevdnslo = np.interp(rt_grid, rtdnslo, bin_edges)
+        rlevdnshi = np.interp(rt_grid, rtdnshi, bin_edges)
+        for i_alg in range(Nalg):
+            axh.plot(sf2rt(ccdfs_fin_wted[i_alg,:])/time_unit, bin_edges[:-1], color='red', linewidth=0.5,zorder=1)
+        axh.plot(rtdnsmid/time_unit,bin_edges[:-1],color='black',linewidth=2.0,linestyle='--',zorder=2)
+        axh.set_ylabel(r'Return level [%s]'%(severity_unit_name))
+        axh.set_title(r'Single %s runs & middle %d%s'%(teams_abbrv,int(100*confint_sep),"%"))
+        axh.set_xscale('log')
+        axh.set_xlim([returnstats['time_horizon_effective']/time_unit,5*sf2rt(min(np.nanmin(ccdf_dns),np.nanmin(ccdf_fin_wted)))/time_unit])
+
+        axh.set_title(r"%d%s error bars"%(int(alpha_sep*100),"%"))
+        axh.text(-0.15,0.5,display,fontsize=15,transform=axh.transAxes,horizontalalignment='right',verticalalignment='center')
+
+        # F-divergences
+        nzidx = np.where(hist_dns > 0)[0]
+        norm_dns = np.sum(hist_dns)
+        norm_teams = np.sum(hist_fin_wted)
+        # contributions to chi^2
+        normfun = lambda arr: arr/np.sum(arr)
+        ax = axesh[0,1]
+        axh.axhline(bin_edges[i_bin_first], color='gray')
+        for i_alg in range(len(algs)):
+            axh.plot((hist_dns[nzidx]/norm_dns - normfun(hists_fin_wted[i_alg,:])[nzidx])**2 / (hist_dns[nzidx]/norm_dns), bin_edges[nzidx], color='red', linewidth=0.5)
+        axh.plot((hist_dns[nzidx]/norm_dns - hist_fin_wted[nzidx]/norm_teams)**2 / (hist_dns[nzidx]/norm_dns), bin_edges[nzidx], color='purple', linewidth=2)
+        axh.set_xscale('log')
+        axh.axvline(0.0, color='black', linestyle='--',linewidth=2)
+        axh.set_title(r"$\chi^2$ contributions")
+
+        ax = axesh[1,0]
+        for i_alg in range(len(algs)):
+            axh.plot(rt_grid/time_unit, caprlev(rlevs_fin[i_alg])-caprlev(rlev_dns), color='red', linewidth=0.5)
+        axh.plot(rt_grid/time_unit, caprlev(rlev_fin_pooled)-caprlev(rlev_dns), color='purple', linewidth=2)
+        axh.axhline(0, color='black', linestyle='--', linewidth=2)
+        axh.set_xlabel(r'Return time [%s]'%(time_unit_name))
+        axh.set_title(r'Return level errors')
+        for ax in axes.flat:
+            axh.xaxis.set_tick_params(which='both',labelbottom=True)
+            axh.yaxis.set_tick_params(which='both',labelbottom=True)
+        axesh[1,1].axis('off')
+        figh.savefig(figfileseph, **pltkwargs)
+        plt.close(figh)
+
+        # ----------------------------------------------------------------------------
+
 
 
         figh,axesh = plt.subplots(ncols=3, figsize=(18,4), sharex=False, sharey=True)
