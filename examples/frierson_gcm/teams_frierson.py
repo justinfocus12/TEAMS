@@ -644,7 +644,8 @@ def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, refere
     returnstats_file = join(dirdict['analysis'],'returnstats_%s.npz'%(param_suffix))
     figfileh = join(dirdict['plots'],r'returnstats_h_%s.png'%(param_suffix))
     figfilev = join(dirdict['plots'],r'returnstats_v_%s.png'%(param_suffix))
-    figfileseph = join(dirdict['plots'],r'returnstats_sehv_%s.png'%(param_suffix))
+    figfileseph = join(dirdict['plots'],r'returnstats_seph_%s.png'%(param_suffix))
+    figfilesepv = join(dirdict['plots'],r'returnstats_sepv_%s.png'%(param_suffix))
     param_display = '\n'.join([
         r'$\sigma=%g$'%(algs[0].ens.dynsys.config['SPPT']['std_sppt']),
         r'$\delta=%g$'%(config_algo['advance_split_time_phys']),
@@ -664,7 +665,7 @@ def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, refere
       )
     target_field = list(algs[0].score_params['components'].keys())[0]
     unit_symbol = obsprop[config_algo['score_components'][target_field]['observable']]['unit_symbol']
-    algorithms_frierson.FriersonGCMTEAMS.measure_plot_score_distribution(config_algo, algs, scmax_ref, returnstats_file, figfileh, figfilev, figfileseph, param_display=param_display, target_display=target_display, time_unit=365, time_unit_name="years", severity_unit_name=unit_symbol)
+    algorithms_frierson.FriersonGCMTEAMS.measure_plot_score_distribution(config_algo, algs, scmax_ref, returnstats_file, figfileh, figfilev, figfileseph, figfilesepv, param_display=param_display, target_display=target_display, time_unit=365, time_unit_name="years", severity_unit_name=unit_symbol)
 
     return
 

@@ -1482,7 +1482,7 @@ class TEAMS(EnsembleAlgorithm):
         plt.close(fig)
         
     @staticmethod
-    def measure_plot_score_distribution(config_algo, algs, scmax_dns, returnstats_file, figfileh, figfilev, figfileseph, alpha=0.05, param_display=None, target_display=None, time_unit=1, time_unit_name="", severity_unit_name=""):
+    def measure_plot_score_distribution(config_algo, algs, scmax_dns, returnstats_file, figfileh, figfilev, figfileseph, figfilesepv, alpha=0.05, param_display=None, target_display=None, time_unit=1, time_unit_name="", severity_unit_name=""):
         N_dns = len(scmax_dns)
         print(f'{N_dns = }')
         time_horizon_effective = config_algo['time_horizon_phys'] - config_algo['advance_split_time_max_phys']
@@ -1520,7 +1520,7 @@ class TEAMS(EnsembleAlgorithm):
         scmaxs_pooled = np.concatenate(scmaxs)
         finite_idx = np.where(np.isfinite(logw_pooled) * (mults_pooled >= 1))
         logw_pooled -= logsumexp(logw_pooled[finite_idx], b=mults_pooled[finite_idx])
-        ccdf_min = np.exp(logw_pooled[np.argmax(scmaxs_pooled)])
+        ccdf_min = 1/N_dns #np.exp(logw_pooled[np.argmax(scmaxs_pooled)])
         ccdf_max = 0.5 # arbitrary
         logccdf_grid = np.linspace(np.log(ccdf_max), np.log(ccdf_min), 30)
         rt_grid = sf2rt(np.exp(logccdf_grid))
@@ -1529,6 +1529,7 @@ class TEAMS(EnsembleAlgorithm):
         rlevs_init,rlevs_fin = (np.zeros((len(algs), len(logccdf_grid))) for i in range(2))
         boost_family_mean = np.zeros(len(algs))
         boost_population = np.zeros(len(algs))
+        ccdf_mins_sep = np.zeros(len(algs)) # Get the minimum weight for each individual TEAMS run 
         for i_alg,alg in enumerate(algs):
             # return periods as function of return levels
             hists_init[i_alg,:],_ = np.histogram(scmaxs[i_alg][:alg.population_size], bins=bin_edges, density=False)
@@ -1537,6 +1538,7 @@ class TEAMS(EnsembleAlgorithm):
             ccdfs_init[i_alg] = utils.pmf2ccdf(hists_init[i_alg],bin_edges)
             ccdfs_fin_wted[i_alg,:] = utils.pmf2ccdf(hists_fin_wted[i_alg],bin_edges)
             ccdfs_fin_unif[i_alg,:] = utils.pmf2ccdf(hists_fin_unif[i_alg],bin_edges)
+            ccdf_mins_sep[i_alg] = ccdfs_fin_wted[i_alg,np.where(ccdfs_fin_wted[i_alg,:] > 0)[0][-1]]
             # return levels as function of return periods
             xord,logccdf_emp = utils.compute_logsf_empirical_with_multiplicities(scmaxs[i_alg],logw=logws[i_alg],mults=mults[i_alg])
             rlevs_fin[i_alg,:] = np.interp(logccdf_grid[::-1], logccdf_emp[::-1], xord[::-1])[::-1]
@@ -1670,7 +1672,8 @@ class TEAMS(EnsembleAlgorithm):
         # ---------------- PLOTTING -----------------
         # useful things 
         def sf2rt(sf):
-            if np.isscalar(sf):
+            sfisscalar = np.isscalar(sf)
+            if sfisscalar:
                 sf = np.array([sf])
             assert sf.ndim == 1
             zidx = np.where(sf <= 0)[0]
@@ -1678,6 +1681,8 @@ class TEAMS(EnsembleAlgorithm):
             rt = np.zeros(len(sf))
             rt[zidx] = np.inf
             rt[nzidx] = utils.convert_sf_to_rtime(sf[nzidx], returnstats['time_horizon_effective'])
+            if sfisscalar:
+                return rt[0]
             return rt
         teams_abbrv = 'TEAMS' if algs[0].advance_split_time>0 else 'AMS'
         # ++++ left-hand text label +++
@@ -1715,35 +1720,40 @@ class TEAMS(EnsembleAlgorithm):
 
         figh,axesh = plt.subplots(figsize=(12,9),ncols=2,nrows=2,width_ratios=[3,1],height_ratios=[3,1],sharex='col',sharey='row')
         figv,axesv = plt.subplots(figsize=(12,9),ncols=2,nrows=2,width_ratios=[3,1],height_ratios=[3,1],sharex='col',sharey='row')
+        # For vertical error bars, identify the longest plottable return period
+        i_rt_last_teams = np.searchsorted(rt_grid, sf2rt(np.nanmin(ccdf_mins_sep)))
+        i_rt_last_dns = np.searchsorted(rt_grid, sf2rt(1/np.max(Ns_fin)))
         ccdflo,ccdfhi = (np.quantile(np.nan_to_num(ccdfs_fin_wted,nan=0), q, axis=0) for q in [alpha_sep/2,1-alpha_sep/2])
         ccdfmid = np.nanmean(ccdfs_fin_wted, axis=0)
         rtmid,rthi,rtlo = (sf2rt(ccdf) for ccdf in(ccdfmid,ccdflo,ccdfhi))
-        rlevlo,rlevmid,rlevhi = (np.nanquantile(rlevs_fin, q, axis=0) for q in [alpha_sep/2,0.5,1-alpha_sep/2)
+        rlevlo,rlevmid,rlevhi = (np.nanquantile(rlevs_fin, q, axis=0) for q in (alpha_sep/2,0.5,1-alpha_sep/2))
 
         axh = axesh[0,0]
         axv = axesv[0,0]
         axh.axhline(bin_edges[i_bin_first], color='gray')
         axv.axhline(bin_edges[i_bin_first], color='gray')
         axh.fill_betweenx(bin_edges[:-1],rtlo/time_unit,rthi/time_unit,color='red',alpha=0.25,zorder=-1)
-        axv.fill_between(rt_grid/time_unit, rlevlo,rlevhi,color='red', alpha=0.25, zorder=-1)
+        axv.fill_between(rt_grid[:i_rt_last_teams]/time_unit, rlevlo[:i_rt_last_teams],rlevhi[:i_rt_last_teams],color='red', alpha=0.25, zorder=-1)
         axh.plot(rtmid/time_unit,bin_edges[:-1],color='purple',linestyle='-',linewidth=2.0,zorder=3)
-        axv.plot(rt_grid/time_unit, rlevmid, color='red', color='purple', linestyle='-', linewidth=2.0, zorder=3)
-        ccdfmid,ccdflo,ccdfhi = utils.pmf2ccdf(hist_dns,bin_edges,return_errbars=True,alpha=alpha_sep,N_errbars=int(N_dns * cost_teams_fin/cost_dns * 1/len(algs)))
+        axv.plot(rt_grid[:i_rt_last_teams]/time_unit, rlevmid[:i_rt_last_teams], color='purple', linestyle='-', linewidth=2.0, zorder=3)
+        ccdfmid,ccdflo,ccdfhi = utils.pmf2ccdf(hist_dns,bin_edges,return_errbars=True,alpha=alpha_sep,N_errbars=int(N_dns * cost_teams_fin/cost_dns/len(algs)))
         rtdnsmid,rtdnshi,rtdnslo = (sf2rt(ccdf) for ccdf in (ccdfmid,ccdflo,ccdfhi))
         axh.fill_betweenx(bin_edges[:-1],rtdnslo/time_unit,rtdnshi/time_unit,color='gray',alpha=0.25,zorder=-1)
-        rlevdnsmid = np.interp(rt_grid, rtdnsmid, bin_edges)
-        rlevdnslo = np.interp(rt_grid, rtdnslo, bin_edges)
-        rlevdnshi = np.interp(rt_grid, rtdnshi, bin_edges)
+        rlevdnsmid,rlevdnslo,rlevdnshi = (np.interp(rt_grid, rtdns, bin_edges[:-1]) for rtdns in (rtdnsmid,rtdnslo,rtdnshi))
+        # need to cut off the return level estimates (return nothing) beyond the queried probabilities
+        axv.fill_between(rt_grid[:i_rt_last_dns]/time_unit, rlevdnslo[:i_rt_last_dns], rlevdnshi[:i_rt_last_dns], color='gray', alpha=0.25, zorder=-1)
         for i_alg in range(Nalg):
             axh.plot(sf2rt(ccdfs_fin_wted[i_alg,:])/time_unit, bin_edges[:-1], color='red', linewidth=0.5,zorder=1)
+            axv.plot(sf2rt(ccdfs_fin_wted[i_alg,:])/time_unit, bin_edges[:-1], color='red', linewidth=0.5,zorder=1)
         axh.plot(rtdnsmid/time_unit,bin_edges[:-1],color='black',linewidth=2.0,linestyle='--',zorder=2)
-        axh.set_ylabel(r'Return level [%s]'%(severity_unit_name))
-        axh.set_title(r'Single %s runs & middle %d%s'%(teams_abbrv,int(100*confint_sep),"%"))
-        axh.set_xscale('log')
-        axh.set_xlim([returnstats['time_horizon_effective']/time_unit,5*sf2rt(min(np.nanmin(ccdf_dns),np.nanmin(ccdf_fin_wted)))/time_unit])
-
-        axh.set_title(r"%d%s error bars"%(int(alpha_sep*100),"%"))
-        axh.text(-0.15,0.5,display,fontsize=15,transform=axh.transAxes,horizontalalignment='right',verticalalignment='center')
+        axv.plot(rt_grid/time_unit, rlevdnsmid, color='black', linewidth=2.0, linestyle='--', zorder=2)
+        for ax in (axh,axv):
+            ax.set_ylabel(r'Return level [%s]'%(severity_unit_name))
+            ax.set_title(r'Single %s runs & middle %d%s'%(teams_abbrv,int(100*confint_sep),"%"))
+            ax.set_xscale('log')
+            ax.set_xlim([returnstats['time_horizon_effective']/time_unit,5*sf2rt(min(np.nanmin(ccdf_dns),np.nanmin(ccdf_fin_wted)))/time_unit])
+            ax.set_title(r"%d%s error bars"%(int(alpha_sep*100),"%"))
+            ax.text(-0.15,0.5,display,fontsize=15,transform=ax.transAxes,horizontalalignment='right',verticalalignment='center')
 
         # F-divergences
         nzidx = np.where(hist_dns > 0)[0]
@@ -1751,28 +1761,39 @@ class TEAMS(EnsembleAlgorithm):
         norm_teams = np.sum(hist_fin_wted)
         # contributions to chi^2
         normfun = lambda arr: arr/np.sum(arr)
-        ax = axesh[0,1]
-        axh.axhline(bin_edges[i_bin_first], color='gray')
+        axh = axesh[0,1]
+        axv = axesv[0,1]
+        for ax in (axh,axv):
+            ax.axhline(bin_edges[i_bin_first], color='gray')
         for i_alg in range(len(algs)):
-            axh.plot((hist_dns[nzidx]/norm_dns - normfun(hists_fin_wted[i_alg,:])[nzidx])**2 / (hist_dns[nzidx]/norm_dns), bin_edges[nzidx], color='red', linewidth=0.5)
-        axh.plot((hist_dns[nzidx]/norm_dns - hist_fin_wted[nzidx]/norm_teams)**2 / (hist_dns[nzidx]/norm_dns), bin_edges[nzidx], color='purple', linewidth=2)
-        axh.set_xscale('log')
-        axh.axvline(0.0, color='black', linestyle='--',linewidth=2)
-        axh.set_title(r"$\chi^2$ contributions")
+            for ax in (axh,axv):
+                ax.plot((hist_dns[nzidx]/norm_dns - normfun(hists_fin_wted[i_alg,:])[nzidx])**2 / (hist_dns[nzidx]/norm_dns)**2, bin_edges[nzidx], color='red', linewidth=0.5)
+        for ax in (axh,axv):
+            ax.plot((hist_dns[nzidx]/norm_dns - hist_fin_wted[nzidx]/norm_teams)**2 / (hist_dns[nzidx]/norm_dns)**2, bin_edges[nzidx], color='purple', linewidth=2)
+            ax.set_xscale('log')
+            ax.axvline(0.0, color='black', linestyle='--',linewidth=2)
+            ax.set_title(r"$[(p-\hat{p})/p]^2$")
 
-        ax = axesh[1,0]
+        axh = axesh[1,0]
+        axv = axesv[1,0]
         for i_alg in range(len(algs)):
-            axh.plot(rt_grid/time_unit, caprlev(rlevs_fin[i_alg])-caprlev(rlev_dns), color='red', linewidth=0.5)
-        axh.plot(rt_grid/time_unit, caprlev(rlev_fin_pooled)-caprlev(rlev_dns), color='purple', linewidth=2)
-        axh.axhline(0, color='black', linestyle='--', linewidth=2)
-        axh.set_xlabel(r'Return time [%s]'%(time_unit_name))
-        axh.set_title(r'Return level errors')
-        for ax in axes.flat:
-            axh.xaxis.set_tick_params(which='both',labelbottom=True)
-            axh.yaxis.set_tick_params(which='both',labelbottom=True)
-        axesh[1,1].axis('off')
+            for ax in (axh,axv):
+                ax.plot(rt_grid/time_unit, (caprlev(rlevs_fin[i_alg])-caprlev(rlev_dns))**2, color='red', linewidth=0.5)
+                ax.plot(rt_grid/time_unit, (caprlev(rlev_fin_pooled)-caprlev(rlev_dns))**2, color='purple', linewidth=2)
+                ax.set_yscale('log')
+                ax.axhline(0, color='black', linestyle='--', linewidth=2)
+                ax.set_xlabel(r'Return time [%s]'%(time_unit_name))
+                ax.set_ylabel(r'$(\ell-\hat{\ell})^2$',rotation='vertical')
+                #ax.set_title(r'Return level errors')
+        for axes in (axesh,axesv):
+            for ax in axes.flat:
+                ax.xaxis.set_tick_params(which='both',labelbottom=True)
+                ax.yaxis.set_tick_params(which='both',labelbottom=True)
+            axes[1,1].axis('off')
         figh.savefig(figfileseph, **pltkwargs)
         plt.close(figh)
+        figv.savefig(figfilesepv, **pltkwargs)
+        plt.close(figv)
 
         # ----------------------------------------------------------------------------
 
