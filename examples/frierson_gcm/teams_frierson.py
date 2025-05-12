@@ -824,8 +824,10 @@ def teams_multidelta_procedure(i_pop_ctrl,i_time_horizon,i_field,i_sigma,idx_del
     Nseed = len(seed_incs)
     kldiv_pooled = np.nan*np.ones(Ndelta)
     x2div_pooled = np.nan*np.ones(Ndelta)
+    L2_pooled = np.nan*np.ones(Ndelta)
     kldiv_sep = np.nan*np.ones((Nseed,Ndelta))
     x2div_sep = np.nan*np.ones((Nseed,Ndelta))
+    L2_sep = np.nan*np.ones((Nseed,Ndelta))
     boost_family_mean = np.zeros((Nseed,Ndelta))
     plot_dir = ""
     for i_delta in idx_delta:
@@ -860,6 +862,8 @@ def teams_multidelta_procedure(i_pop_ctrl,i_time_horizon,i_field,i_sigma,idx_del
         kldiv_sep[:Nseed_actual,i_delta] = cirem[1][:Nseed_actual] 
         x2div_pooled[i_delta] = cirem[2] 
         x2div_sep[:Nseed_actual,i_delta] = cirem[3][:Nseed_actual]
+        L2_pooled[i_delta] = cirem[4] 
+        L2_sep[:Nseed_actual,i_delta] = cirem[5][:Nseed_actual]
         # Load the max-gains metrics
         boost_family_mean[:Nseed_actual,i_delta] = returnstats['boost_family_mean'][:Nseed_actual]
 
@@ -878,7 +882,7 @@ def teams_multidelta_procedure(i_pop_ctrl,i_time_horizon,i_field,i_sigma,idx_del
 
     # TODO unify figures into one, and add a descriptive label with all run parameters
 
-    fig,axes = plt.subplots(figsize=(9,9),nrows=3,ncols=2,width_ratios=[5,1],sharex='col') # left-hand column for labeling 
+    fig,axes = plt.subplots(figsize=(9,9),nrows=4,ncols=2,width_ratios=[5,1],sharex='col') # left-hand column for labeling 
     # chi2 divergence
     handles = []
     ax = axes[0,0]
@@ -896,6 +900,7 @@ def teams_multidelta_procedure(i_pop_ctrl,i_time_horizon,i_field,i_sigma,idx_del
         handles.append(h)
     ax.set_xlabel(r'AST')
     ax.set_ylabel(r'$\chi^2$')
+    ax.set_yscale('log')
     ax = axes[0,1]
     ax.axis('off')
     ax.legend(handles=handles, bbox_to_anchor=(0,1), loc='upper left')
@@ -919,8 +924,28 @@ def teams_multidelta_procedure(i_pop_ctrl,i_time_horizon,i_field,i_sigma,idx_del
     ax = axes[1,1]
     ax.axis('off')
     ax.legend(handles=handles, bbox_to_anchor=(0,1), loc='upper left')
-    # gain
+    # kl divergence
+    handles = []
     ax = axes[2,0]
+    h, = ax.plot(deltas,np.median(L2_sep,axis=0),color='red',marker='.',label='median')
+    handles.append(h)
+    h, = ax.plot(deltas,np.nanmean(L2_sep,axis=0),color='black',marker='.',label='mean')
+    handles.append(h)
+    print(f'{np.mean(L2_sep,axis=0) = }')
+    for i_alpha,alpha in enumerate(alphas):
+        lo,hi = np.nanquantile(L2_sep, [alpha/2,1-alpha/2], axis=0)
+        print(f'{alpha = }')
+        print(f'{lo = }')
+        print(f'{hi = }')
+        h = ax.fill_between(deltas, lo, hi, fc='red', ec='none', alpha=transparencies[i_alpha], zorder=-i_alpha-1, label=r'{:d}% CI'.format(int(round((1-alpha)*100))))
+        handles.append(h)
+    ax.set_xlabel(r'AST')
+    ax.set_ylabel(r'$L^2$')
+    ax = axes[2,1]
+    ax.axis('off')
+    ax.legend(handles=handles, bbox_to_anchor=(0,1), loc='upper left')
+    # gain
+    ax = axes[3,0]
     handles = []
     h, = ax.plot(deltas,np.nanmedian(boost_family_mean,axis=0),color='red',marker='.',label='median')
     handles.append(h)
@@ -936,7 +961,7 @@ def teams_multidelta_procedure(i_pop_ctrl,i_time_horizon,i_field,i_sigma,idx_del
         handles.append(h)
     ax.set_xlabel(r'AST')
     ax.set_ylabel(r'Boost')
-    ax = axes[2,1]
+    ax = axes[3,1]
     ax.legend(handles=handles, bbox_to_anchor=(0,1), loc='upper left')
     ax.axis('off')
     #ax.text(-0.15,0.5,r'$F_4=%g$'%(F4s[i_F4]),ha='right',va='center',transform=ax.transAxes)
@@ -987,16 +1012,19 @@ def compute_integrated_returnstats_error_metrics(returnstats):
     nzidx_teams = np.where(hist_teams > 0)[0]
     nzidx_both = np.intersect1d(nzidx_dns, nzidx_teams)
     kldiv_pooled = np.sum(hist_dns[nzidx_both] * np.log(hist_dns[nzidx_both] / hist_teams[nzidx_both]))
-    x2div_pooled = np.sum((hist_dns[nzidx_dns] - hist_teams[nzidx_dns])**2 / hist_dns[nzidx_dns])
+    x2div_pooled = np.sum((hist_dns[nzidx_dns] - hist_teams[nzidx_dns])**2 / hist_dns[nzidx_dns]**2) # this is not true x2divergence, but rather integrated relative error
+    L2_pooled = np.sqrt(np.mean((returnstats['rlev_fin_pooled'] - returnstats['rlev_dns'])**2))
     # Separate
     kldiv_sep = np.zeros(nalgs)
     x2div_sep = np.zeros(nalgs)
+    L2_sep = np.zeros(nalgs)
     for i_alg in range(nalgs):
         nzidx_teams = np.where(hists_teams[i_alg] > 0)[0]
         nzidx_both = np.intersect1d(nzidx_dns, nzidx_teams)
         kldiv_sep[i_alg] = np.sum(hist_dns[nzidx_both] * np.log(hist_dns[nzidx_both] / hists_teams[i_alg,nzidx_both]))
-        x2div_sep[i_alg] = np.sum((hist_dns[nzidx_dns] - hists_teams[i_alg,nzidx_dns])**2 / hist_dns[nzidx_dns])
-    return kldiv_pooled,kldiv_sep,x2div_pooled,x2div_sep
+        x2div_sep[i_alg] = np.sum((hist_dns[nzidx_dns] - hists_teams[i_alg,nzidx_dns])**2 / hist_dns[nzidx_dns]**2)
+        L2_sep[i_alg] = np.sqrt(np.mean((returnstats['rlevs_fin'][i_alg] - returnstats['rlev_dns'])**2 ))
+    return kldiv_pooled,kldiv_sep,x2div_pooled,x2div_sep,L2_pooled,L2_sep
 
 if __name__ == "__main__":
     print(f'Got into Main')
