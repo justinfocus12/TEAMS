@@ -4,6 +4,7 @@ import numpy as np
 import xarray as xr
 import f90nml
 from matplotlib import pyplot as plt, rcParams 
+from matplotlib.patches import Rectangle
 rcParams.update({
     "font.family": "monospace",
     "font.size": 15
@@ -58,7 +59,7 @@ def print_comp_proc(compproc):
 
 def dns_multiparams():
     seed_incs = [0]
-    sigmas = [0.0,0.01,0.1,0.2,0.3,0.4,0.5]
+    sigmas = [0.0,0.05,0.1,0.2,0.3,0.4,0.5]
     taus = [tau_hrs * 3600 for tau_hrs in [6]]
     Ls = [L_km * 1000 for L_km in [500]]
     return seed_incs,sigmas,taus,Ls
@@ -136,19 +137,19 @@ def dns_single_workflow(i_expt):
             'label': r'$r_{\mathrm{SPPT}}$',
             'abbrv': 'RSPPTlat30-90',
             }),
-        'temp_700': dict({
+        'T1000': dict({
             'fun': frierson_gcm.FriersonGCM.temperature,
-            'roi': dict(pfull=700,lat=slice(30,None)),
+            'roi': dict(pfull=1000,lat=slice(30,None)),
             'cmap': 'Reds',
-            'label': 'Temp [K] ($p/p_s=0.7$)',
-            'abbrv': 'T700lat30-90',
+            'label': 'Temp [K] ($p/p_s=1$)',
+            'abbrv': 'T1000lat30-90',
             }),
-        'u_500': dict({
-            'fun': frierson_gcm.FriersonGCM.zonal_velocity,
-            'roi': dict(pfull=500,lat=slice(30,None)),
+        'UV1000': dict({
+            'fun': frierson_gcm.FriersonGCM.horizontal_wind_speed,
+            'roi': dict(pfull=1000,lat=slice(30,None)),
             'cmap': 'coolwarm',
-            'label': 'Zon. Vel. [m/s] ($p/p_s=0.5$)',
-            'abbrv': 'U500lat30-90',
+            'label': r'Horizontal wind speed [m/s]',
+            'abbrv': 'UV1000lat30-90',
             }),
         'surface_pressure': dict({
             'fun': frierson_gcm.FriersonGCM.surface_pressure,
@@ -243,7 +244,7 @@ def dns_single_workflow(i_expt):
         })
 
     # Scalar observables to plot timeseries of 
-    config_analysis['observables'] = dict({
+    config_analysis['observables_scalar'] = dict({
         'local_ps': dict({
             'fun': lambda ds: frierson_gcm.FriersonGCM.sel_from_roi(
                 frierson_gcm.FriersonGCM.surface_pressure(ds),
@@ -307,7 +308,9 @@ def dns_single_workflow(i_expt):
             }),
         })
     scratch_dir = "/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
-    date_str = "2025-01-16" #"2024-09-10"
+    #date_str = "2025-01-16" #"2024-09-10"
+    #sub_date_str = "1"
+    date_str = "2025-05-16" #"2024-09-10"
     sub_date_str = "1"
     dirdict = dict()
     dirdict['expt'] = join(scratch_dir,date_str,sub_date_str,param_abbrv_gcm,param_abbrv_algo)
@@ -365,15 +368,29 @@ def plot_snapshots(config_analysis, alg, dirdict):
     mem = np.where(all_starts >= spinup)[0][0]
     print(f'{spinup = }, {mem = }, {all_starts[mem]=}')
     for (field_name,field_props) in config_analysis['fields_lonlatdep'].items():
-        fun = lambda ds: frierson_gcm.FriersonGCM.sel_from_roi(field_props['fun'](ds), field_props['roi']).isel(dict(time=np.arange(3,100,step=4)))
+        fun = lambda ds: frierson_gcm.FriersonGCM.sel_from_roi(field_props['fun'](ds), field_props['roi']).isel(dict(time=np.arange(3,20,step=4)))
         field = alg.ens.compute_observables([fun], mem, compute=True)[0]
         vmin,vmax = field.min().item(), field.max().item()
-        for i_time in range(field.time.size):
-            t = field['time'].isel(time=i_time).item()
+        lon_min,lon_max = field['lon'].min().item(), field['lon'].max().item()
+        lat_min,lat_max = field['lat'].min().item(), field['lat'].max().item()
+        dlat = (field['lat'][1] - field['lat'][0]).item()
+        dlon = (field['lon'][1] - field['lon'][0]).item()
+
+        lon_interp = np.linspace(lon_min, lon_max, int((lon_max-lon_min)/1.0))
+        lat_interp = np.linspace(lat_min, lat_max, int((lat_max-lat_min)/1.0))
+        field_interp = field.interp(lon=lon_interp, lat=lat_interp, method='linear')
+        for i_time in range(field_interp.time.size):
+            t = field_interp['time'].isel(time=i_time).item()
             print(f'Plotting field {field_name}, time {t}')
             fig,ax = plt.subplots(figsize=(9,3))
-            xr.plot.pcolormesh(field.isel(time=i_time), x='lon', y='lat', cmap=field_props['cmap'], vmin=vmin, vmax=vmax, ax=ax, cbar_kwargs={'label': None})
-            ax.set_title(r'%s ($t=%.2f$ days)'%(field_props['label'],t))
+            xr.plot.pcolormesh(field_interp.isel(time=i_time), x='lon', y='lat', cmap=field_props['cmap'], vmin=vmin, vmax=vmax, ax=ax, cbar_kwargs={'label': None})
+            ax.add_patch(
+                    Rectangle(
+                        (config_analysis['target_location']['lon']-dlon/2,  config_analysis['target_location']['lat']-dlat/2), 
+                        dlon, dlat, edgecolor='black', facecolor='none', linewidth=2
+                        )
+                    )
+            ax.set_title(r'%s ($t=%.0f$ days)'%(field_props['label'],t))
             ax.set_xlabel('Longitude')
             ax.set_ylabel('Latitude')
             time_abbrv = (r't%g'%(t)).replace('.','p')
@@ -391,7 +408,7 @@ def plot_timeseries(config_analysis, alg, dirdict):
     mem_first = np.where(all_starts >= spinup)[0][0]
     mem_last = np.where(all_ends >= all_starts[mem_first] + duration)[0][0]
     print(f'{mem_first = }, {mem_last = }')
-    for (obs_name,obs_props) in config_analysis['observables'].items():
+    for (obs_name,obs_props) in config_analysis['observables_scalar'].items():
         fun = lambda ds: obs_props['fun'](ds, **obs_props['kwargs'])
         obs_val = xr.concat(tuple(
             alg.ens.compute_observables([fun], mem)[0] for mem in range(mem_first,mem_last+1)), dim='time')
@@ -670,11 +687,11 @@ def dns_meta_procedure(idx_expt):
 
 def dns_single_procedure(i_expt):
     tododict = dict({
-        'run':                            1,
+        'run':                            0,
         'plot_snapshots':                 1,
-        'plot_timeseries':                1,
-        'compute_basic_stats':            1,
-        'compute_extreme_stats':          1,
+        'plot_timeseries':                0,
+        'compute_basic_stats':            0,
+        'compute_extreme_stats':          0,
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = dns_single_workflow(i_expt)
 

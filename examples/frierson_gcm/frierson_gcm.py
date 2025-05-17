@@ -233,7 +233,7 @@ class FriersonGCM(DynamicalSystem):
         print(f"Just set up the output directory {work_dir}")
         # Copy the necessary code over
         shutil.copy2(join(self.base_dir_absolute,'input',self.diag_table_name), join(work_dir, 'diag_table'))
-        shutil.copy2(join(self.base_dir_absolute,'input','jf_spectral_field_table'), join(work_dir, 'field_table'))
+        shutil.copy2(join(self.base_dir_absolute,'input','jf_spectral_field_table_fv'), join(work_dir, 'field_table'))
         shutil.copy2(join(self.base_dir_absolute,f'exec_spectral.{self.platform}', 'fms.x'), join(work_dir,'fms.x'))
         return
 
