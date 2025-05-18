@@ -1,111 +1,74 @@
 
 i = 0
-print(f'--------------Beginning imports-------------')
 import numpy as np
-print(f'{i = }'); i += 1
 from numpy.random import default_rng
-print(f'{i = }'); i += 1
 import xarray as xr
-print(f'{i = }'); i += 1
 from matplotlib import pyplot as plt, rcParams 
-print(f'{i = }'); i += 1
 rcParams.update({
     "font.family": "monospace",
     "font.size": 15
 })
 pltkwargs = dict(bbox_inches="tight",pad_inches=0.2)
 import os
-print(f'{i = }'); i += 1
 from os.path import join, exists, basename, relpath
-print(f'{i = }'); i += 1
 from os import mkdir, makedirs
-print(f'{i = }'); i += 1
 import sys
-print(f'{i = }'); i += 1
 import shutil
-print(f'{i = }'); i += 1
 import glob
-print(f'{i = }'); i += 1
 import subprocess
-print(f'{i = }'); i += 1
 import resource
-print(f'{i = }'); i += 1
 import pickle
-print(f'{i = }'); i += 1
 import copy as copylib
-print(f'{i = }'); i += 1
 import pprint
-print(f'{i = }'); i += 1
 #from importlib import reload
 
 sys.path.append("../..")
-print(f'Now starting to import my own modules')
 import utils; #reload(utils)
-print(f'{i = }'); i += 1
 from ensemble import Ensemble
-print(f'{i = }'); i += 1
 import forcing; #reload(forcing)
-print(f'{i = }'); i += 1
 import algorithms; #reload(forcing)
-print(f'{i = }'); i += 1
 #import frierson_gcm; #reload(frierson_gcm)
 from frierson_gcm import FriersonGCM
-print(f'{i = }'); i += 1
 from algorithms_frierson import FriersonGCMPeriodicBranching
-print(f'{i = }'); i += 1
 
-def pebr_paramset(i_param):
+def pebr_multiparams():
+    seed_incs = [0]
+    sigmas = [0.0,0.05,0.1,0.2,0.3,0.4,0.5]
+    taus = [tau_hrs * 3600 for tau_hrs in [6]]
+    Ls = [L_km * 1000 for L_km in [500]]
+    return seed_incs,sigmas,taus,Ls
+
+def pebr_paramset(i_expt):
     base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
     config_gcm = FriersonGCM.default_config(base_dir_absolute,base_dir_absolute)
 
-    # Parameters to loop over
-    pert_types = ['IMP']        + ['SPPT']*20
-    std_sppts = [0.5]           + [0.5,0.3,0.1,0.05,0.01]*4
-    tau_sppts = [6.0*3600]      + [6.0*3600]*5   + [6.0*3600]*5    + [24.0*3600]*5     + [96.0*3600]*5 
-    L_sppts = [500.0*1000]      + [500.0*1000]*5 + [2000.0*1000]*5 + [500.0*1000]*5    + [500.0*1000]*5
-    outputs_per_days = [4]*21
-    seed_incs = [0]*21
+    multiparams = pebr_multiparams()
+    idx_multiparam = np.unravel_index(i_expt, tuple(len(mp) for mp in multiparams))
+    seed_inc,std_sppt,tau_sppt,L_sppt = (multiparams[i][i_param] for (i,i_param) in enumerate(idx_multiparam))
 
-    if pert_types[i_param] == 'IMP':
-        expt_label = 'Impulsive'
-        expt_abbrv = 'IMP'
-    else:
-        expt_label = r'SPPT, $\sigma=%g$, $\tau=%g$ h, $L=%g$ km'%(std_sppts[i_param],tau_sppts[i_param]/3600,L_sppts[i_param]/1000)
-        expt_abbrv = r'SPPT_std%g_tau%gh_L%gkm'%(std_sppts[i_param],tau_sppts[i_param]/3600,L_sppts[i_param]/1000)
-
-    config_gcm['outputs_per_day'] = outputs_per_days[i_param]
-    config_gcm['pert_type'] = pert_types[i_param]
-    if config_gcm['pert_type'] == 'SPPT':
-        config_gcm['SPPT']['tau_sppt'] = tau_sppts[i_param]
-        config_gcm['SPPT']['std_sppt'] = std_sppts[i_param]
-        config_gcm['SPPT']['L_sppt'] = L_sppts[i_param]
+    config_gcm['outputs_per_day'] = 4
+    config_gcm['pert_type'] = 'SPPT'
+    config_gcm['SPPT']['tau_sppt'] = tau_sppt
+    config_gcm['SPPT']['std_sppt'] = std_sppt
+    config_gcm['SPPT']['L_sppt'] = L_sppt
     config_gcm['remove_temp'] = 1
-    print(f'{i_param = }')
     pprint.pprint(config_gcm)
 
-    case = 1
-    if case == 0:
-        config_algo = dict({
-            'seed_min': 1000,
-            'seed_max': 100000,
-            'seed_inc_init': seed_incs[i_param], 
-            'branches_per_group': 4, 
-            'interbranch_interval_phys': 20.0, # small interval helps to see continuity in stability
-            'branch_duration_phys': 40.0,
-            'num_branch_groups': 10,
-            'max_member_duration_phys': 40.0,
-            })
-    elif case == 1:
-        config_algo = dict({
-            'seed_min': 1000,
-            'seed_max': 100000,
-            'seed_inc_init': seed_incs[i_param], 
-            'branches_per_group': 12, 
-            'interbranch_interval_phys': 2.0, # small interval helps to see continuity in stability
-            'branch_duration_phys': 40.0,
-            'num_branch_groups': 20,
-            'max_member_duration_phys': 40.0,
-            })
+
+    expt_label = r'SPPT, $\sigma=%g$, $\tau=%g$ h, $L=%g$ km'%(std_sppt,tau_sppt/3600,L_sppts[i_param]/1000)
+    expt_abbrv = r'SPPT_std%g_tau%gh_L%gkm'%(std_sppt,tau_sppt/3600,L_sppts/1000)
+
+
+    config_algo = dict({
+        'seed_min': 1000,
+        'seed_max': 100000,
+        'seed_inc_init': seed_inc, 
+        'branches_per_group': 3, 
+        'interbranch_interval_phys': 2.0, # small interval helps to see continuity in stability
+        'branch_duration_phys': 40.0,
+        'num_branch_groups': 4,
+        'max_member_duration_phys': 40.0,
+        })
     return config_gcm,config_algo,expt_label,expt_abbrv
 
 # -------------- Define the observable functions of interest (to be further parameterized) ---------
@@ -113,10 +76,8 @@ def pebr_paramset(i_param):
 
 
 
-def pebr_single_workflow(i_param):
-    print(f'About to generate default config; {i_param = }')
-    config_gcm,config_algo,expt_label,expt_abbrv = pebr_paramset(i_param)
-    ngroups = config_algo['num_branch_groups']
+def pebr_single_workflow(i_expt):
+    config_gcm,config_algo,expt_label,expt_abbrv = pebr_paramset(i_expt)
     param_abbrv_gcm,param_label_gcm = FriersonGCM.label_from_config(config_gcm)
     param_abbrv_algo,param_label_algo = FriersonGCMPeriodicBranching.label_from_config(config_algo)
     # Configure post-analysis
@@ -124,7 +85,7 @@ def pebr_single_workflow(i_param):
     config_analysis = dict()
     config_analysis['target_location'] = dict(lat=45, lon=180)
     # observables (scalar quantities)
-    observables = dict({
+    observables_scalar = dict({
         'local_rain': dict({
             'fun': FriersonGCM.regional_rain,
             'kwargs': dict({
@@ -186,8 +147,8 @@ def pebr_single_workflow(i_param):
             'label': r'Column water vapor $(\phi,\lambda)=(45\pm15,180\pm45)$',
             }),
         })
-    config_analysis['observables'] = observables
-    obs_names = list(observables.keys())
+    config_analysis['observables_scalar'] = observables_scalar
+    obs_names = list(observables_scalar.keys())
     # distance metrics
     dist_metrics = dict({
         'euc_area_horzvel_30x10': dict({
@@ -302,15 +263,15 @@ def pebr_single_workflow(i_param):
 
     # Set up directories
     dirdict = dict()
-    scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
-    date_str = "2024-03-26"
-    sub_date_str = "0"
+    scratch_dir = "/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
+    date_str = "2024-05-16"
+    sub_date_str = "1"
     dirdict['expt'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_gcm, param_abbrv_algo)
     dirdict['data'] = join(dirdict['expt'], 'data')
     dirdict['analysis'] = join(dirdict['expt'], 'analysis')
     dirdict['plots'] = join(dirdict['expt'], 'plots')
     dirdict['init_cond'] = join(
-            f'/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/2024-03-26/0/',
+            scratch_dir,
             param_abbrv_gcm, 'DNS_si0', 'data')
 
     for dirname in ['data','analysis','plots']:
@@ -318,10 +279,15 @@ def pebr_single_workflow(i_param):
 
     filedict = dict()
     # Initial conditions
-    filedict['init_cond'] = dict()
-    filedict['init_cond']['restart'] = join(dirdict['init_cond'],'restart_mem20.cpio')
-    filedict['init_cond']['trajectory'] = join(dirdict['init_cond'],'mem20.nc')
-    print(f'{filedict["init_cond"] = }')
+    filedict['angel'] = join(
+            f'/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/2025-01-16/1',
+            param_abbrv_gcm, 'DNS_si0', 'data',
+            'alg.pickle') 
+    
+    #filedict['init_cond'] = dict()
+    #filedict['init_cond']['restart'] = join(dirdict['init_cond'],'restart_mem20.cpio')
+    #filedict['init_cond']['trajectory'] = join(dirdict['init_cond'],'mem20.nc')
+    #print(f'{filedict["init_cond"] = }')
     # Algorithm manager
     filedict['alg'] = join(dirdict['data'], 'alg.pickle')
     filedict['alg_backup'] = join(dirdict['data'], 'alg_backup.pickle')
@@ -389,7 +355,7 @@ def quantify_dispersion_rates(config_analysis, alg, dirdict):
     return 
 
 def plot_observable_spaghetti(config_analysis, alg, dirdict):
-    for obs_name,obs_props in config_analysis['observables'].items():
+    for obs_name,obs_props in config_analysis['observables_scalar'].items():
         print(f'{obs_name = }')
         print(f'{obs_props = }')
         obs_fun = lambda ds: obs_props['fun'](ds,**obs_props['kwargs'])
@@ -402,7 +368,7 @@ def plot_observable_spaghetti(config_analysis, alg, dirdict):
     return
 
 def quantify_running_max_convergence(config_analysis, alg, dirdict):
-    for obs_name,obs_props in config_analysis['observables'].items():
+    for obs_name,obs_props in config_analysis['observables_scalar'].items():
         print(f'{obs_name = }')
         print(f'{obs_props = }')
         obs_fun = lambda ds: obs_props['fun'](ds,**obs_props['kwargs'])
@@ -426,7 +392,7 @@ def old_thing():
                 plot_suffix = r'%s_%s'%(obsprop[field_name]['abbrv'],location_abbrv)
                 alg.plot_pert_growth(split_times, dists, pgs['thalfsat'], pgs['diff_expons'], pgs['lyap_expons'], pgs['rmses'], pgs['rmsd'].item(), dirdict['plots'], plot_suffix, logscale=True)
         # ---------------- Observables -------------------
-        if 0 and tododict['plot_pebr']['observables']:
+        if 0 and tododict['plot_pebr']['observables_scalar']:
             for obs_name in ['temperature','total_rain']:
                 obs_fun = lambda dsmem: alg.ens.dynsys.sel_from_roi(getattr(alg.ens.dynsys, obs_name)(dsmem), obs_roi[obs_name])
                 roi_abbrv,roi_label = alg.ens.dynsys.label_from_roi(obs_roi[obs_name])
@@ -493,7 +459,7 @@ def pebr_meta_workflow(idx_param):
         workflows[key] = tuple(workflow_tuple[j][i_key] for j in range(len(workflow_tuple)))
 
     config_meta_analysis = dict()
-    for key in ['target_location','observables','dist_metrics','satfracs']:
+    for key in ['target_location','observables_scalar','dist_metrics','satfracs']:
         config_meta_analysis[key] = workflows['configs_analysis'][0][key]
 
     scratch_dir = "/net/bstor002.ib/pog/001/ju26596/TEAMS/examples/frierson_gcm/"

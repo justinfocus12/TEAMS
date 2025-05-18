@@ -523,12 +523,6 @@ def plot_observable_spaghetti(config_analysis, alg, dirdict, filedict, remove_ol
                 landmark_label = {'lmx': 'local max', 'gmx': 'global max', 'thx': 'threshold crossing'}[alg.split_landmark]
                 title = r'%s ($\delta=%g$ before %s)'%(obs_props['label'],alg.advance_split_time*tu,landmark_label)
                 fig,axes = alg.plot_observable_spaghetti(obs_fun, ancestor, special_descendant=special_descendant, obs_label='', title=obs_props['label'], is_score=is_score, outfile=None)
-                if False:
-                    # Add a line for the Buick
-                    mem_buick = next(angel.ens.memgraph.successors(angel.branching_state['generation_0'][ancestor]))
-                    obs_buick = angel.ens.compute_observables([obs_fun], mem_buick)[0][:alg.time_horizon]
-                    hbuick, = axes[0].plot((np.arange(len(obs_buick))+1)*tu, obs_buick, color='gray', linewidth=3, linestyle='--', zorder=-1, label='Buick')
-                    if is_score: axes[1].axhline(np.nanmax(obs_buick), color='gray')
                 axes[0].set_xlabel("Time [days]")
                 axes[0].set_ylabel(r'[%s]'%(config_analysis['observables'][obs_name]['unit_symbol']))
                 axes[1].set_ylabel("")
