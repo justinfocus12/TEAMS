@@ -985,7 +985,7 @@ class FriersonGCM(DynamicalSystem):
         return ds["temp"] 
     @staticmethod
     def surface_temperature(ds):
-        return ds["temp"].sel(pfull=1000) 
+        return ds["temp"].sel(pfull=1000,method='nearest') 
     @staticmethod
     def specific_humidity(ds):
         return ds["sphum"] 

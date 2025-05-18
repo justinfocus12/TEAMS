@@ -85,12 +85,28 @@ class FriersonGCMPeriodicBranching(algorithms.PeriodicBranching):
         tu = dns.ens.dynsys.dt_save
         spinup_phys = 700.0
         dns_twin = np.argmax(dns_tinits*tu >= spinup_phys)  # the DNS member whose initial condition is shared with that of PeBr
+        init_time = dns_tinits[dns_twin] #int(round(
         Nmem_dns = dns.ens.get_nmem()
         # As in TEAMS, run a little pre-history and save it in the new place 
-        prehistory_icandf = dns.ens.traj_metadata[dns_twin]['icandf'].copy()
-        prehistory_icandf['frc'].fin_time = prehistory_icandf['frc'].init_time + config['branch_duration_phys']
-        init_time = dns_tinits[dns_mem_postsplit] #int(round(
-        init_cond = relpath(init_cond_dir
+        bole_icandf = dns.ens.traj_metadata[dns_twin]['icandf'].copy()
+        assert bole_icandf['frc'].init_time == init_time
+        bole_icandf['frc'].fin_time = init_time + int(round(config['bole_duration_phys']/tu))
+        saveinfo = dict({
+            'temp_dir': join(init_cond_dir,f'bole_temp'),
+            'final_dir': init_cond_dir,
+            })
+        saveinfo.update(dict({
+            'filename_traj': join(saveinfo['final_dir'], f'bole_history.nc'),
+            'filename_restart': join(saveinfo['final_dir'], f'bole_restart.cpio'),
+            }))
+        obs_fun = lambda t,x: None
+        dns.ens.dynsys.run_trajectory(bole_icandf, obs_fun, saveinfo, root_dir)
+        pebr = cls(config, ens)
+        pebr.set_init_cond(bole_icandf['frc'].fin_time, saveinfo['filename_restart'])
+        return pebr
+
+
+
             #xr.open_mfdataset(filedict['init_cond']['trajectory'], decode_times=False)['time'].load()[-1].item() 
             #* config_gcm['outputs_per_day']))
 
@@ -193,7 +209,7 @@ class FriersonGCMTEAMS(algorithms.TEAMS):
 
         dns_tinits,dns_tfins = dns.ens.get_all_timespans()
         tu = dns.ens.dynsys.dt_save
-        spinup_phys = 500.0
+        spinup_phys = 700.0
         first_parent = np.where(dns_tinits*tu > spinup_phys)[0][0]
         rng_parent_choice = default_rng(config['seed_min'] + config['seed_inc_init'])
         parents = rng_parent_choice.permutation(np.arange(first_parent,dns.ens.get_nmem()))[:config['population_size']]

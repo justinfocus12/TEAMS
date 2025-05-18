@@ -4,11 +4,11 @@
 #SBATCH -N 1
 #SBATCH -t 0-12:00
 #SBATCH -p sched_mit_hill
-#SBATCH -e error_%A_%a.out
-#SBATCH -o output_%A_%a.out
-#SBATCH --mem-per-cpu=2GB
+#SBATCH -e /orcd/archive/pog/001/ju26596/TEAMS/logs/pebr_%A_%a_error.out
+#SBATCH -o /dev/null
+#SBATCH --mem-per-cpu=10GB
 
-module load anaconda3/2021.11
+module load anaconda3
 source activate teamsenv
-python -u pebr_frierson.py single $SLURM_ARRAY_TASK_ID > progress_"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID".out
+python -u pebr_frierson.py single $SLURM_ARRAY_TASK_ID > /orcd/archive/pog/001/ju26596/TEAMS/logs/pebr_progress_"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID".out
 

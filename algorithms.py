@@ -182,7 +182,8 @@ class PeriodicBranching(EnsembleAlgorithm):
         self.interbranch_interval = int(config['interbranch_interval_phys']/tu) # How long to wait between consecutive splits
         self.branch_duration = int(config['branch_duration_phys']/tu) # How long to run each branch
         self.num_branch_groups = config['num_branch_groups'] # but include the possibility for extension
-        self.trunk_duration = self.ens.dynsys.t_burnin + self.interbranch_interval * (self.num_branch_groups) + self.branch_duration
+        self.bole_duration = int(round(config['bole_duration_phys']/tu))
+        self.trunk_duration = self.bole_duration + self.interbranch_interval * self.num_branch_groups + self.branch_duration
         print(f'{self.trunk_duration = }')
         # Most likely all subclasses will derive from this 
         self.obs_dict = dict({key: [] for key in self.obs_dict_names()})
@@ -239,7 +240,7 @@ class PeriodicBranching(EnsembleAlgorithm):
                 'on_trunk': True,
                 'next_branch_group': 0,
                 'next_branch': 0,
-                'next_branch_time': self.init_time + self.ens.dynsys.t_burnin,
+                'next_branch_time': self.init_time, # + self.ens.dynsys.t_burnin,
                 'trunk_lineage': [],
                 'trunk_lineage_init_times': [],
                 'trunk_lineage_fin_times': [],
@@ -309,7 +310,7 @@ class PeriodicBranching(EnsembleAlgorithm):
     # Utility functions for collecting all trajectories (branches) from a particular branch group
     def get_tree_subset(self, branch_group):
         all_init_times,all_fin_times = self.ens.get_all_timespans()
-        split_time = self.init_time + self.ens.dynsys.t_burnin + branch_group*self.interbranch_interval
+        split_time = self.init_time + branch_group*self.interbranch_interval
         nmem = self.ens.get_nmem()
         mems_nontrunk = np.setdiff1d(range(nmem), self.branching_state['trunk_lineage'])
         mems_branch = [mem for mem in mems_nontrunk if self.branch_times[mem] == split_time]

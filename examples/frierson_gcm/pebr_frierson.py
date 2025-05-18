@@ -15,6 +15,7 @@ from os import mkdir, makedirs
 import sys
 import shutil
 import glob
+import pdb
 import subprocess
 import resource
 import pickle
@@ -55,19 +56,20 @@ def pebr_paramset(i_expt):
     pprint.pprint(config_gcm)
 
 
-    expt_label = r'SPPT, $\sigma=%g$, $\tau=%g$ h, $L=%g$ km'%(std_sppt,tau_sppt/3600,L_sppts[i_param]/1000)
-    expt_abbrv = r'SPPT_std%g_tau%gh_L%gkm'%(std_sppt,tau_sppt/3600,L_sppts/1000)
+    expt_label = r'SPPT, $\sigma=%g$, $\tau=%g$ h, $L=%g$ km'%(std_sppt,tau_sppt/3600,L_sppt/1000)
+    expt_abbrv = r'SPPT_std%g_tau%gh_L%gkm'%(std_sppt,tau_sppt/3600,L_sppt/1000)
 
 
     config_algo = dict({
         'seed_min': 1000,
         'seed_max': 100000,
         'seed_inc_init': seed_inc, 
-        'branches_per_group': 3, 
-        'interbranch_interval_phys': 2.0, # small interval helps to see continuity in stability
-        'branch_duration_phys': 40.0,
-        'num_branch_groups': 4,
-        'max_member_duration_phys': 40.0,
+        'branches_per_group': 12, 
+        'interbranch_interval_phys': 6.0, # small interval helps to see continuity in stability
+        'branch_duration_phys': 50.0,
+        'num_branch_groups': 20,
+        'max_member_duration_phys': 50.0,
+        'bole_duration_phys': 60.0, # using "bole" from forestry to indicate the height of the trunk below the first branch. How far the initial simulation should diverge from the DNS-generated source it came from, before the branching begins  
         })
     return config_gcm,config_algo,expt_label,expt_abbrv
 
@@ -93,6 +95,18 @@ def pebr_single_workflow(i_expt):
                 }),
             'abbrv': 'Rloc',
             'label': r'Rain rate $(\phi,\lambda)=(45,180)$',
+            'unit_symbol': 'mm/day',
+            }),
+        'local_dayavg_rain': dict({
+            'fun': lambda ds,num_steps=1,roi=None: FriersonGCM.rolling_time_mean(
+                FriersonGCM.regional_rain(ds,roi), num_steps),
+            'kwargs': dict({
+                'roi': config_analysis['target_location'],
+                'num_steps': config_gcm['outputs_per_day'],
+                }),
+            'abbrv': 'Rloc1day',
+            'label': r'Rain rate (1-day avg) $(\phi,\lambda)=(%d,%d)$'%(config_analysis['target_location']['lat'],config_analysis['target_location']['lon']),
+            'unit_symbol': 'mm/day',
             }),
         'area_rain_60x20': dict({
             'fun': FriersonGCM.regional_rain,
@@ -104,6 +118,7 @@ def pebr_single_workflow(i_expt):
                 ),
             'abbrv': 'R60x20',
             'label': r'Rain rate $(\phi,\lambda)=(45\pm10,180\pm30)$',
+            'unit_symbol': 'mm/day',
             }),
         'area_rain_90x30': dict({
             'fun': FriersonGCM.regional_rain,
@@ -115,6 +130,7 @@ def pebr_single_workflow(i_expt):
                 ),
             'abbrv': 'R90x30',
             'label': r'Rain rate $(\phi,\lambda)=(45\pm15,180\pm45)$',
+            'unit_symbol': 'mm/day',
             }),
         'local_cwv': dict({
             'fun': FriersonGCM.regional_cwv,
@@ -123,6 +139,7 @@ def pebr_single_workflow(i_expt):
                 ),
             'abbrv': 'CWVloc',
             'label': r'Column water vapor $(\phi,\lambda)=(45,180)$',
+            'unit_symbol': r'kg/m$^2$',
             }),
         'area_cwv_60x20': dict({
             'fun': FriersonGCM.regional_cwv,
@@ -134,6 +151,7 @@ def pebr_single_workflow(i_expt):
                 ),
             'abbrv': 'CWV60x20',
             'label': r'Column water vapor $(\phi,\lambda)=(45\pm10,180\pm30)$',
+            'unit_symbol': r'kg/m$^2$',
             }),
         'area_cwv_90x30': dict({
             'fun': FriersonGCM.regional_cwv,
@@ -145,6 +163,7 @@ def pebr_single_workflow(i_expt):
                 }),
             'abbrv': 'CWV90x30',
             'label': r'Column water vapor $(\phi,\lambda)=(45\pm15,180\pm45)$',
+            'unit_symbol': r'kg/m$^2$',
             }),
         })
     config_analysis['observables_scalar'] = observables_scalar
@@ -159,7 +178,7 @@ def pebr_single_workflow(i_expt):
                 'roi': dict({
                     'lat': slice(config_analysis['target_location']['lat']-5,config_analysis['target_location']['lat']+5),
                     'lon': slice(config_analysis['target_location']['lon']-15,config_analysis['target_location']['lon']+15),
-                    'pfull': 500,
+                    'pfull': 1000,
                     }),
                 }),
             }),
@@ -171,7 +190,7 @@ def pebr_single_workflow(i_expt):
                 'roi': dict({
                     'lat': slice(config_analysis['target_location']['lat']-10,config_analysis['target_location']['lat']+10),
                     'lon': slice(config_analysis['target_location']['lon']-30,config_analysis['target_location']['lon']+30),
-                    'pfull': 500,
+                    'pfull': 1000,
                     }),
                 }),
             }),
@@ -183,7 +202,7 @@ def pebr_single_workflow(i_expt):
                 'roi': dict({
                     'lat': slice(config_analysis['target_location']['lat']-15,config_analysis['target_location']['lat']+15),
                     'lon': slice(config_analysis['target_location']['lon']-45,config_analysis['target_location']['lon']+45),
-                    'pfull': 500,
+                    'pfull': 1000,
                     }),
                 }),
             }),
@@ -264,23 +283,21 @@ def pebr_single_workflow(i_expt):
     # Set up directories
     dirdict = dict()
     scratch_dir = "/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
-    date_str = "2024-05-16"
+    date_str = "2025-05-16"
     sub_date_str = "1"
     dirdict['expt'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_gcm, param_abbrv_algo)
     dirdict['data'] = join(dirdict['expt'], 'data')
     dirdict['analysis'] = join(dirdict['expt'], 'analysis')
     dirdict['plots'] = join(dirdict['expt'], 'plots')
-    dirdict['init_cond'] = join(
-            scratch_dir,
-            param_abbrv_gcm, 'DNS_si0', 'data')
+    dirdict['init_cond'] = join(dirdict['data'], 'bole')
 
-    for dirname in ['data','analysis','plots']:
+    for dirname in ['data','analysis','plots','init_cond']:
         makedirs(dirdict[dirname], exist_ok=True)
 
     filedict = dict()
     # Initial conditions
     filedict['angel'] = join(
-            f'/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/2025-01-16/1',
+            f'/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/2025-05-16/1',
             param_abbrv_gcm, 'DNS_si0', 'data',
             'alg.pickle') 
     
@@ -298,17 +315,13 @@ def run_pebr(dirdict,filedict,config_gcm,config_algo):
     nproc = 4
     recompile = False
     root_dir = dirdict['data']
-    init_time = int(round(
-        xr.open_mfdataset(filedict['init_cond']['trajectory'], decode_times=False)['time'].load()[-1].item() 
-        * config_gcm['outputs_per_day']))
-    init_cond = relpath(filedict['init_cond']['restart'], root_dir)
+    angel = pickle.load(open(filedict['angel'], 'rb'))
     if exists(filedict['alg']):
         alg = pickle.load(open(filedict['alg'], 'rb'))
     else:
         gcm = FriersonGCM(config_gcm, recompile=recompile)
         ens = Ensemble(gcm, root_dir=root_dir)
-        alg = FriersonGCMPeriodicBranching(config_algo, ens)
-        alg.set_init_cond(init_time,init_cond)
+        alg = FriersonGCMPeriodicBranching.initialize_from_dns_appendage(angel, config_algo, ens, dirdict['init_cond'], root_dir)
 
     alg.ens.dynsys.set_nproc(nproc)
     alg.ens.set_root_dir(root_dir)
@@ -317,11 +330,14 @@ def run_pebr(dirdict,filedict,config_gcm,config_algo):
         print(f'----------- Starting member {mem} ----------------')
         saveinfo = dict({
             # Temporary folder
-            'temp_dir': f'mem{mem}',
-            # Ultimate resulting filenames
-            'filename_traj': f'mem{mem}.nc',
-            'filename_restart': f'restart_mem{mem}.cpio',
+            'temp_dir': f'mem{mem}_temp',
+            'final_dir': f'mem{mem}',
             })
+        saveinfo.update(dict({
+            # Ultimate resulting filenames
+            'filename_traj': join(saveinfo['final_dir'],f'history_mem{mem}.nc'),
+            'filename_restart': join(saveinfo['final_dir'],f'restart_mem{mem}.cpio'),
+            }))
         alg.take_next_step(saveinfo)
         if exists(filedict['alg']):
             os.rename(filedict['alg'], filedict['alg_backup'])
@@ -359,9 +375,9 @@ def plot_observable_spaghetti(config_analysis, alg, dirdict):
         print(f'{obs_name = }')
         print(f'{obs_props = }')
         obs_fun = lambda ds: obs_props['fun'](ds,**obs_props['kwargs'])
-        ylabel = obs_props['label']
+        ylabel = r'[%s]'%(obs_props['unit_symbol'])
+        title = obs_props['label']
         for group in range(min(4,alg.branching_state['next_branch_group']+1)):
-            title = r'Group %d'%(group)
             outfile = join(dirdict['plots'], r'spaghetti_obs%s_bg%d.png'%(obs_props['abbrv'],group))
             alg.plot_observable_spaghetti(obs_fun,group,outfile,ylabel=ylabel,title=title)
             # TODO maybe precompute all the observables in advance, in case they're used for multiple purposes
@@ -621,7 +637,7 @@ def pebr_single_procedure(i_param):
         'analysis': dict({
             'observable_spaghetti':      1,
             'dispersion_rate':           1, # including both Lyapunov analysis (FSLE) and expected leadtime until fractional saturation (ELFS)
-            'running_max':               1, # watch extreme value statistics (curves and parameters) converge to the true values with longer time blocks
+            'running_max':               0, # watch extreme value statistics (curves and parameters) converge to the true values with longer time blocks
             }),
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = pebr_single_workflow(i_param)
@@ -640,14 +656,14 @@ def pebr_single_procedure(i_param):
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         procedure = sys.argv[1]
-        idx_param = [int(arg) for arg in sys.argv[2:]]
+        idx_expt = [int(arg) for arg in sys.argv[2:]]
     else:
         procedure = 'meta'
-        idx_param = list(range(1,21))
+        idx_expt = list(range(1,21))
     print(f'Got into Main')
     if procedure == 'single':
-        for i_param in idx_param:
-            pebr_single_procedure(i_param)
+        for i_expt in idx_expt:
+            pebr_single_procedure(i_expt)
     elif procedure == 'meta':
-        pebr_meta_procedure(idx_param)
+        pebr_meta_procedure(idx_expt)
 
