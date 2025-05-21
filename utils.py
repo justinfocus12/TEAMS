@@ -1,5 +1,6 @@
 import numpy as np
 from numpy.random import default_rng
+import xarray as xr
 from scipy.special import logsumexp, gamma as GammaFunction
 from scipy.stats import genextreme as spgex, beta as spbeta
 from scipy.optimize import fsolve,bisect
@@ -261,3 +262,13 @@ def weighted_quantile(a, q, w, logscale=False):
         i = np.argmax(cumweight >= q*cumweight[-1])
     return a[order[i]]
 
+def interpolate_field_1deg(field):
+    lon_min,lon_max = field['lon'].min().item(), field['lon'].max().item()
+    lat_min,lat_max = field['lat'].min().item(), field['lat'].max().item()
+    dlat = (field['lat'][1] - field['lat'][0]).item()
+    dlon = (field['lon'][1] - field['lon'][0]).item()
+
+    lon_interp = np.linspace(lon_min, lon_max, max(1,int((lon_max-lon_min)/1.0)))
+    lat_interp = np.linspace(lat_min, lat_max, max(1,int((lat_max-lat_min)/1.0)))
+    field_interp = field.interp(lon=lon_interp, lat=lat_interp, method='linear')
+    return field_interp

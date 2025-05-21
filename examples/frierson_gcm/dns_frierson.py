@@ -13,6 +13,7 @@ pltkwargs = dict(bbox_inches="tight",pad_inches=0.2)
 import os
 from os.path import join, exists, basename
 from os import mkdir, makedirs
+import pdb
 import sys
 import shutil
 import glob
@@ -98,12 +99,13 @@ def dns_single_workflow(i_expt):
     param_abbrv_algo,param_label_algo = algorithms_frierson.FriersonGCMDirectNumericalSimulation.label_from_config(config_algo)
     config_analysis = dict()
     config_analysis['spinup_phys'] = 500 # at what time to start computing statistics
-    config_analysis['time_block_size_phys'] = 360 # size of block for method of block maxima
+    config_analysis['time_block_size_phys'] = 30 # size of block for method of block maxima
     config_analysis['lon_roll_step'] = 30 # size of longitudinal shift for purposes of zonal symmetry augmentation in method of block maxima
+    config_analysis['duration_stats'] = 10000 # how long a chunk to pull from DNS for statistical analysis
     # Basic statistics to compute
     config_analysis['basic_stats'] = dict({
         'moments': [1,2,3],
-        'quantiles': [0.5,0.9,0.99],
+        'quantiles': [0.5,0.75,0.875],
         })
     # Primary target location
     config_analysis['target_location'] = dict(lat=45,lon=180)
@@ -182,6 +184,7 @@ def dns_single_workflow(i_expt):
         })
     # Latitude-dependent fields, zonally symmetric
     config_analysis['fields_latdep'] = dict({
+        # Maybe these should just be a subset of keys from fields_lonlatdep...
         'u_500': dict({
             'fun': frierson_gcm.FriersonGCM.zonal_velocity,
             'roi': dict(pfull=500),
@@ -194,17 +197,41 @@ def dns_single_workflow(i_expt):
             'abbrv': 'R',
             'label': 'Rain (6h avg) [mm/day]',
             }),
+        'rain_dayavg': dict({
+            'fun': lambda ds: frierson_gcm.FriersonGCM.rolling_time_mean(
+                frierson_gcm.FriersonGCM.total_rain(ds),
+                config_gcm['outputs_per_day'],
+                ),
+            'roi': None,
+            'abbrv': 'R1day',
+            'label': 'Rain (1-day avg) [mm/day]',
+            }),
         'rain_lat30-90': dict({
             'fun': frierson_gcm.FriersonGCM.total_rain,
             'roi': dict(lat=slice(30,None)),
             'abbrv': 'Rlat30-90',
             'label': 'Rain (6h avg) [mm/day]',
             }),
-        'temp_700': dict({
+        'rain_lat30-90_dayavg': dict({
+            'fun': lambda ds: frierson_gcm.FriersonGCM.rolling_time_mean(
+                frierson_gcm.FriersonGCM.total_rain(ds),
+                config_gcm['outputs_per_day'],
+                ),
+            'roi': dict(lat=slice(30,None)),
+            'abbrv': 'R1daylat30-90',
+            'label': 'Rain (1-day avg) [mm/day]',
+            }),
+        'temp_1000': dict({
             'fun': frierson_gcm.FriersonGCM.temperature,
-            'roi': dict(pfull=700),
-            'abbrv': 'T700',
-            'label': r'Temp. ($p/p_s=0.7$) [K]',
+            'roi': dict(pfull=1000),
+            'abbrv': 'T1000',
+            'label': r'Temp. ($p/p_s=1$) [K]',
+            }),
+        'temp_1000_lat30-90': dict({
+            'fun': frierson_gcm.FriersonGCM.temperature,
+            'roi': dict(pfull=1000,lat=slice(30,None)),
+            'abbrv': 'T1000lat30-90',
+            'label': r'Temp. ($p/p_s=1$) [K]',
             }),
         })
     # Observables to get extreme statistics of using zonal symmetry
@@ -360,6 +387,69 @@ def run_dns(dirdict,filedict,config_gcm,config_algo):
         pickle.dump(alg, open(filedict['alg'], 'wb'))
     return
 
+def plot_slice_summary(config_analysis, alg, dirdict):
+    tu = alg.ens.dynsys.dt_save
+    spinup = int(config_analysis['spinup_phys']/tu)
+    duration_hov = int(50/tu)
+    dns_tinits,dns_tfins = alg.ens.get_all_timespans()
+    # Do snapshot and HovMoller plot 
+    mems_hov, = np.where((dns_tfins >= spinup) * (dns_tinits <= spinup+duration_hov))
+    # For basicstats, pull from the pre-analyzed basic stats, which uses the same config_analysis by design. 
+    for (field_name,field_props) in config_analysis['fields_lonlatdep'].items():
+        field_stats = xr.open_dataset(join(dirdict['analysis'], r'basic_stats_%s.nc'%(field_props['abbrv'])))
+        field_fun = lambda ds: frierson_gcm.FriersonGCM.sel_from_roi(field_props['fun'](ds), field_props['roi'])
+
+        field = xr.concat(
+                tuple(alg.ens.compute_observables([field_fun], mem, compute=True)[0] for mem in mems_hov), 
+                dim='time'
+                )
+        field = field.sel(time=slice(spinup*tu,(spinup+duration_hov)*tu))
+        fig,axes = plt.subplots(figsize=(16,12),nrows=2, ncols=2, width_ratios=[4,1], height_ratios=[1,4], sharex=False, sharey='row')
+        ax_snapshot,ax_zonalstats,ax_timeseries,ax_returncurve = axes.flat
+        i_t_snap = duration_hov//2
+        xr.plot.pcolormesh(
+                utils.interpolate_field_1deg(field.isel(time=i_t_snap)),  # TODO interpolate to smooth
+                x='lon', y='lat', cmap=field_props['cmap'], ax=ax_snapshot, cbar_kwargs={'label': ''}, vmin=field.min().item(), vmax=field.max().item()
+                )
+        dlon,dlat = [field[c].values[1] - field[c].values[0] for c in ['lon','lat']]
+        lons,lats = [field[c].to_numpy() for c in ['lon','lat']]
+        ax_snapshot.add_patch(
+                Rectangle(
+                    (config_analysis['target_location']['lon']-dlon/2,  config_analysis['target_location']['lat']-dlat/2), 
+                    dlon, dlat, edgecolor='black', facecolor='none', linewidth=2
+                    )
+                )
+        ax_zonalstats.plot(field_stats['moment1'].to_numpy().flatten(), field_stats['moment1']['lat'].to_numpy().flatten(), color='black', linestyle='--', linewidth=2)
+
+        for (i_q,q) in enumerate(field_stats['quantiles'].coords['quantile'].values):
+            ax_zonalstats.plot(field_stats['quantiles'].isel(quantile=i_q).to_numpy().flatten(), lats, color=plt.cm.coolwarm(i_q/field_stats.coords['quantile'].size))
+        ax_zonalstats.plot(field_stats['moment1'].to_numpy().flatten(), lats, color='black', linestyle='--', linewidth=2)
+        # TODO simpilify lower part to show timeseries, maybe even simple hovmoller too 
+        xr.plot.pcolormesh(
+                utils.interpolate_field_1deg(field.sel(lat=config_analysis['target_location']['lat'], method='nearest')).isel(lat=0,drop=True),
+                x='lon', y='time', cmap=field_props['cmap'], ax=ax_hovmoller, cbar_kwargs={'label': ''}, vmin=field.min().item(), vmax=field.max().item(),
+                )
+        ax_hovmoller.axhline(y=field['time'].isel(time=i_t_snap).item(), color='black', linestyle='--')
+        ax_hovmoller.axvline(x=config_analysis['target_location']['lon'], color='black', linestyle='--')
+        ax_timeseries.plot(field.sel(config_analysis['target_location'],method='nearest'), field['time'].to_numpy().flatten(), color='black')
+        for ax in axes[0,:]:
+            ax.xaxis.set_tick_params(which='both',labelbottom=False)
+            ax.set_xlabel('')
+        for ax in axes[:,1]:
+            ax.yaxis.set_tick_params(which='both',labelbottom=False)
+            ax.set_ylabel('')
+        axes[0,0].set_title(field_props['label'])
+        for ax in axes.flat[1:]:
+            ax.set_title('')
+        fig.savefig(join(dirdict['plots'],r'%s_snap_hov_stats_timeseries.png'%(field_props['abbrv'])), **pltkwargs)
+        plt.close(fig)
+    return
+
+
+
+
+
+
 def plot_snapshots(config_analysis, alg, dirdict):
     tu = alg.ens.dynsys.dt_save
     spinup = int(config_analysis['spinup_phys']/tu)
@@ -371,14 +461,7 @@ def plot_snapshots(config_analysis, alg, dirdict):
         fun = lambda ds: frierson_gcm.FriersonGCM.sel_from_roi(field_props['fun'](ds), field_props['roi']).isel(dict(time=np.arange(3,20,step=4)))
         field = alg.ens.compute_observables([fun], mem, compute=True)[0]
         vmin,vmax = field.min().item(), field.max().item()
-        lon_min,lon_max = field['lon'].min().item(), field['lon'].max().item()
-        lat_min,lat_max = field['lat'].min().item(), field['lat'].max().item()
-        dlat = (field['lat'][1] - field['lat'][0]).item()
-        dlon = (field['lon'][1] - field['lon'][0]).item()
-
-        lon_interp = np.linspace(lon_min, lon_max, int((lon_max-lon_min)/1.0))
-        lat_interp = np.linspace(lat_min, lat_max, int((lat_max-lat_min)/1.0))
-        field_interp = field.interp(lon=lon_interp, lat=lat_interp, method='linear')
+        field_interp = utils.interpolate_field_1deg(field)
         for i_time in range(field_interp.time.size):
             t = field_interp['time'].isel(time=i_time).item()
             print(f'Plotting field {field_name}, time {t}')
@@ -425,7 +508,7 @@ def plot_timeseries(config_analysis, alg, dirdict):
 
 def compute_basic_stats(config_analysis, alg, dirdict):
     todo = dict({
-        'latheight':    0,
+        'latheight':    1,
         'lat':          1,
         })
     obsprop = alg.ens.dynsys.observable_props()
@@ -434,7 +517,7 @@ def compute_basic_stats(config_analysis, alg, dirdict):
     spinup = int(config_analysis['spinup_phys']/tu)
     time_block_size = int(config_analysis['time_block_size_phys']/tu)
     all_starts,all_ends = alg.ens.get_all_timespans()
-    mems2summarize = np.where(all_starts >= spinup)[0]
+    mems2summarize = np.where((all_starts >= spinup)*(all_ends <= spinup + config_analysis["duration_stats"]))[0]
     print(f'{mems2summarize = }')
     # zonal mean fields
     if todo['latheight']:
@@ -443,7 +526,7 @@ def compute_basic_stats(config_analysis, alg, dirdict):
             f_zonmean = dict()
             fun = lambda ds: field_props['fun'](ds).mean(dim='lon').compute() # TODO need to massively speed this up
             fzm = xr.concat(tuple(alg.ens.compute_observables([fun], mem)[0] for mem in mems2summarize[:3]), dim='time').mean(dim='time')
-            fzm.to_netcdf(join(dirdict['analysis'], r'%s_zonmean.nc'%(field_props['abbrv'])))
+            fzm.to_netcdf(join(dirdict['analysis'], r'basic_stats_%s_zonmean.nc'%(field_props['abbrv'])))
             # Plot 
             fig,ax = plt.subplots(figsize=(12,6))
             img = xr.plot.contourf(fzm.assign_coords(pfull=fzm['pfull']/1000), x='lat', y='pfull', cmap=field_props['cmap'], levels=12, cbar_kwargs={'label': ''})
@@ -451,11 +534,11 @@ def compute_basic_stats(config_analysis, alg, dirdict):
             ax.set_title(field_props['label'])
             ax.set_xlabel('Longitude')
             ax.set_ylabel(r'$p/p_{\mathrm{surf}}$')
-            fig.savefig(join(dirdict['plots'], r'%s_zonmean.png'%(field_props['abbrv'])))
+            fig.savefig(join(dirdict['plots'], r'%s_zonmean_stats.png'%(field_props['abbrv'])))
             plt.close(fig)
 
     if todo['lat']:
-        for (field_name,field_props) in config_analysis['fields_latdep'].items():
+        for (field_name,field_props) in config_analysis['fields_lonlatdep'].items():
             print(f'Computing stats of {field_name}')
             fun = lambda ds: frierson_gcm.FriersonGCM.sel_from_roi(field_props['fun'](ds), field_props['roi']).compute() # TODO need to massively speed this up
             f = xr.concat(tuple(alg.ens.compute_observables([fun], mem)[0] for mem in mems2summarize), dim='time')
@@ -467,17 +550,19 @@ def compute_basic_stats(config_analysis, alg, dirdict):
             quantiles = config_analysis['basic_stats']['quantiles']
             f_stats['quantiles'] = f.quantile(quantiles, dim=['time','lon']) 
             f_stats = xr.Dataset(data_vars = f_stats)
-            f_stats.to_netcdf(join(dirdict['analysis'], r'%s.nc'%(field_props['abbrv'])))
+            f_stats.to_netcdf(join(dirdict['analysis'], r'basic_stats_%s.nc'%(field_props['abbrv'])))
             # Plot 
             fig,ax = plt.subplots()
             hmean, = xr.plot.plot(f_stats['moment1'], x='lat', color='black', linestyle='--', linewidth=2, label=r'Mean')
-            for quantile in quantiles:
-                hquant, = xr.plot.plot(f_stats['quantiles'].sel(quantile=quantile), x='lat', color='dodgerblue', label=r'Quantiles')
-            ax.legend(handles=[hmean,hquant])
+            handles = [hmean]
+            for (i_quantile,quantile) in enumerate(quantiles):
+                hquant, = xr.plot.plot(f_stats['quantiles'].sel(quantile=quantile), x='lat', color=plt.cm.coolwarm(i_quantile/len(quantiles)), label=r'1/%d'%(round(1/(1-quantile))))
+                handles.append(hquant)
+            ax.legend(handles=handles)
             ax.set_xlabel("Latitude")
             ax.set_ylabel(field_props['label'])
             ax.set_title('')
-            fig.savefig(join(dirdict['plots'], r'%s.png'%(field_props['abbrv'])), **pltkwargs)
+            fig.savefig(join(dirdict['plots'], r'%s_stats.png'%(field_props['abbrv'])), **pltkwargs)
             plt.close(fig)
     return
 
@@ -617,7 +702,7 @@ def compute_extreme_stats(config_analysis, alg, dirdict):
     spinup = int(config_analysis['spinup_phys']/tu)
     time_block_size = int(config_analysis['time_block_size_phys']/tu)
     all_starts,all_ends = alg.ens.get_all_timespans()
-    mems2summarize = np.where(all_starts >= spinup)[0]
+    mems2summarize = np.where((all_starts >= spinup)*(all_ends <= spinup + config_analysis["duration_stats"]))[0]
     for obs_name,obs_props in config_analysis['observables_onelat_zonsym'].items():
         print(f"----------Starting extreme stats analysis for {obs_name}--------------")
         fun = lambda ds: obs_props['fun'](ds, **obs_props['kwargs'])
@@ -688,10 +773,11 @@ def dns_meta_procedure(idx_expt):
 def dns_single_procedure(i_expt):
     tododict = dict({
         'run':                            0,
-        'plot_snapshots':                 1,
+        'plot_snapshots':                 0,
         'plot_timeseries':                0,
         'compute_basic_stats':            0,
         'compute_extreme_stats':          0,
+        'plot_slice_summary':             1,
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = dns_single_workflow(i_expt)
 
@@ -700,6 +786,8 @@ def dns_single_procedure(i_expt):
     alg = pickle.load(open(filedict['alg'],'rb'))
     if tododict['plot_snapshots']:
         plot_snapshots(config_analysis, alg, dirdict)
+    if tododict['plot_slice_summary']:
+        plot_slice_summary(config_analysis, alg, dirdict)
     if tododict['plot_timeseries']:
         plot_timeseries(config_analysis, alg, dirdict)
     if tododict['compute_basic_stats']:
