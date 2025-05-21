@@ -143,14 +143,14 @@ def dns_single_workflow(i_expt):
             'fun': frierson_gcm.FriersonGCM.temperature,
             'roi': dict(pfull=1000,lat=slice(30,None)),
             'cmap': 'Reds',
-            'label': 'Temp [K] ($p/p_s=1$)',
+            'label': 'Surface temperature [K]',
             'abbrv': 'T1000lat30-90',
             }),
         'UV1000': dict({
             'fun': frierson_gcm.FriersonGCM.horizontal_wind_speed,
             'roi': dict(pfull=1000,lat=slice(30,None)),
             'cmap': 'coolwarm',
-            'label': r'Horizontal wind speed [m/s]',
+            'label': r'Surface horizontal wind speed [m/s]',
             'abbrv': 'UV1000lat30-90',
             }),
         'surface_pressure': dict({
@@ -390,7 +390,7 @@ def run_dns(dirdict,filedict,config_gcm,config_algo):
 def plot_slice_summary(config_analysis, alg, dirdict):
     tu = alg.ens.dynsys.dt_save
     spinup = int(config_analysis['spinup_phys']/tu)
-    duration_hov = int(50/tu)
+    duration_hov = int(25/tu)
     dns_tinits,dns_tfins = alg.ens.get_all_timespans()
     # Do snapshot and HovMoller plot 
     mems_hov, = np.where((dns_tfins >= spinup) * (dns_tinits <= spinup+duration_hov))
@@ -404,43 +404,61 @@ def plot_slice_summary(config_analysis, alg, dirdict):
                 dim='time'
                 )
         field = field.sel(time=slice(spinup*tu,(spinup+duration_hov)*tu))
-        fig,axes = plt.subplots(figsize=(16,12),nrows=2, ncols=2, width_ratios=[4,1], height_ratios=[1,4], sharex=False, sharey='row')
-        ax_snapshot,ax_zonalstats,ax_timeseries,ax_returncurve = axes.flat
+        fmin,fmax = field.min().item(),field.max().item()
+        fig,axes = plt.subplots(figsize=(12,6),nrows=3, ncols=2, width_ratios=[4,1], height_ratios=[0.05, 1, 2], sharex=False, sharey='row', gridspec_kw={'hspace': 0.25, 'wspace': 0.1})
+        ax_cbar,_,ax_snapshot,ax_zonalstats,ax_hovmoller,ax_timeseries = axes.flat
+        axes[0,1].axis('off')
         i_t_snap = duration_hov//2
-        xr.plot.pcolormesh(
+        img_snap = xr.plot.pcolormesh(
                 utils.interpolate_field_1deg(field.isel(time=i_t_snap)),  # TODO interpolate to smooth
-                x='lon', y='lat', cmap=field_props['cmap'], ax=ax_snapshot, cbar_kwargs={'label': ''}, vmin=field.min().item(), vmax=field.max().item()
+                x='lon', y='lat', cmap=field_props['cmap'], ax=ax_snapshot, vmin=fmin, vmax=fmax,
+                add_colorbar=False, add_labels=False
                 )
-        dlon,dlat = [field[c].values[1] - field[c].values[0] for c in ['lon','lat']]
+        ax_snapshot.set_ylabel('Latitude')
+        fig.colorbar(img_snap, cax=ax_cbar, orientation='horizontal', )
+        cbar_ticks = np.linspace(fmin,fmax,4)
+        cbar_ticklabels = ["%.0f"%(c) for c in cbar_ticks]
+        ax_cbar.set_xticks(cbar_ticks)
+        ax_cbar.set_xticklabels(cbar_ticklabels)
+
         lons,lats = [field[c].to_numpy() for c in ['lon','lat']]
+        dlon,dlat = [c[1]-c[0] for c in (lons,lats)]
+        # -------- snapshot -------------
         ax_snapshot.add_patch(
                 Rectangle(
                     (config_analysis['target_location']['lon']-dlon/2,  config_analysis['target_location']['lat']-dlat/2), 
                     dlon, dlat, edgecolor='black', facecolor='none', linewidth=2
                     )
                 )
+        ax_snapshot.set_ylabel("Latitude")
+        # --------- zonal statistics --------
         ax_zonalstats.plot(field_stats['moment1'].to_numpy().flatten(), field_stats['moment1']['lat'].to_numpy().flatten(), color='black', linestyle='--', linewidth=2)
 
         for (i_q,q) in enumerate(field_stats['quantiles'].coords['quantile'].values):
             ax_zonalstats.plot(field_stats['quantiles'].isel(quantile=i_q).to_numpy().flatten(), lats, color=plt.cm.coolwarm(i_q/field_stats.coords['quantile'].size))
         ax_zonalstats.plot(field_stats['moment1'].to_numpy().flatten(), lats, color='black', linestyle='--', linewidth=2)
-        # TODO simpilify lower part to show timeseries, maybe even simple hovmoller too 
+        ax_zonalstats.set_title("Statistics")
+        ax_zonalstats.axhline(config_analysis['target_location']['lat'], color='gray', zorder=-1)
+        # -------------- Hovmoller ---------------
         xr.plot.pcolormesh(
-                utils.interpolate_field_1deg(field.sel(lat=config_analysis['target_location']['lat'], method='nearest')).isel(lat=0,drop=True),
-                x='lon', y='time', cmap=field_props['cmap'], ax=ax_hovmoller, cbar_kwargs={'label': ''}, vmin=field.min().item(), vmax=field.max().item(),
+                utils.interpolate_field_1deg(field.sel(lat=config_analysis['target_location']['lat'], method='nearest'), dims2interp=['lon'],),
+                x='lon', y='time', cmap=field_props['cmap'], ax=ax_hovmoller, vmin=fmin, vmax=fmax, add_colorbar=False, add_labels=False
                 )
         ax_hovmoller.axhline(y=field['time'].isel(time=i_t_snap).item(), color='black', linestyle='--')
         ax_hovmoller.axvline(x=config_analysis['target_location']['lon'], color='black', linestyle='--')
+        ax_hovmoller.set_xlabel("Longitude")
+        ax_hovmoller.set_ylabel('Time [days]')
+        # ----------- Timeseries --------------
         ax_timeseries.plot(field.sel(config_analysis['target_location'],method='nearest'), field['time'].to_numpy().flatten(), color='black')
-        for ax in axes[0,:]:
-            ax.xaxis.set_tick_params(which='both',labelbottom=False)
+        ax_timeseries.set_xlabel('Local value')
+        # ---------- Overall layout -------
+        for ax in axes[1,:]:
+            ax.xaxis.set_tick_params(which='both',labelbottom=True)
             ax.set_xlabel('')
         for ax in axes[:,1]:
             ax.yaxis.set_tick_params(which='both',labelbottom=False)
             ax.set_ylabel('')
         axes[0,0].set_title(field_props['label'])
-        for ax in axes.flat[1:]:
-            ax.set_title('')
         fig.savefig(join(dirdict['plots'],r'%s_snap_hov_stats_timeseries.png'%(field_props['abbrv'])), **pltkwargs)
         plt.close(fig)
     return

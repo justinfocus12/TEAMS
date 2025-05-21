@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod, abstractclassmethod
 from collections import deque
+from itertools import cycle
 import pprint
 import numpy as np
 from numpy.random import default_rng
@@ -1152,6 +1153,8 @@ class TEAMS(EnsembleAlgorithm):
             #print(f'self.branching_state = ')
             #pprint.pprint({bskey: bsval for (bskey,bsval) in self.branching_state.items() if bskey not in ['scores_tdep','score_components_tdep']})
             parent = self.branching_state['parent_queue'].popleft()
+            if "pog" == self.population_control_version:
+                self.branching_state['parent_queue'].append(parent)
             ancestor = sorted(nx.ancestors(self.ens.memgraph, parent) | {parent})[0]
             init_time_parent,fin_time_parent = self.ens.get_member_timespan(parent)
             init_time_ancestor,fin_time_ancestor = self.ens.get_member_timespan(ancestor)
@@ -1261,7 +1264,7 @@ class TEAMS(EnsembleAlgorithm):
             else:
                 self.branching_state['multiplicities'].append(0)
                 self.branching_state['log_weights'].append(self.branching_state['log_weights'][parent])
-            level_raising_condition = (len(self.branching_state['members_active']) >= self.population_size and self.ens.get_nmem() >= self.population_size) # pog keep active members constant
+            level_raising_condition = (len(self.branching_state['members_active']) >= self.population_size and self.ens.get_nmem() >= self.population_size) # keep a constant active population. 
 
         if level_raising_condition:
             self.raise_level_replenish_queue()
@@ -1270,8 +1273,7 @@ class TEAMS(EnsembleAlgorithm):
         print(f'Raising level/replenishing queue')
         if "jf" == self.population_control_version:
             assert len(self.branching_state['parent_queue']) == 0
-        elif "pog" == self.population_control_version:
-            self.branching_state['parent_queue'] = deque()
+        self.branching_state['parent_queue'].clear()
         scores_active = np.array([self.branching_state['scores_max'][ma] for ma in self.branching_state['members_active']])
         # Keep track of reasons for extinction
         termination_reasons = dict({
@@ -1316,17 +1318,18 @@ class TEAMS(EnsembleAlgorithm):
         if not termination_reasons['extinction']:
             parent_pool = self.rng.permutation(np.concatenate(tuple([parent]*self.branching_state['multiplicities'][parent] for parent in self.branching_state['members_active']))) # TODO consider weighting parents' occurrence in this pool by weight
             lenpp = len(parent_pool)
-            if "const_pop" == self.birth_sched:
-                deficit = self.population_size - len(self.branching_state['members_active'])
-            elif "one_birth" == self.birth_sched: # could generalize to a constant number of births 
-                deficit = 1
-            elif "cull_once_then_const_pop" == self.birth_sched:
-                if len(self.branching_state['score_levels']) == 2: # this is the first time raising the level
-                    deficit = 1
-                else:
-                    deficit = num2drop_actual
             if "pog" == self.population_control_version:
-                deficit = 100
+                deficit = lenpp # will fill the queue with all available parents, AND (see elsewhere in the code) put the parent back on the end once it's popped 
+            if "jf" == self.population_control_version:
+                if "const_pop" == self.birth_sched:
+                    deficit = self.population_size - len(self.branching_state['members_active'])
+                elif "one_birth" == self.birth_sched: # could generalize to a constant number of births 
+                    deficit = 1
+                elif "cull_once_then_const_pop" == self.birth_sched:
+                    if len(self.branching_state['score_levels']) == 2: # this is the first time raising the level
+                        deficit = 1
+                    else:
+                        deficit = num2drop_actual
             for i in range(deficit):
                 self.branching_state['parent_queue'].append(parent_pool[i % lenpp])
             print(f'The replenished queue is {self.branching_state["parent_queue"] = }')

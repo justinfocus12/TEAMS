@@ -35,15 +35,15 @@ import algorithms_frierson; reload(algorithms_frierson)
 
 def teams_multiparams():
     multiparams = dict(
-            pop_ctrls = ["pog","jf"],
-            time_horizons = [30,50][1:],
-            target_fields = ["rainrate",'temp','surf_horz_wind',][:2],
+            pop_ctrls = ["pog","jf"][:1],
+            time_horizons = [30,60][1:],
+            target_fields = ["rainrate",'temp','surf_horz_wind',],
             sigmas = [0.3],
-            seed_incs = list(range(0,24)),
+            seed_incs = list(range(0,16)),
             deltas_phys = np.sort(
                 np.concatenate((
-                    np.arange(0,17,step=4),
-                    [9,10,11,13,14,15]
+                    np.arange(0,25,step=4),
+                    #[9,10,11,13,14,15,16,17,18,19]
                     )).astype(float)
                 ),
             #deltas_phys = [11],
@@ -79,7 +79,7 @@ def teams_paramset(i_expt):
     elif target_field == "temp":
         target_abbrv = "T"
     elif target_field == "surf_horz_wind":
-        target_abbrv = "HWS"
+        target_abbrv = "UV"
 
 
 
@@ -100,7 +100,7 @@ def teams_paramset(i_expt):
         'time_horizon_phys': time_horizons[i_time_horizon], #+ deltas_phys[i_delta],
         'buffer_time_phys': 0,
         'advance_split_time_phys': deltas_phys[i_delta], # TODO put this into a parameter
-        'advance_split_time_max_phys': 20, # TODO put this into a parameter
+        'advance_split_time_max_phys': 25, # TODO put this into a parameter
         "population_control_version": pop_ctrls[i_pop_ctrl],
         'split_landmark': split_landmarks[i_slm],
         'inherit_perts_after_split': False,
@@ -339,7 +339,7 @@ def teams_single_workflow(i_expt):
     # Set up directories
     scratch_dir = "/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
     target_field = next(iter(config_algo['score_components'].keys()))
-    date_str = "2025-04-09"
+    date_str = "2025-05-16"
     sub_date_str = "0"
     if not (target_field in ["rainrate","temp","surf_horz_wind"]):
         raise Exception(f'Unsupported target field {target_field}')
@@ -353,7 +353,7 @@ def teams_single_workflow(i_expt):
     filedict = dict()
     # Initial conditions
     filedict['angel'] = join(
-            f'/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/2025-01-16/1',
+            f'/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/2025-05-16/1',
             param_abbrv_gcm, 'DNS_si0', 'data',
             'alg.pickle') 
     # Algorithm manager
@@ -756,7 +756,7 @@ def teams_multiseed_procedure(i_pop_ctrl,i_time_horizon,i_field,i_sigma,idx_seed
     # Set up a meta-dirdict 
     scratch_dir = "/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
     target_field = next(iter(config_algo['score_components'].keys()))
-    date_str = "2025-04-09"
+    date_str = "2025-05-16"
     sub_date_str = "0"
     if not (target_field in ["rainrate","temp","surf_horz_wind"]):
         raise Exception(f'Unsupported target field {target_field}')
@@ -809,7 +809,7 @@ def teams_single_procedure(i_expt):
 
 def teams_multidelta_procedure(i_pop_ctrl,i_time_horizon,i_field,i_sigma,idx_delta,i_slm):
     scratch_dir = "/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
-    date_str = "2025-04-09"
+    date_str = "2025-05-16"
     sub_date_str = "0"
     multiparams = teams_multiparams()
     seed_incs,sigmas,deltas_phys,split_landmarks = [multiparams[v] for v in "seed_incs,sigmas,deltas_phys,split_landmarks".split(",")]
