@@ -543,9 +543,9 @@ class FriersonGCM(DynamicalSystem):
         if {'lat'} <= set(da.dims):
             dims2avg = {'lat','lon'}.intersection(set(da.dims))
             cos_weight = xr.ones_like(da) * np.cos(np.deg2rad(da['lat']))
-            da_aavg = (cos_weight*da).sum(dim=dims2avg) / cos_weight.sum(dim=dims2avg)
+            da_aavg = (cos_weight*da).sum(dim=dims2avg,skipna=False) / cos_weight.sum(dim=dims2avg)
         elif {'lon'} <= set(da.dims):
-            da_aavg = da.mean(dim='lon')
+            da_aavg = da.mean(dim='lon',skipna=False)
         else:
             da_aavg = da
         return da_aavg
@@ -571,14 +571,15 @@ class FriersonGCM(DynamicalSystem):
         D = np.sqrt(D2_aavg.mean(dim=dimsum))
         return D
     # Hyper-specific distance functions below 
-    def dist_euc_rain(ds0,ds1,roi):
-        assert set(roi.keys()) == {'lat','lon'}
-        r0,r1 = tuple(FriersonGCM.total_rain(ds) for ds in (ds0,ds1))
-        return FriersonGCM.dist_euc(r0,r1,roi) #np.sqrt(((r0 - r1)**2).mean(dim=['lat','lon']))
     @staticmethod
-    def dist_euc_rain(ds0,ds1,roi):
+    def dist_euc_rain(ds0,ds1,roi,outputs_per_day):
         assert set(roi.keys()) == {'lat','lon'}
-        r0,r1 = tuple(FriersonGCM.total_rain(ds) for ds in (ds0,ds1))
+        r0,r1 = tuple(
+                FriersonGCM.rolling_time_mean(
+                    FriersonGCM.total_rain(ds), outputs_per_day
+                    )
+                for ds in (ds0,ds1)
+                )
         return FriersonGCM.dist_euc(r0,r1,roi) #np.sqrt(((r0 - r1)**2).mean(dim=['lat','lon']))
     @staticmethod
     def dist_euc_horzvel(ds0,ds1,roi):

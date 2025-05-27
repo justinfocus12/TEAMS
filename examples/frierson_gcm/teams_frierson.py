@@ -37,15 +37,16 @@ def teams_multiparams():
     multiparams = dict(
             pop_ctrls = ["pog","jf"][:1],
             time_horizons = [30,60][1:],
-            target_fields = ["rainrate",'temp','surf_horz_wind',],
+            target_fields = ["rainrate",'temp','surf_horz_wind',][:1],
             sigmas = [0.3],
-            seed_incs = list(range(0,16)),
-            deltas_phys = np.sort(
-                np.concatenate((
-                    np.arange(0,25,step=4),
-                    #[9,10,11,13,14,15,16,17,18,19]
-                    )).astype(float)
-                ),
+            seed_incs = list(range(0,48)),
+            deltas_phys = np.array([10], dtype=int),
+            #deltas_phys = np.sort(
+            #    np.concatenate((
+            #        np.arange(0,25,step=4),
+            #        np.array([6,10,14,]),
+            #        )).astype(float)
+            #    ),
             #deltas_phys = [11],
             split_landmarks = ['thx'],
             )
@@ -90,13 +91,13 @@ def teams_paramset(i_expt):
 
 
     config_algo = dict({
-        'num_levels_max': 20, # This parameter shouldn't affect the filenaming or anything like that 
-        'num_members_max': 150,
+        'num_levels_max': 40, # This parameter shouldn't affect the filenaming or anything like that 
+        'num_members_max': 300,
         'num_active_families_min': 1,
         'seed_min': 1000,
         'seed_max': 100000,
         'seed_inc_init': seed_incs[i_seed_inc],
-        'population_size': 16,
+        'population_size': 32,
         'time_horizon_phys': time_horizons[i_time_horizon], #+ deltas_phys[i_delta],
         'buffer_time_phys': 0,
         'advance_split_time_phys': deltas_phys[i_delta], # TODO put this into a parameter
@@ -340,7 +341,7 @@ def teams_single_workflow(i_expt):
     scratch_dir = "/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
     target_field = next(iter(config_algo['score_components'].keys()))
     date_str = "2025-05-16"
-    sub_date_str = "0"
+    sub_date_str = "1"
     if not (target_field in ["rainrate","temp","surf_horz_wind"]):
         raise Exception(f'Unsupported target field {target_field}')
     dirdict = dict()
@@ -745,6 +746,8 @@ def teams_multiseed_procedure(i_pop_ctrl,i_time_horizon,i_field,i_sigma,idx_seed
     config_gcm = configs_gcm[0]
     config_algo = configs_algo[0]
     print(f'{idx_expt = }')
+
+    pdb.set_trace()
     
     filedict = dict({
         'angel': filedicts[0]['angel'],
@@ -757,7 +760,7 @@ def teams_multiseed_procedure(i_pop_ctrl,i_time_horizon,i_field,i_sigma,idx_seed
     scratch_dir = "/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
     target_field = next(iter(config_algo['score_components'].keys()))
     date_str = "2025-05-16"
-    sub_date_str = "0"
+    sub_date_str = "1"
     if not (target_field in ["rainrate","temp","surf_horz_wind"]):
         raise Exception(f'Unsupported target field {target_field}')
     dirdict = dict()
@@ -790,8 +793,8 @@ def teams_single_procedure(i_expt):
         'run':                          1,
         'analysis': dict({
             'observable_spaghetti':     1,
-            'scorrelation':             1,
-            'fields_2d':                1,
+            'scorrelation':             0,
+            'fields_2d':                0,
             }),
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = teams_single_workflow(i_expt)
@@ -810,7 +813,7 @@ def teams_single_procedure(i_expt):
 def teams_multidelta_procedure(i_pop_ctrl,i_time_horizon,i_field,i_sigma,idx_delta,i_slm):
     scratch_dir = "/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
     date_str = "2025-05-16"
-    sub_date_str = "0"
+    sub_date_str = "1"
     multiparams = teams_multiparams()
     seed_incs,sigmas,deltas_phys,split_landmarks = [multiparams[v] for v in "seed_incs,sigmas,deltas_phys,split_landmarks".split(",")]
 
@@ -876,51 +879,10 @@ def teams_multidelta_procedure(i_pop_ctrl,i_time_horizon,i_field,i_sigma,idx_del
 
     # TODO unify figures into one, and add a descriptive label with all run parameters
 
-    fig,axes = plt.subplots(figsize=(9,9),nrows=4,ncols=2,width_ratios=[5,1],sharex='col') # left-hand column for labeling 
-    # chi2 divergence
+    fig,axes = plt.subplots(figsize=(9,6),nrows=2,ncols=2,width_ratios=[5,1],sharex='col') # left-hand column for labeling 
+    # L2 divergence
     handles = []
     ax = axes[0,0]
-    h, = ax.plot(deltas,np.median(x2div_sep,axis=0),color='red',marker='.',label='median')
-    handles.append(h)
-    h, = ax.plot(deltas,np.nanmean(x2div_sep,axis=0),color='black',marker='.',label='mean')
-    handles.append(h)
-    print(f'{np.mean(x2div_sep,axis=0) = }')
-    for i_alpha,alpha in enumerate(alphas):
-        lo,hi = np.nanquantile(x2div_sep, [alpha/2,1-alpha/2], axis=0)
-        print(f'{alpha = }')
-        print(f'{lo = }')
-        print(f'{hi = }')
-        h = ax.fill_between(deltas, lo, hi, fc='red', ec='none', alpha=transparencies[i_alpha], zorder=-i_alpha-1, label=r'{:d}% CI'.format(int(round((1-alpha)*100))))
-        handles.append(h)
-    ax.set_xlabel(r'AST')
-    ax.set_ylabel(r'$\chi^2$')
-    ax.set_yscale('log')
-    ax = axes[0,1]
-    ax.axis('off')
-    ax.legend(handles=handles, bbox_to_anchor=(0,1), loc='upper left')
-    # kl divergence
-    handles = []
-    ax = axes[1,0]
-    h, = ax.plot(deltas,np.median(kldiv_sep,axis=0),color='red',marker='.',label='median')
-    handles.append(h)
-    h, = ax.plot(deltas,np.nanmean(kldiv_sep,axis=0),color='black',marker='.',label='mean')
-    handles.append(h)
-    print(f'{np.mean(kldiv_sep,axis=0) = }')
-    for i_alpha,alpha in enumerate(alphas):
-        lo,hi = np.nanquantile(kldiv_sep, [alpha/2,1-alpha/2], axis=0)
-        print(f'{alpha = }')
-        print(f'{lo = }')
-        print(f'{hi = }')
-        h = ax.fill_between(deltas, lo, hi, fc='red', ec='none', alpha=transparencies[i_alpha], zorder=-i_alpha-1, label=r'{:d}% CI'.format(int(round((1-alpha)*100))))
-        handles.append(h)
-    ax.set_xlabel(r'AST')
-    ax.set_ylabel(r'KL')
-    ax = axes[1,1]
-    ax.axis('off')
-    ax.legend(handles=handles, bbox_to_anchor=(0,1), loc='upper left')
-    # kl divergence
-    handles = []
-    ax = axes[2,0]
     h, = ax.plot(deltas,np.median(L2_sep,axis=0),color='red',marker='.',label='median')
     handles.append(h)
     h, = ax.plot(deltas,np.nanmean(L2_sep,axis=0),color='black',marker='.',label='mean')
@@ -935,11 +897,11 @@ def teams_multidelta_procedure(i_pop_ctrl,i_time_horizon,i_field,i_sigma,idx_del
         handles.append(h)
     ax.set_xlabel(r'AST')
     ax.set_ylabel(r'$L^2$')
-    ax = axes[2,1]
+    ax = axes[0,1]
     ax.axis('off')
     ax.legend(handles=handles, bbox_to_anchor=(0,1), loc='upper left')
     # gain
-    ax = axes[3,0]
+    ax = axes[1,0]
     handles = []
     h, = ax.plot(deltas,np.nanmedian(boost_family_mean,axis=0),color='red',marker='.',label='median')
     handles.append(h)
@@ -955,10 +917,10 @@ def teams_multidelta_procedure(i_pop_ctrl,i_time_horizon,i_field,i_sigma,idx_del
         handles.append(h)
     ax.set_xlabel(r'AST')
     ax.set_ylabel(r'Boost')
-    ax = axes[3,1]
-    ax.legend(handles=handles, bbox_to_anchor=(0,1), loc='upper left')
+    ax = axes[1,1]
+    #ax.legend(handles=handles, bbox_to_anchor=(0,1), loc='upper left')
     ax.axis('off')
-    #ax.text(-0.15,0.5,r'$F_4=%g$'%(F4s[i_F4]),ha='right',va='center',transform=ax.transAxes)
+
     obslib = frierson_gcm.FriersonGCM.observable_props()
     obslibkey = next(iter(config_algo['score_components'].values()))['observable']
     print("obslibkey = ")

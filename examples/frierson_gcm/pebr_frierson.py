@@ -88,191 +88,68 @@ def pebr_single_workflow(i_expt):
     config_analysis['target_location'] = dict(lat=45, lon=180)
     # observables (scalar quantities)
     observables_scalar = dict({
-        'local_rain': dict({
-            'fun': FriersonGCM.regional_rain,
-            'kwargs': dict({
-                'roi': config_analysis['target_location'],
-                }),
-            'abbrv': 'Rloc',
-            'label': r'Rain rate $(\phi,\lambda)=(45,180)$',
-            'unit_symbol': 'mm/day',
-            }),
-        'local_dayavg_rain': dict({
+        'rainrate': dict({
             'fun': lambda ds,num_steps=1,roi=None: FriersonGCM.rolling_time_mean(
                 FriersonGCM.regional_rain(ds,roi), num_steps),
             'kwargs': dict({
                 'roi': config_analysis['target_location'],
                 'num_steps': config_gcm['outputs_per_day'],
                 }),
-            'abbrv': 'Rloc1day',
-            'label': r'Rain rate (1-day avg) $(\phi,\lambda)=(%d,%d)$'%(config_analysis['target_location']['lat'],config_analysis['target_location']['lon']),
+            'abbrv': 'Rtot',
+            'label': r'1-day Rain $(\phi,\lambda)=(%d,%d)$'%(config_analysis['target_location']['lat'],config_analysis['target_location']['lon']),
             'unit_symbol': 'mm/day',
             }),
-        'area_rain_60x20': dict({
-            'fun': FriersonGCM.regional_rain,
-            'kwargs': dict(
-                roi = dict({
-                    'lat': slice(config_analysis['target_location']['lat']-10,config_analysis['target_location']['lat']+10),
-                    'lon': slice(config_analysis['target_location']['lon']-30,config_analysis['target_location']['lon']+30),
-                    }),
-                ),
-            'abbrv': 'R60x20',
-            'label': r'Rain rate $(\phi,\lambda)=(45\pm10,180\pm30)$',
-            'unit_symbol': 'mm/day',
+        'temp': dict({
+            'fun': lambda ds: FriersonGCM.sel_from_roi(
+                FriersonGCM.temperature(ds), 
+                dict(**config_analysis['target_location'], pfull=1000)),
+            'kwargs': dict(),
+            'abbrv': 'T',
+            'label': 'Temperature $(\phi,\lambda,\sigma)=(%d,%d,1.0)$'%(config_analysis['target_location']['lat'],config_analysis['target_location']['lon']),
+            'unit_symbol': 'K',
             }),
-        'area_rain_90x30': dict({
-            'fun': FriersonGCM.regional_rain,
-            'kwargs': dict(
-                roi = dict({
-                    'lat': slice(config_analysis['target_location']['lat']-15,config_analysis['target_location']['lat']+15),
-                    'lon': slice(config_analysis['target_location']['lon']-45,config_analysis['target_location']['lon']+45),
-                    }),
-                ),
-            'abbrv': 'R90x30',
-            'label': r'Rain rate $(\phi,\lambda)=(45\pm15,180\pm45)$',
-            'unit_symbol': 'mm/day',
-            }),
-        'local_cwv': dict({
-            'fun': FriersonGCM.regional_cwv,
-            'kwargs': dict(
-                roi = config_analysis['target_location'],
-                ),
-            'abbrv': 'CWVloc',
-            'label': r'Column water vapor $(\phi,\lambda)=(45,180)$',
-            'unit_symbol': r'kg/m$^2$',
-            }),
-        'area_cwv_60x20': dict({
-            'fun': FriersonGCM.regional_cwv,
-            'kwargs': dict(
-                roi = dict(
-                    lat=slice(config_analysis['target_location']['lat']-10,config_analysis['target_location']['lat']+10),
-                    lon=slice(config_analysis['target_location']['lon']-30,config_analysis['target_location']['lon']+30),
-                    ),
-                ),
-            'abbrv': 'CWV60x20',
-            'label': r'Column water vapor $(\phi,\lambda)=(45\pm10,180\pm30)$',
-            'unit_symbol': r'kg/m$^2$',
-            }),
-        'area_cwv_90x30': dict({
-            'fun': FriersonGCM.regional_cwv,
-            'kwargs': dict({
-                'roi': dict(
-                    lat=slice(config_analysis['target_location']['lat']-15,config_analysis['target_location']['lat']+15),
-                    lon=slice(config_analysis['target_location']['lon']-45,config_analysis['target_location']['lon']+45),
-                    ),
-                }),
-            'abbrv': 'CWV90x30',
-            'label': r'Column water vapor $(\phi,\lambda)=(45\pm15,180\pm45)$',
-            'unit_symbol': r'kg/m$^2$',
+        'surf_horz_wind': dict({
+            'fun': lambda ds: FriersonGCM.sel_from_roi(
+                FriersonGCM.horizontal_wind_speed(ds), 
+                dict(**config_analysis['target_location'], pfull=1000)),
+            'kwargs': dict(),
+            'abbrv': 'UV',
+            'label': 'Horizontal wind speed $(\phi,\lambda,\sigma)=(%d,%d,1.0)$'%(config_analysis['target_location']['lat'],config_analysis['target_location']['lon']),
+            'unit_symbol': 'm/s',
             }),
         })
     config_analysis['observables_scalar'] = observables_scalar
     obs_names = list(observables_scalar.keys())
     # distance metrics
-    dist_metrics = dict({
-        'euc_area_horzvel_30x10': dict({
+    dist_metrics = dict() 
+    for (lonrange,latrange) in ((40,10),(120,30),(360,90)):
+        areastr = r'%dx%d'%(lonrange,latrange)
+        roi = dict({
+            'lat': slice(config_analysis['target_location']['lat']-latrange/2,config_analysis['target_location']['lat']+latrange/2),
+            'lon': slice(config_analysis['target_location']['lon']-lonrange/2,config_analysis['target_location']['lon']+lonrange/2),
+
+            })
+        dist_metrics[r'horzvel_%s'%(areastr)] = dict({
             'fun': FriersonGCM.dist_euc_horzvel,
-            'abbrv': 'UVEuc30x10',
-            'label': 'Horz. Vel. Eucl. dist. (30x10)',
-            'kwargs': dict({
-                'roi': dict({
-                    'lat': slice(config_analysis['target_location']['lat']-5,config_analysis['target_location']['lat']+5),
-                    'lon': slice(config_analysis['target_location']['lon']-15,config_analysis['target_location']['lon']+15),
-                    'pfull': 1000,
-                    }),
-                }),
-            }),
-        'euc_area_horzvel_60x20': dict({
-            'fun': FriersonGCM.dist_euc_horzvel,
-            'abbrv': 'UVEuc60x20',
-            'label': 'Horz. Vel. Eucl. dist. (60x20)',
-            'kwargs': dict({
-                'roi': dict({
-                    'lat': slice(config_analysis['target_location']['lat']-10,config_analysis['target_location']['lat']+10),
-                    'lon': slice(config_analysis['target_location']['lon']-30,config_analysis['target_location']['lon']+30),
-                    'pfull': 1000,
-                    }),
-                }),
-            }),
-        'euc_area_horzvel_90x30': dict({
-            'fun': FriersonGCM.dist_euc_horzvel,
-            'abbrv': 'UVEuc90x30',
-            'label': 'Horz. Vel. Eucl. dist. (90x30)',
-            'kwargs': dict({
-                'roi': dict({
-                    'lat': slice(config_analysis['target_location']['lat']-15,config_analysis['target_location']['lat']+15),
-                    'lon': slice(config_analysis['target_location']['lon']-45,config_analysis['target_location']['lon']+45),
-                    'pfull': 1000,
-                    }),
-                }),
-            }),
-        'euc_area_ps_30x10': dict({
-            'fun': FriersonGCM.dist_euc_ps,
-            'abbrv': 'PsurfEuc30x10',
-            'label': 'Surf. Pres. Eucl. dist. (30x10)',
-            'kwargs': dict({
-                'roi': dict({
-                    'lat': slice(config_analysis['target_location']['lat']-5,config_analysis['target_location']['lat']+5),
-                    'lon': slice(config_analysis['target_location']['lon']-15,config_analysis['target_location']['lon']+15),
-                    }),
-                }),
-            }),
-        'euc_area_ps_60x20': dict({
-            'fun': FriersonGCM.dist_euc_ps,
-            'abbrv': 'PsurfEuc60x20',
-            'label': 'Surf. Pres. Eucl. dist. (60x20)',
-            'kwargs': dict({
-                'roi': dict({
-                    'lat': slice(config_analysis['target_location']['lat']-10,config_analysis['target_location']['lat']+10),
-                    'lon': slice(config_analysis['target_location']['lon']-30,config_analysis['target_location']['lon']+30),
-                    }),
-                }),
-            }),
-        'euc_area_ps_90x30': dict({
-            'fun': FriersonGCM.dist_euc_ps,
-            'abbrv': 'PsurfEuc90x30',
-            'label': 'Surf. Pres. Eucl. dist. (90x30)',
-            'kwargs': dict({
-                'roi': dict({
-                    'lat': slice(config_analysis['target_location']['lat']-15,config_analysis['target_location']['lat']+15),
-                    'lon': slice(config_analysis['target_location']['lon']-45,config_analysis['target_location']['lon']+45),
-                    }),
-                }),
-            }),
-        'euc_area_rain_30x10': dict({
+            'kwargs': dict({'roi': dict(pfull=1000, **roi)}),
+            'abbrv': r'UVEuc%s'%(areastr),
+            'label': r'Surf. Horz. Vel. Eucl. dist. (%s)'%(areastr),
+            'unit_symbol': 'm/s',
+            })
+        dist_metrics[r'rain_%s'%(areastr)] = dict({
             'fun': FriersonGCM.dist_euc_rain,
-            'abbrv': 'RainEuc30x10',
-            'label': 'Rain-Euclidean distance (30x10)',
-            'kwargs': dict({
-                'roi': dict({
-                    'lat': slice(config_analysis['target_location']['lat']-5,config_analysis['target_location']['lat']+5),
-                    'lon': slice(config_analysis['target_location']['lon']-15,config_analysis['target_location']['lon']+15),
-                    }),
-                }),
-            }),
-        'euc_area_rain_60x20': dict({
-            'fun': FriersonGCM.dist_euc_rain,
-            'abbrv': 'RainEuc60x20',
-            'label': 'Rain-Euclidean distance (60x20)',
-            'kwargs': dict({
-                'roi': dict({
-                    'lat': slice(config_analysis['target_location']['lat']-10,config_analysis['target_location']['lat']+10),
-                    'lon': slice(config_analysis['target_location']['lon']-30,config_analysis['target_location']['lon']+30),
-                    }),
-                }),
-            }),
-        'euc_area_rain_90x30': dict({
-            'fun': FriersonGCM.dist_euc_rain,
-            'abbrv': 'RainEuc90x30',
-            'label': 'Rain-Euclidean distance (90x30)',
-            'kwargs': dict({
-                'roi': dict({
-                    'lat': slice(config_analysis['target_location']['lat']-15,config_analysis['target_location']['lat']+15),
-                    'lon': slice(config_analysis['target_location']['lon']-45,config_analysis['target_location']['lon']+45),
-                    }),
-                }),
-            }),
-        })
+            'abbrv': r'RainEuc%s'%(areastr),
+            'label': r'1-day Rain Eucl. dist. (%s)'%(areastr),
+            'kwargs': dict(roi=roi,outputs_per_day=config_gcm['outputs_per_day']),
+            'unit_symbol': 'mm/day',
+            })
+        dist_metrics[r'temp_%s'%(areastr)] = dict({
+            'fun': FriersonGCM.dist_euc_temp,
+            'abbrv': r'TempEuc%s'%(areastr),
+            'label': r'Surf. Temp.  Eucl. dist. (%s)'%(areastr),
+            'kwargs': dict({'roi': dict(pfull=1000, **roi)}),
+            'unit_symbol': 'K',
+            })
     dist_names = list(dist_metrics.keys())
     config_analysis['dist_metrics'] = dist_metrics
 
@@ -344,7 +221,7 @@ def run_pebr(dirdict,filedict,config_gcm,config_algo):
         pickle.dump(alg, open(filedict['alg'], 'wb'))
     return
 
-def quantify_dispersion_rates(config_analysis, alg, dirdict):
+def quantify_dispersion_rates(config_analysis, alg, dirdict, overwrite_dispersion_stats=False):
     for dist_name,dist_props in config_analysis['dist_metrics'].items():
         print(f'{dist_name = }')
         print(f'{dist_props = }')
@@ -360,13 +237,15 @@ def quantify_dispersion_rates(config_analysis, alg, dirdict):
             dist = dist_props['fun'](ds0.isel(time=tidx0), ds1.isel(time=tidx1), **dist_props['kwargs'])
             return dist
         dispersion_file = join(dirdict['analysis'],r'dispersion_%s.npz'%(dist_props['abbrv']))
-        dispersion_stats = alg.measure_dispersion(dist_fun, config_analysis['satfracs'], dispersion_file)
+        if (not exists(dispersion_file)) or overwrite_dispersion_stats:
+            dispersion_stats = alg.measure_dispersion(dist_fun, config_analysis['satfracs'], dispersion_file)
+        dispersion_stats = np.load(dispersion_file)
         # Plot 
         figfile_prefix = join(dirdict['plots'],r'dispersion_%s'%(dist_props['abbrv']))
         groups2plot = np.arange(min(dispersion_stats['dists'].shape[0],10), dtype=int)
         alg.plot_dispersion(
                 dispersion_stats, figfile_prefix, groups2plot=groups2plot,  
-                title=dist_props['label'], logscale=False
+                title=dist_props['label'], logscale=False, time_unit_symbol='days', ylabel=r'[%s]'%(dist_props['unit_symbol']),
                 )
     return 
 
@@ -379,7 +258,7 @@ def plot_observable_spaghetti(config_analysis, alg, dirdict):
         title = obs_props['label']
         for group in range(min(4,alg.branching_state['next_branch_group']+1)):
             outfile = join(dirdict['plots'], r'spaghetti_obs%s_bg%d.png'%(obs_props['abbrv'],group))
-            alg.plot_observable_spaghetti(obs_fun,group,outfile,ylabel=ylabel,title=title)
+            alg.plot_observable_spaghetti(obs_fun,group,outfile,ylabel=ylabel,title=title, time_unit_symbol='days')
             # TODO maybe precompute all the observables in advance, in case they're used for multiple purposes
     return
 
@@ -633,7 +512,7 @@ def old_thing():
 
 def pebr_single_procedure(i_param):
     tododict = dict({
-        'run':                           1,
+        'run':                           0,
         'analysis': dict({
             'observable_spaghetti':      1,
             'dispersion_rate':           1, # including both Lyapunov analysis (FSLE) and expected leadtime until fractional saturation (ELFS)
@@ -647,7 +526,7 @@ def pebr_single_procedure(i_param):
     if tododict['analysis']['observable_spaghetti']:
         plot_observable_spaghetti(config_analysis, alg, dirdict)
     if tododict['analysis']['dispersion_rate']:
-        quantify_dispersion_rates(config_analysis, alg, dirdict)
+        quantify_dispersion_rates(config_analysis, alg, dirdict, overwrite_dispersion_stats=True)
     if tododict['analysis']['running_max']:
         quantify_running_max_convergence(config_analysis, alg, dirdict)
     return

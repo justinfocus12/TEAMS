@@ -341,7 +341,8 @@ class PeriodicBranching(EnsembleAlgorithm):
         pairwise_fun_vals_array = np.zeros((len(mems_branch), len(time)))
         for i_mem1,mem1 in enumerate(mems_branch):
             pairwise_fun_vals_array[i_mem1,:] = np.concatenate(tuple(d[i_mem1] for d in pairwise_fun_vals_list))[tidx_trunk]
-        if np.any(np.isnan(pairwise_fun_vals_array)):
+        # Allow for NaNs 
+        if False and np.any(np.isnan(pairwise_fun_vals_array)):
             raise Exception(f'{np.mean(np.isnan(pairwise_fun_vals_array), axis=0) = }')
         return time,pairwise_fun_vals_array
     # ************** Dispersion characteristics ****************
@@ -460,7 +461,7 @@ class PeriodicBranching(EnsembleAlgorithm):
                 for i_frac,frac in enumerate(fracs):
                     t2fracsat[dist_name][i_pg,i_frac] = np.mean(np.argmax(rmse/rmsd > frac, axis=1))
         return fracs,t2fracsat
-    def plot_dispersion(self, dispersion_metrics, figfile_prefix, groups2plot=None, ylabel='', title='', logscale=False):
+    def plot_dispersion(self, dispersion_metrics, figfile_prefix, groups2plot=None, ylabel='', title='', logscale=False, time_unit_symbol=''):
         # TODO add in the fractional saturation times 
         tu = self.ens.dynsys.dt_save
         split_times = dispersion_metrics['split_times']
@@ -473,14 +474,14 @@ class PeriodicBranching(EnsembleAlgorithm):
         diff_pows = dispersion_metrics['diffusive_powers']
         print(f'{rmses.max() = }, {rmsd = }')
         ngroups,nbranches,ntimes = dists.shape
-        time = np.arange(ntimes) # local time 
+        time_since_split = 1 + np.arange(ntimes) # local time 
         if groups2plot is None:
             groups2plot = np.arange(ngroups, dtype=int)
         for group in groups2plot:
             fig,ax = plt.subplots()
             for i_mem1 in range(nbranches):
-                ax.plot(time*tu, dists[group,i_mem1,:], color='tomato',)
-            hrmse, = ax.plot(time*tu, rmses[group,:], color='black', label='RMSE')
+                ax.plot((split_times[group]+time_since_split)*tu, dists[group,i_mem1,:], color='tomato',)
+            hrmse, = ax.plot((split_times[group]+time_since_split)*tu, rmses[group,:], color='black', label='RMSE')
             ax.axhline(rmsd, color='black', linestyle='--', label='RMSD')
             # Exponential growth model
             i_time_prev = 0
@@ -488,17 +489,18 @@ class PeriodicBranching(EnsembleAlgorithm):
                 tidx = np.arange(i_time_prev,elfs[group,i_sf], dtype=int)
                 #hpow, = ax.plot(time[tidx]*tu, rmses[group][tidx[0]] * (time/time[tidx[0]])**diff_pows[group,i_sf], color='dodgerblue', label='diffusive')
                 if len(tidx) > 0:
-                    hexp, = ax.plot(
-                            time[tidx]*tu, 
-                            rmses[group,time[tidx[0]]] * np.exp(
-                                (time[tidx]-time[tidx[0]]) * 
-                                fsle[group,i_sf]), 
-                            color='limegreen', label='exp. growth')
+                    if False:
+                        hexp, = ax.plot(
+                                time[tidx]*tu, 
+                                rmses[group,time[tidx[0]]] * np.exp(
+                                    (time[tidx]-time[tidx[0]]) * 
+                                    fsle[group,i_sf]), 
+                                color='limegreen', label='exp. growth')
                     #ax.axvline((time[tidx[-1]]-time[0])*tu, color='black', linewidth=0.5)
                     ax.axhline(rmsd*satfracs[i_sf], color='black', linewidth=0.5)
                     i_time_prev = tidx[-1]
-            ax.legend(handles=[hrmse,hexp])
-            ax.set_xlabel(r'time since split (%g)'%(split_times[group]*tu))
+            ax.legend(handles=[hrmse,])
+            ax.set_xlabel(r'Time [%s]'%(time_unit_symbol))
             ax.set_ylabel(ylabel)
             ax.set_title(title)
             if logscale: ax.set_yscale('log')
@@ -555,7 +557,7 @@ class PeriodicBranching(EnsembleAlgorithm):
         fig.savefig(savefile, **pltkwargs)
         plt.close(fig)
         return
-    def plot_observable_spaghetti(self, obs_fun, branch_group, outfile, ylabel='', title=''):
+    def plot_observable_spaghetti(self, obs_fun, branch_group, outfile, ylabel='', title='', time_unit_symbol=''):
         print(f'\n\nPlotting group {branch_group}')
         # Get all timespans
         time,mems_trunk,tidx_trunk,mems_branch,tidxs_branch = self.get_tree_subset(branch_group)
@@ -565,12 +567,12 @@ class PeriodicBranching(EnsembleAlgorithm):
         obs_trunk = np.concatenate([self.ens.compute_observables([obs_fun], mem)[0] for mem in mems_trunk])
         fig,ax = plt.subplots()
         # For trunk, restrict to the times of interest
-        hctrl, = ax.plot(time*tu, obs_trunk[tidx_trunk], linestyle='--', color='black', linewidth=2, zorder=1, label='CTRL')
+        hctrl, = ax.plot(time*tu, obs_trunk[tidx_trunk], linestyle='--', color='black', linewidth=2, zorder=1, label='control')
         for i_mem,mem in enumerate(mems_branch):
-            hpert, = ax.plot(time*tu, obs_branch[i_mem][tidxs_branch[i_mem]], linestyle='-', color='tomato', linewidth=1, zorder=0, label='PERT')
+            hpert, = ax.plot(time*tu, obs_branch[i_mem][tidxs_branch[i_mem]], linestyle='-', color='tomato', linewidth=1, zorder=0, label='perturbed')
         #ax.axvline(split_time*tu, color='tomato')
         ax.legend(handles=[hctrl,hpert])
-        ax.set_xlabel('time')
+        ax.set_xlabel(r'Time [%s]'%(time_unit_symbol))
         ax.set_ylabel(ylabel)
         ax.set_title(title)
         #ax.set_xlim([time[0],time[-1]+1])
@@ -1753,14 +1755,14 @@ class TEAMS(EnsembleAlgorithm):
         # Exact only for CCDFs
         ccdfmid,ccdflo,ccdfhi = utils.pmf2ccdf(hist_dns,bin_edges,return_errbars=True,alpha=alpha_sep,N_errbars=int(N_dns * cost_teams_fin/cost_dns/len(algs)))
         rtdnsmid,rtdnshi,rtdnslo = (sf2rt(ccdf) for ccdf in (ccdfmid,ccdflo,ccdfhi))
-        axh.fill_betweenx(bin_edges[:-1],rtdnslo/time_unit,rtdnshi/time_unit,color='gray',alpha=0.25,zorder=-1)
+        axh.fill_betweenx(bin_edges[:-1],rtdnslo/time_unit,rtdnshi/time_unit,color='gray',alpha=1.0,zorder=-1)
         # Exact for return levels
         #rlevdnsmid,rlevdnslo,rlevdnshi = (np.interp(rt_grid, rtdns, bin_edges[:-1]) for rtdns in (rtdnsmid,rtdnslo,rtdnshi))
         # Bootstrapped for return levels
         rlevdnsmid = rlev_dns
         rlevdnslo,rlevdnshi = [np.nanquantile(rlevs_dns_boot_fin_sep, q, axis=0) for q in [alpha_sep/2, 1-alpha_sep/2]]
         # need to cut off the return level estimates (return nothing) beyond the queried probabilities
-        axv.fill_between(rt_grid[:i_rt_last_dns]/time_unit, rlevdnslo[:i_rt_last_dns], rlevdnshi[:i_rt_last_dns], color='gray', alpha=0.25, zorder=-1)
+        axv.fill_between(rt_grid[:i_rt_last_dns]/time_unit, rlevdnslo[:i_rt_last_dns], rlevdnshi[:i_rt_last_dns], color='gray', alpha=1.0, zorder=-1)
         for i_alg in range(Nalg):
             axh.plot(sf2rt(ccdfs_fin_wted[i_alg,:])/time_unit, bin_edges[:-1], color='red', linewidth=0.5,zorder=1)
             axv.plot(sf2rt(ccdfs_fin_wted[i_alg,:])/time_unit, bin_edges[:-1], color='red', linewidth=0.5,zorder=1)
@@ -1808,6 +1810,8 @@ class TEAMS(EnsembleAlgorithm):
                 ax.xaxis.set_tick_params(which='both',labelbottom=True)
                 ax.yaxis.set_tick_params(which='both',labelbottom=True)
             axes[1,1].axis('off')
+            for ax in axes[0,:]:
+                ax.set_ylim([bin_edges[i_bin_first], 2*bin_edges[-1]-bin_edges[-2]])
         figh.savefig(figfileseph, **pltkwargs)
         plt.close(figh)
         figv.savefig(figfilesepv, **pltkwargs)
@@ -1849,7 +1853,7 @@ class TEAMS(EnsembleAlgorithm):
         errbars_init_flag = False
         # DNS again, this time accounting for total cost 
         hdns, = ax.plot(sf2rt(ccdf_dns)/time_unit, bin_edges[:-1], color='black', label=r'DNS')
-        ax.fill_betweenx(bin_edges[:-1], sf2rt(ccdf_dns_pooled_lower)/time_unit, sf2rt(ccdf_dns_pooled_upper)/time_unit, fc='gray', ec='none', zorder=-1, alpha=0.5)
+        ax.fill_betweenx(bin_edges[:-1], sf2rt(ccdf_dns_pooled_lower)/time_unit, sf2rt(ccdf_dns_pooled_upper)/time_unit, fc='gray', ec='none', zorder=-1, alpha=1.0)
         # Initialization
         hinit, = ax.plot(sf2rt(ccdf_init)/time_unit, bin_edges[:-1], marker='.', color='dodgerblue', label=r'Ancestors')
         if errbars_init_flag:

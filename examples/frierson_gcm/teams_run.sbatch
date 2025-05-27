@@ -6,7 +6,7 @@
 #SBATCH -p sched_mit_hill
 #SBATCH -e /orcd/archive/pog/001/ju26596/TEAMS/logs/teams_%A_%a_error.out
 #SBATCH -o /dev/null
-#SBATCH --mem-per-cpu=2GB
+#SBATCH --mem-per-cpu=8GB
 
 module load deprecated-modules
 module load anaconda3

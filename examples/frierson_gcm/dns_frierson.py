@@ -2,8 +2,9 @@
 
 import numpy as np
 import xarray as xr
+from cartopy import crs as ccrs
 import f90nml
-from matplotlib import pyplot as plt, rcParams 
+from matplotlib import pyplot as plt, rcParams, gridspec 
 from matplotlib.patches import Rectangle
 rcParams.update({
     "font.family": "monospace",
@@ -113,14 +114,9 @@ def dns_single_workflow(i_expt):
     # 2D snapshots
     config_analysis['fields_lonlatdep'] = dict({
         'rain': dict({
-            'fun': lambda ds: frierson_gcm.FriersonGCM.rolling_time_mean(
-                frierson_gcm.FriersonGCM.sel_from_roi(
-                    frierson_gcm.FriersonGCM.total_rain(ds),
-                    dict(lat=slice(30,None)),
-                    ),
-                config_gcm['outputs_per_day'],
-                ),
+            'fun': frierson_gcm.FriersonGCM.total_rain,
             'roi': dict(lat=slice(30,None)),
+            'tavg': config_gcm['outputs_per_day'],
             'cmap': 'Blues',
             'label': '1-day rain [mm]',
             'abbrv': 'R1daylat30-90',
@@ -128,6 +124,7 @@ def dns_single_workflow(i_expt):
         'column_water_vapor': dict({
             'fun': frierson_gcm.FriersonGCM.column_water_vapor,
             'roi': dict(lat=slice(30,None)),
+            'tavg': 1,
             'cmap': 'Blues',
             'label': r'Col. Water Vapor [kg/m$^2$]',
             'abbrv': 'CWVlat30-90',
@@ -135,6 +132,7 @@ def dns_single_workflow(i_expt):
         'r_sppt_g': dict({
             'fun': frierson_gcm.FriersonGCM.r_sppt_g,
             'roi': dict(lat=slice(30,None)),
+            'tavg': 1,
             'cmap': 'coolwarm',
             'label': r'$r_{\mathrm{SPPT}}$',
             'abbrv': 'RSPPTlat30-90',
@@ -142,6 +140,7 @@ def dns_single_workflow(i_expt):
         'T1000': dict({
             'fun': frierson_gcm.FriersonGCM.temperature,
             'roi': dict(pfull=1000,lat=slice(30,None)),
+            'tavg': 1,
             'cmap': 'Reds',
             'label': 'Surface temperature [K]',
             'abbrv': 'T1000lat30-90',
@@ -149,6 +148,7 @@ def dns_single_workflow(i_expt):
         'UV1000': dict({
             'fun': frierson_gcm.FriersonGCM.horizontal_wind_speed,
             'roi': dict(pfull=1000,lat=slice(30,None)),
+            'tavg': 1,
             'cmap': 'coolwarm',
             'label': r'Surface horizontal wind speed [m/s]',
             'abbrv': 'UV1000lat30-90',
@@ -156,27 +156,36 @@ def dns_single_workflow(i_expt):
         'surface_pressure': dict({
             'fun': frierson_gcm.FriersonGCM.surface_pressure,
             'roi': dict(lat=slice(30,None)),
+            'tavg': 1,
             'cmap': 'coolwarm',
             'label': 'Surf. Pres. [Pa]',
             'abbrv': 'PSlat30-90',
             }),
         })
+    config_analysis['observables_onelat_londep'] = dict()
+    for (field_name,field_props) in config_analysis['fields_lonlatdep'].items():
+        if 'r_sppt_g' == field_name:
+            continue
+        config_analysis['observables_onelat_londep'][field_name] = {**field_props, 'roi': {**field_props['roi'], 'lat': config_analysis['target_location']['lat']}}
     # Latitude- and height-dependent fields 
     config_analysis['fields_latheightdep'] = dict({
         'U': dict({
             'fun': frierson_gcm.FriersonGCM.zonal_velocity,
+            'tavg': 1,
             'abbrv': 'U',
             'label': 'Zonal velocity [m/s]',
             'cmap': 'coolwarm',
             }),
         'T': dict({
             'fun': frierson_gcm.FriersonGCM.temperature,
+            'tavg': 1,
             'abbrv': 'T',
             'label': 'Temperature [K]',
             'cmap': 'coolwarm',
             }),
         'Q': dict({
             'fun': frierson_gcm.FriersonGCM.specific_humidity,
+            'tavg': 1,
             'abbrv': 'Q',
             'label': 'Specific humidity [kg/kg]',
             'cmap': 'Blues',
@@ -188,36 +197,35 @@ def dns_single_workflow(i_expt):
         'u_500': dict({
             'fun': frierson_gcm.FriersonGCM.zonal_velocity,
             'roi': dict(pfull=500),
+            'tavg': 1,
             'abbrv': 'U500',
             'label': r'Zon. Vel. ($p/p_s=0.5$) [m/s]',
             }),
         'rain': dict({
             'fun': frierson_gcm.FriersonGCM.total_rain,
             'roi': None,
+            'tavg': 1,
             'abbrv': 'R',
             'label': 'Rain (6h avg) [mm/day]',
             }),
         'rain_dayavg': dict({
-            'fun': lambda ds: frierson_gcm.FriersonGCM.rolling_time_mean(
-                frierson_gcm.FriersonGCM.total_rain(ds),
-                config_gcm['outputs_per_day'],
-                ),
+            'fun': frierson_gcm.FriersonGCM.total_rain,
             'roi': None,
+            'tavg': config_gcm['outputs_per_day'],
             'abbrv': 'R1day',
             'label': 'Rain (1-day avg) [mm/day]',
             }),
         'rain_lat30-90': dict({
             'fun': frierson_gcm.FriersonGCM.total_rain,
             'roi': dict(lat=slice(30,None)),
+            'tavg': 1,
             'abbrv': 'Rlat30-90',
             'label': 'Rain (6h avg) [mm/day]',
             }),
         'rain_lat30-90_dayavg': dict({
-            'fun': lambda ds: frierson_gcm.FriersonGCM.rolling_time_mean(
-                frierson_gcm.FriersonGCM.total_rain(ds),
-                config_gcm['outputs_per_day'],
-                ),
+            'fun': frierson_gcm.FriersonGCM.total_rain,
             'roi': dict(lat=slice(30,None)),
+            'tavg': config_gcm['outputs_per_day'],
             'abbrv': 'R1daylat30-90',
             'label': 'Rain (1-day avg) [mm/day]',
             }),
@@ -225,19 +233,21 @@ def dns_single_workflow(i_expt):
             'fun': frierson_gcm.FriersonGCM.temperature,
             'roi': dict(pfull=1000),
             'abbrv': 'T1000',
+            'tavg': 1,
             'label': r'Temp. ($p/p_s=1$) [K]',
             }),
         'temp_1000_lat30-90': dict({
             'fun': frierson_gcm.FriersonGCM.temperature,
             'roi': dict(pfull=1000,lat=slice(30,None)),
+            'tavg': 1,
             'abbrv': 'T1000lat30-90',
             'label': r'Temp. ($p/p_s=1$) [K]',
             }),
         })
     # Observables to get extreme statistics of using zonal symmetry
     config_analysis['observables_onelat_zonsym'] = dict({
-        'rain_lat45': dict({
-            'fun': frierson_gcm.FriersonGCM.latband_rain,
+        'R1daylat45': dict({
+            'fun': lambda ds: frierson_gcm.FriersonGCM.total_rain,
             'kwargs': dict({
                 'roi': dict({'lat': 45}),
                 }),
@@ -404,15 +414,22 @@ def plot_slice_summary(config_analysis, alg, dirdict):
                 dim='time'
                 )
         field = field.sel(time=slice(spinup*tu,(spinup+duration_hov)*tu))
-        fmin,fmax = field.min().item(),field.max().item()
-        fig,axes = plt.subplots(figsize=(12,6),nrows=3, ncols=2, width_ratios=[4,1], height_ratios=[0.05, 1, 2], sharex=False, sharey='row', gridspec_kw={'hspace': 0.25, 'wspace': 0.1})
-        ax_cbar,_,ax_snapshot,ax_zonalstats,ax_hovmoller,ax_timeseries = axes.flat
-        axes[0,1].axis('off')
         i_t_snap = duration_hov//2
+        fmin,fmax = field.isel(time=i_t_snap).min().item(),field.isel(time=i_t_snap).max().item()
+        fig = plt.figure(figsize=(12,6)) #, ncols=2, width_ratios=[4,1], height_ratios=[0.05, 1, 2], sharex='col', sharey='row', gridspec_kw={'hspace': 0.25, 'wspace': 0.1})
+        gs = fig.add_gridspec(3,2, height_ratios=[0.1,2,3], width_ratios=[4,1])
+        # TODO 
+        ax_cbar = fig.add_subplot(gs[0,0])
+        ax_snapshot = fig.add_subplot(gs[1,0], projection=ccrs.Robinson(central_longitude=180))
+        ax_snapshot.set_extent([0,360,30,90], crs=ccrs.PlateCarree())
+        ax_zonalstats = fig.add_subplot(gs[1,1])
+        ax_hovmoller = fig.add_subplot(gs[2,0])
+        ax_timeseries = fig.add_subplot(gs[2,1])
         img_snap = xr.plot.pcolormesh(
                 utils.interpolate_field_1deg(field.isel(time=i_t_snap)),  # TODO interpolate to smooth
+                #field.isel(time=i_t_snap),
                 x='lon', y='lat', cmap=field_props['cmap'], ax=ax_snapshot, vmin=fmin, vmax=fmax,
-                add_colorbar=False, add_labels=False
+                add_colorbar=False, add_labels=False, transform=ccrs.PlateCarree(),
                 )
         ax_snapshot.set_ylabel('Latitude')
         fig.colorbar(img_snap, cax=ax_cbar, orientation='horizontal', )
@@ -427,9 +444,10 @@ def plot_slice_summary(config_analysis, alg, dirdict):
         ax_snapshot.add_patch(
                 Rectangle(
                     (config_analysis['target_location']['lon']-dlon/2,  config_analysis['target_location']['lat']-dlat/2), 
-                    dlon, dlat, edgecolor='black', facecolor='none', linewidth=2
+                    dlon, dlat, edgecolor='black', facecolor='none', linewidth=2, transform=ccrs.PlateCarree()
                     )
                 )
+        ax_snapshot.plot(lons, len(lons)*[config_analysis['target_location']['lat']], color='black', linestyle='--', transform=ccrs.PlateCarree())
         ax_snapshot.set_ylabel("Latitude")
         # --------- zonal statistics --------
         ax_zonalstats.plot(field_stats['moment1'].to_numpy().flatten(), field_stats['moment1']['lat'].to_numpy().flatten(), color='black', linestyle='--', linewidth=2)
@@ -437,7 +455,9 @@ def plot_slice_summary(config_analysis, alg, dirdict):
         for (i_q,q) in enumerate(field_stats['quantiles'].coords['quantile'].values):
             ax_zonalstats.plot(field_stats['quantiles'].isel(quantile=i_q).to_numpy().flatten(), lats, color=plt.cm.coolwarm(i_q/field_stats.coords['quantile'].size))
         ax_zonalstats.plot(field_stats['moment1'].to_numpy().flatten(), lats, color='black', linestyle='--', linewidth=2)
-        ax_zonalstats.set_title("Statistics")
+        comp_quants = [r"$\frac{1}{%d}$"%(int(round(1/(1-q)))) for q in config_analysis['basic_stats']['quantiles']]
+        ax_zonalstats.set_title("Mean,\ncomp. quants.\n"+(",".join(comp_quants)))
+        ax_zonalstats.set_ylabel("Lat")
         ax_zonalstats.axhline(config_analysis['target_location']['lat'], color='gray', zorder=-1)
         # -------------- Hovmoller ---------------
         xr.plot.pcolormesh(
@@ -451,14 +471,14 @@ def plot_slice_summary(config_analysis, alg, dirdict):
         # ----------- Timeseries --------------
         ax_timeseries.plot(field.sel(config_analysis['target_location'],method='nearest'), field['time'].to_numpy().flatten(), color='black')
         ax_timeseries.set_xlabel('Local value')
+        ax_zonalstats.set_xlim(ax_timeseries.get_xlim())
         # ---------- Overall layout -------
-        for ax in axes[1,:]:
+        for ax in (ax_snapshot,ax_zonalstats):
             ax.xaxis.set_tick_params(which='both',labelbottom=True)
             ax.set_xlabel('')
-        for ax in axes[:,1]:
-            ax.yaxis.set_tick_params(which='both',labelbottom=False)
-            ax.set_ylabel('')
-        axes[0,0].set_title(field_props['label'])
+        for ax in (ax_zonalstats,ax_timeseries):
+            ax.yaxis.set_tick_params(which='both',labelbottom=True)
+        ax_cbar.set_title(field_props['label'])
         fig.savefig(join(dirdict['plots'],r'%s_snap_hov_stats_timeseries.png'%(field_props['abbrv'])), **pltkwargs)
         plt.close(fig)
     return
@@ -542,7 +562,7 @@ def compute_basic_stats(config_analysis, alg, dirdict):
         for (field_name,field_props) in config_analysis['fields_latheightdep'].items():
             # restrict to zonal mean; too expensive to get quantiles for full fields
             f_zonmean = dict()
-            fun = lambda ds: field_props['fun'](ds).mean(dim='lon').compute() # TODO need to massively speed this up
+            fun = lambda ds: frierson_gcm.FriersonGCM.rolling_time_mean(field_props['fun'](ds).mean(dim='lon'), field_props['tavg']).isel(time=slice(field_props['tavg']-1,None)).compute() # TODO need to massively speed this up
             fzm = xr.concat(tuple(alg.ens.compute_observables([fun], mem)[0] for mem in mems2summarize[:3]), dim='time').mean(dim='time')
             fzm.to_netcdf(join(dirdict['analysis'], r'basic_stats_%s_zonmean.nc'%(field_props['abbrv'])))
             # Plot 
@@ -558,7 +578,7 @@ def compute_basic_stats(config_analysis, alg, dirdict):
     if todo['lat']:
         for (field_name,field_props) in config_analysis['fields_lonlatdep'].items():
             print(f'Computing stats of {field_name}')
-            fun = lambda ds: frierson_gcm.FriersonGCM.sel_from_roi(field_props['fun'](ds), field_props['roi']).compute() # TODO need to massively speed this up
+            fun = lambda ds: frierson_gcm.FriersonGCM.rolling_time_mean(frierson_gcm.FriersonGCM.sel_from_roi(field_props['fun'](ds), field_props['roi']), field_props['tavg']).isel(time=slice(field_props['tavg']-1,None)).compute() # TODO need to massively speed this up
             f = xr.concat(tuple(alg.ens.compute_observables([fun], mem)[0] for mem in mems2summarize), dim='time')
             print(f'{f.dims = }, {f.coords = }')
             moments = config_analysis['basic_stats']['moments']
@@ -663,7 +683,7 @@ def compare_extreme_stats(workflows,config_meta_analysis,meta_dirdict):
             for Ltau_val in Ltau_unique
             )
     print(f'{Ltau_idx_groups = }')
-    for (obs_name,obs_props) in config_meta_analysis['observables_onelat_zonsym'].items():
+    for (obs_name,obs_props) in config_meta_analysis['observables_onelat_londep'].items():
         # Return period curves (together with GEV fit in dashed lines)
         fig_curves,axes_curves = plt.subplots(ncols=len(Ltau_unique), figsize=(6*len(Ltau_unique),4), sharey='row', sharex=True)
         # GEV parameters as a function of sigma
@@ -721,20 +741,22 @@ def compute_extreme_stats(config_analysis, alg, dirdict):
     time_block_size = int(config_analysis['time_block_size_phys']/tu)
     all_starts,all_ends = alg.ens.get_all_timespans()
     mems2summarize = np.where((all_starts >= spinup)*(all_ends <= spinup + config_analysis["duration_stats"]))[0]
-    for obs_name,obs_props in config_analysis['observables_onelat_zonsym'].items():
-        print(f"----------Starting extreme stats analysis for {obs_name}--------------")
-        fun = lambda ds: obs_props['fun'](ds, **obs_props['kwargs'])
+    for (field_name,field_props) in config_analysis['observables_onelat_londep'].items():
+        print(f"----------Starting extreme stats analysis for {field_name}--------------")
+        fun = lambda ds: frierson_gcm.FriersonGCM.rolling_time_mean(frierson_gcm.FriersonGCM.sel_from_roi(field_props['fun'](ds), field_props['roi']), field_props['tavg']).isel(time=slice(field_props['tavg']-1,None)).compute() #**field_props['kwargs'])
         fxt = xr.concat(tuple(alg.ens.compute_observables([fun], mem)[0] for mem in mems2summarize), dim='time')
+        if field_name == 'T1000': 
+            pdb.set_trace()
         lon_roll_step_requested = config_analysis['lon_roll_step']
         bin_lows,hist,rtime,logsf,rtime_gev,logsf_gev,shape,loc,scale = alg.ens.dynsys.compute_stats_dns_zonsym(fxt, lon_roll_step_requested, time_block_size)
         extstats = dict({'bin_lows': bin_lows, 'hist': hist, 'rtime': rtime, 'logsf': logsf, 'rtime_gev': rtime_gev, 'logsf_gev': logsf_gev, 'shape': shape, 'loc': loc, 'scale': scale})
-        np.savez(join(dirdict['analysis'],r'extstats_zonsym_%s.npz'%(obs_props['abbrv'])), **extstats)
+        np.savez(join(dirdict['analysis'],r'extstats_zonsym_%s.npz'%(field_props['abbrv'])), **extstats)
         # Plot 
         bin_mids = bin_lows + 0.5*(bin_lows[1]-bin_lows[0])
         fig,axes = plt.subplots(ncols=2,figsize=(12,4),gridspec_kw={'wspace': 0.25})
         ax = axes[0]
         ax.plot(bin_lows,hist,color='black',marker='.')
-        ax.set_xlabel(obs_props['label'])
+        ax.set_xlabel(field_props['label'])
         ax.set_ylabel('Prob. density')
         ax.set_yscale('log')
         ax = axes[1]
@@ -746,8 +768,8 @@ def compute_extreme_stats(config_analysis, alg, dirdict):
         ax.set_xlabel('Return time')
         ax.set_ylabel('Return level')
         ax.set_xscale('log')
-        fig.suptitle(obs_props['label'])
-        fig.savefig(join(dirdict['plots'],r'extstats_%s.png'%(obs_props['abbrv'])),**pltkwargs)
+        fig.suptitle(field_props['label'])
+        fig.savefig(join(dirdict['plots'],r'extstats_%s.png'%(field_props['abbrv'])),**pltkwargs)
         plt.close(fig)
 
 
@@ -794,8 +816,8 @@ def dns_single_procedure(i_expt):
         'plot_snapshots':                 0,
         'plot_timeseries':                0,
         'compute_basic_stats':            0,
-        'compute_extreme_stats':          0,
-        'plot_slice_summary':             1,
+        'compute_extreme_stats':          1,
+        'plot_slice_summary':             0,
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = dns_single_workflow(i_expt)
 
