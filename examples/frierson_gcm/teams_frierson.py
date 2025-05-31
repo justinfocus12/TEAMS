@@ -37,10 +37,10 @@ def teams_multiparams():
     multiparams = dict(
             pop_ctrls = ["pog","jf"][:1],
             time_horizons = [30,60][1:],
-            target_fields = ["rainrate",'temp','surf_horz_wind',][:1],
+            target_fields = ["rainrate",'temp','surf_horz_wind',][1:2],
             sigmas = [0.3],
             seed_incs = list(range(0,48)),
-            deltas_phys = np.array([10], dtype=int),
+            deltas_phys = np.array([12], dtype=int),
             #deltas_phys = np.sort(
             #    np.concatenate((
             #        np.arange(0,25,step=4),
@@ -747,7 +747,6 @@ def teams_multiseed_procedure(i_pop_ctrl,i_time_horizon,i_field,i_sigma,idx_seed
     config_algo = configs_algo[0]
     print(f'{idx_expt = }')
 
-    pdb.set_trace()
     
     filedict = dict({
         'angel': filedicts[0]['angel'],
