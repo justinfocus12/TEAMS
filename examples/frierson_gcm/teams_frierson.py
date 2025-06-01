@@ -37,10 +37,10 @@ def teams_multiparams():
     multiparams = dict(
             pop_ctrls = ["pog","jf"][:1],
             time_horizons = [30,60][1:],
-            target_fields = ["rainrate",'temp','surf_horz_wind',][1:2],
+            target_fields = ["rainrate",'temp','surf_horz_wind',][:2],
             sigmas = [0.3],
             seed_incs = list(range(0,48)),
-            deltas_phys = np.array([12], dtype=int),
+            deltas_phys = np.array([8,10,12], dtype=int),
             #deltas_phys = np.sort(
             #    np.concatenate((
             #        np.arange(0,25,step=4),
@@ -91,13 +91,13 @@ def teams_paramset(i_expt):
 
 
     config_algo = dict({
-        'num_levels_max': 40, # This parameter shouldn't affect the filenaming or anything like that 
-        'num_members_max': 300,
+        'num_levels_max': 20, # This parameter shouldn't affect the filenaming or anything like that 
+        'num_members_max': 150,
         'num_active_families_min': 1,
         'seed_min': 1000,
         'seed_max': 100000,
         'seed_inc_init': seed_incs[i_seed_inc],
-        'population_size': 32,
+        'population_size': 16,
         'time_horizon_phys': time_horizons[i_time_horizon], #+ deltas_phys[i_delta],
         'buffer_time_phys': 0,
         'advance_split_time_phys': deltas_phys[i_delta], # TODO put this into a parameter

@@ -277,15 +277,24 @@ class FriersonGCM(DynamicalSystem):
                 'lat_max': 32,
                 'num_fourier': 21,
                 'num_spherical': 22,
+                'num_levels': 6,
+                'vert_coord_option': '6level',
                 }),
             'T42': dict({
                 'lon_max': 128,
                 'lat_max': 64,
                 'num_fourier': 42,
                 'num_spherical': 43,
+                'num_levels': 30,
+                'vert_coord_option': 'uneven_sigma',
                 }),
             })
         nmlpd['spectral_dynamics_nml'] = resolution2gridspecs[config['resolution']]
+        resolution2timestep = dict({
+            'T21': dict(hours=0, dt_atmos=2400),
+            'T42': dict(hours=0, dt_atmos=600),
+            })
+        nmlpd['main_nml'] = resolution2timestep[config['resolution']]
 
         for section in nml.keys():
             for nmlpatch in [nmlpd,config['nml_patches_misc']]:

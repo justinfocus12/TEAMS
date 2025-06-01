@@ -77,6 +77,7 @@ def dns_paramset(i_expt):
     expt_label = r'SPPT, $\sigma=%g$, $\tau=%g$ h, $L=%g$ km'%(std_sppt,tau_sppt/3600,L_sppt/1000)
     expt_abbrv = (r'SPPT_std%g_tau%gh_L%gkm'%(std_sppt,tau_sppt/3600,L_sppt/1000)).replace('.','p')
 
+    config_gcm['resolution'] = 'T42'
     config_gcm['outputs_per_day'] = 4
     config_gcm['pert_type'] = 'SPPT'
     config_gcm['SPPT']['tau_sppt'] = tau_sppt
@@ -89,7 +90,7 @@ def dns_paramset(i_expt):
         'seed_max': 100000,
         'seed_inc_init': seed_inc, # will be added to seed_min
         'max_member_duration_phys': 360.0,
-        'num_chunks_max': 300,
+        'num_chunks_max': 100,
         })
 
     return config_gcm,config_algo,expt_label,expt_abbrv
@@ -498,6 +499,8 @@ def plot_snapshots(config_analysis, alg, dirdict):
     for (field_name,field_props) in config_analysis['fields_lonlatdep'].items():
         fun = lambda ds: frierson_gcm.FriersonGCM.sel_from_roi(field_props['fun'](ds), field_props['roi']).isel(dict(time=np.arange(3,20,step=4)))
         field = alg.ens.compute_observables([fun], mem, compute=True)[0]
+        lons,lats = [field[c].to_numpy() for c in ['lon','lat']]
+        dlon,dlat = [c[1]-c[0] for c in (lons,lats)]
         vmin,vmax = field.min().item(), field.max().item()
         field_interp = utils.interpolate_field_1deg(field)
         for i_time in range(field_interp.time.size):
@@ -745,8 +748,6 @@ def compute_extreme_stats(config_analysis, alg, dirdict):
         print(f"----------Starting extreme stats analysis for {field_name}--------------")
         fun = lambda ds: frierson_gcm.FriersonGCM.rolling_time_mean(frierson_gcm.FriersonGCM.sel_from_roi(field_props['fun'](ds), field_props['roi']), field_props['tavg']).isel(time=slice(field_props['tavg']-1,None)).compute() #**field_props['kwargs'])
         fxt = xr.concat(tuple(alg.ens.compute_observables([fun], mem)[0] for mem in mems2summarize), dim='time')
-        if field_name == 'T1000': 
-            pdb.set_trace()
         lon_roll_step_requested = config_analysis['lon_roll_step']
         bin_lows,hist,rtime,logsf,rtime_gev,logsf_gev,shape,loc,scale = alg.ens.dynsys.compute_stats_dns_zonsym(fxt, lon_roll_step_requested, time_block_size)
         extstats = dict({'bin_lows': bin_lows, 'hist': hist, 'rtime': rtime, 'logsf': logsf, 'rtime_gev': rtime_gev, 'logsf_gev': logsf_gev, 'shape': shape, 'loc': loc, 'scale': scale})
@@ -799,41 +800,41 @@ def dns_meta_workflow(idx_param):
 
 
 def dns_meta_procedure(idx_expt):
-    tododict = dict({
+    todo = dict({
         'compare_basic_stats':            1,
         'compare_extreme_stats':          0,
         })
     workflows,config_meta_analysis,meta_dirdict = dns_meta_workflow(idx_expt)
-    if tododict['compare_basic_stats']:
+    if todo['compare_basic_stats']:
         compare_basic_stats(workflows,config_meta_analysis,meta_dirdict)
-    if tododict['compare_extreme_stats']:
+    if todo['compare_extreme_stats']:
         compare_extreme_stats(workflows,config_meta_analysis,meta_dirdict)
     return
 
 def dns_single_procedure(i_expt):
-    tododict = dict({
+    todo = dict({
         'run':                            0,
         'plot_snapshots':                 0,
-        'plot_timeseries':                0,
-        'compute_basic_stats':            0,
+        'plot_timeseries':                1,
+        'compute_basic_stats':            1,
         'compute_extreme_stats':          1,
-        'plot_slice_summary':             0,
+        'plot_slice_summary':             1,
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = dns_single_workflow(i_expt)
 
-    if tododict['run']:
+    if todo['run']:
         run_dns(dirdict,filedict,config_gcm,config_algo)
     alg = pickle.load(open(filedict['alg'],'rb'))
-    if tododict['plot_snapshots']:
+    if todo['plot_snapshots']:
         plot_snapshots(config_analysis, alg, dirdict)
-    if tododict['plot_slice_summary']:
-        plot_slice_summary(config_analysis, alg, dirdict)
-    if tododict['plot_timeseries']:
+    if todo['plot_timeseries']:
         plot_timeseries(config_analysis, alg, dirdict)
-    if tododict['compute_basic_stats']:
+    if todo['compute_basic_stats']:
         compute_basic_stats(config_analysis, alg, dirdict)
-    if tododict['compute_extreme_stats']:
+    if todo['compute_extreme_stats']:
         compute_extreme_stats(config_analysis, alg, dirdict)
+    if todo['plot_slice_summary']:
+        plot_slice_summary(config_analysis, alg, dirdict)
     return
 
 
