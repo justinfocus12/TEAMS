@@ -6,7 +6,7 @@
 #SBATCH -p sched_mit_pog_r8
 #SBATCH -e /orcd/archive/pog/001/ju26596/TEAMS/logs/dns_analysis_%A_%a_error.out
 #SBATCH -o /dev/null
-#SBATCH --mem-per-cpu=16GB
+#SBATCH --mem-per-cpu=64GB
 
 module load deprecated-modules
 module load anaconda3

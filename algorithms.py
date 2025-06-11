@@ -481,7 +481,8 @@ class PeriodicBranching(EnsembleAlgorithm):
             fig,ax = plt.subplots()
             for i_mem1 in range(nbranches):
                 ax.plot((split_times[group]+time_since_split)*tu, dists[group,i_mem1,:], color='tomato',)
-            hrmse, = ax.plot((split_times[group]+time_since_split)*tu, rmses[group,:], color='black', label='RMSE')
+            hrmse_conditional, = ax.plot((split_times[group]+time_since_split)*tu, rmses[group,:], color='black', label='Conditional RMSE')
+            hrmse_climatological, = ax.plot((split_times[group]+time_since_split)*tu, np.nanmean(rmses[:,:], axis=0), color='purple', label='Climatological RMSE')
             ax.axhline(rmsd, color='black', linestyle='--', label='RMSD')
             # Exponential growth model
             i_time_prev = 0
@@ -499,7 +500,7 @@ class PeriodicBranching(EnsembleAlgorithm):
                     #ax.axvline((time[tidx[-1]]-time[0])*tu, color='black', linewidth=0.5)
                     ax.axhline(rmsd*satfracs[i_sf], color='black', linewidth=0.5)
                     i_time_prev = tidx[-1]
-            ax.legend(handles=[hrmse,])
+            ax.legend(handles=[hrmse_conditional,hrmse_climatological])
             ax.set_xlabel(r'Time [%s]'%(time_unit_symbol))
             ax.set_ylabel(ylabel)
             ax.set_title(title)

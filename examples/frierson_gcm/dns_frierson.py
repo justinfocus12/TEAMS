@@ -815,7 +815,7 @@ def dns_single_procedure(i_expt):
     todo = dict({
         'run':                            0,
         'plot_snapshots':                 0,
-        'plot_timeseries':                1,
+        'plot_timeseries':                0,
         'compute_basic_stats':            1,
         'compute_extreme_stats':          1,
         'plot_slice_summary':             1,

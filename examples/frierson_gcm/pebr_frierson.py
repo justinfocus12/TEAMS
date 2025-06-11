@@ -226,9 +226,8 @@ def quantify_dispersion_rates(config_analysis, alg, dirdict, overwrite_dispersio
         print(f'{dist_name = }')
         print(f'{dist_props = }')
         def dist_fun(ds0,ds1):
-            # TODO anticipate future when time samples are subdaily
-            t0 = (ds0['time'].to_numpy() / alg.ens.dynsys.dt_save).astype(int)
-            t1 = (ds1['time'].to_numpy() / alg.ens.dynsys.dt_save).astype(int)
+            t0 = np.round(ds0['time'].to_numpy() / alg.ens.dynsys.dt_save).astype(int)
+            t1 = np.round(ds1['time'].to_numpy() / alg.ens.dynsys.dt_save).astype(int)
             trange_full = np.arange(min(t0[0],t1[0]),max(t0[-1],t1[-1])+1)
             trange_valid = np.arange(max(t0[0],t1[0]),min(t0[-1],t1[-1])+1)
             tidx0 = trange_valid - t0[0]
@@ -514,7 +513,7 @@ def pebr_single_procedure(i_param):
     tododict = dict({
         'run':                           0,
         'analysis': dict({
-            'observable_spaghetti':      1,
+            'observable_spaghetti':      0,
             'dispersion_rate':           1, # including both Lyapunov analysis (FSLE) and expected leadtime until fractional saturation (ELFS)
             'running_max':               0, # watch extreme value statistics (curves and parameters) converge to the true values with longer time blocks
             }),
@@ -526,7 +525,7 @@ def pebr_single_procedure(i_param):
     if tododict['analysis']['observable_spaghetti']:
         plot_observable_spaghetti(config_analysis, alg, dirdict)
     if tododict['analysis']['dispersion_rate']:
-        quantify_dispersion_rates(config_analysis, alg, dirdict, overwrite_dispersion_stats=True)
+        quantify_dispersion_rates(config_analysis, alg, dirdict, overwrite_dispersion_stats=False)
     if tododict['analysis']['running_max']:
         quantify_running_max_convergence(config_analysis, alg, dirdict)
     return
