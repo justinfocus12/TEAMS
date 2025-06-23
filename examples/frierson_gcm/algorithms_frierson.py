@@ -16,6 +16,7 @@ import shutil
 import glob
 import subprocess
 import resource
+import pdb
 import pickle
 import copy as copylib
 from importlib import reload
@@ -259,7 +260,10 @@ class FriersonGCMTEAMS(algorithms.TEAMS):
                 'filename_restart': join(saveinfo['final_dir'],f'restart_prehistory_anc{i_anc}.cpio'),
                 }))
             obs_fun = lambda t,x: None
-            dns.ens.dynsys.run_trajectory(prehistory_icandf, obs_fun, saveinfo, root_dir)
+            already_done = exists(join(root_dir,saveinfo['filename_restart']))
+            print(f'{already_done = }')
+            if not already_done:
+                dns.ens.dynsys.run_trajectory(prehistory_icandf, obs_fun, saveinfo, root_dir)
             init_conds.append(saveinfo['filename_restart'])
         return cls(init_times, init_conds, config, ens)
     @classmethod

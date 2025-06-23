@@ -1494,8 +1494,8 @@ class TEAMS(EnsembleAlgorithm):
         alpha_pooled = (1-confint_width_pooled)
         alpha_sep = (1-confint_width_sep)
         print(f'{N_dns = }')
-        time_horizon_effective = config_algo['time_horizon_phys'] - config_algo['advance_split_time_max_phys']
-        sf2rt = lambda sf: utils.convert_sf_to_rtime(sf, time_horizon_effective) 
+        time_horizon_effective_phys = config_algo['time_horizon_phys'] - config_algo['advance_split_time_max_phys']
+        sf2rt = lambda sf: utils.convert_sf_to_rtime(sf, time_horizon_effective_phys) 
         # ---------------- Calculate TEAMS statistics -------------------
         #Iterate through alg objects first to collect scores and define bin edges
         sclim = [np.min(scmax_dns),np.max(scmax_dns)]
@@ -1586,13 +1586,13 @@ class TEAMS(EnsembleAlgorithm):
         rng_boot = default_rng(45839)
         n_boot = 5000
         idx_alg_boot = rng_boot.choice(np.arange(len(algs)), replace=True, size=(n_boot,len(algs)))
-        N_dns_boot_init = int(N_teams_init*config_algo['time_horizon_phys']/time_horizon_effective)
+        N_dns_boot_init = int(N_teams_init*config_algo['time_horizon_phys']/time_horizon_effective_phys)
         print(f'{N_dns_boot_init = }')
         idx_dns_boot_init = rng_boot.choice(np.arange(N_dns), replace=True, size=(n_boot, N_dns_boot_init))
-        N_dns_boot_fin = int(N_teams_fin*config_algo['time_horizon_phys']/time_horizon_effective)
+        N_dns_boot_fin = int(N_teams_fin*config_algo['time_horizon_phys']/time_horizon_effective_phys)
         print(f'{N_dns_boot_fin = }')
         idx_dns_boot_fin = rng_boot.choice(np.arange(N_dns), replace=True, size=(n_boot, N_dns_boot_fin))
-        N_dns_boot_fin_sep = int(N_teams_fin_sep*config_algo['time_horizon_phys']/time_horizon_effective)
+        N_dns_boot_fin_sep = int(N_teams_fin_sep*config_algo['time_horizon_phys']/time_horizon_effective_phys)
         print(f'{N_dns_boot_fin = }')
         idx_dns_boot_fin_sep = rng_boot.choice(np.arange(N_dns), replace=True, size=(n_boot, N_dns_boot_fin_sep))
         print(f'{idx_dns_boot_init[1] = }')
@@ -1679,13 +1679,13 @@ class TEAMS(EnsembleAlgorithm):
             'cost_teams_init': cost_teams_init,
             'cost_teams_fin': cost_teams_fin,
             'cost_dns': cost_dns,
-            'time_horizon_effective': time_horizon_effective,
+            'time_horizon_effective_phys': time_horizon_effective_phys, 
             })
 
         np.savez(returnstats_file, **returnstats)
 
         # Set lowest bin for which we want to start penalizing differences
-        i_bin_first = np.where(np.isfinite(utils.convert_sf_to_rtime(ccdf_dns,returnstats['time_horizon_effective'])))[0][0]
+        i_bin_first = np.where(np.isfinite(utils.convert_sf_to_rtime(ccdf_dns,returnstats['time_horizon_effective_phys'])))[0][0]
 
         # ---------------- PLOTTING -----------------
         # useful things 
@@ -1698,7 +1698,7 @@ class TEAMS(EnsembleAlgorithm):
             nzidx = np.setdiff1d(np.arange(len(sf)),zidx)
             rt = np.zeros(len(sf))
             rt[zidx] = np.inf
-            rt[nzidx] = utils.convert_sf_to_rtime(sf[nzidx], returnstats['time_horizon_effective'])
+            rt[nzidx] = utils.convert_sf_to_rtime(sf[nzidx], returnstats['time_horizon_effective_phys'])
             if sfisscalar:
                 return rt[0]
             return rt
@@ -1773,7 +1773,7 @@ class TEAMS(EnsembleAlgorithm):
             ax.set_ylabel(r'Return level [%s]'%(severity_unit_name))
             ax.set_title(r'Single %s runs & middle %d%s'%(teams_abbrv,int(100*confint_width_sep),"%"))
             ax.set_xscale('log')
-            ax.set_xlim([returnstats['time_horizon_effective']/time_unit,5*sf2rt(min(np.nanmin(ccdf_dns),np.nanmin(ccdf_fin_wted)))/time_unit])
+            ax.set_xlim([returnstats['time_horizon_effective_phys']/time_unit,5*sf2rt(min(np.nanmin(ccdf_dns),np.nanmin(ccdf_fin_wted)))/time_unit])
             ax.text(-0.15,0.5,display,fontsize=15,transform=ax.transAxes,horizontalalignment='right',verticalalignment='center')
 
         # F-divergences
@@ -1865,8 +1865,8 @@ class TEAMS(EnsembleAlgorithm):
         ax.legend(handles=[hinit,hfin_wted,hdns],bbox_to_anchor=(1,0),loc='lower right')
         ax.set_title('Pooled TEAMS runs')
 
-        xlim = [returnstats['time_horizon_effective']/time_unit,5*sf2rt(min(np.nanmin(ccdf_dns),np.nanmin(ccdf_fin_wted)))/time_unit]
-        ylim = [bin_edges[np.argmax(sf2rt(ccdf_dns) > returnstats['time_horizon_effective'])],bin_edges[-1]]
+        xlim = [returnstats['time_horizon_effective_phys']/time_unit,5*sf2rt(min(np.nanmin(ccdf_dns),np.nanmin(ccdf_fin_wted)))/time_unit]
+        ylim = [bin_edges[np.argmax(sf2rt(ccdf_dns) > returnstats['time_horizon_effective_phys'])],bin_edges[-1]]
 
         ax = axesv[1]
         ax.plot(rt_grid/time_unit, cliprlev(rlev_fin_pooled), color='red')

@@ -241,6 +241,7 @@ def compute_returnstats_and_histogram(f, time_block_size, bounds=None):
     idx = np.searchsorted(rlev, bin_edges[:-1])
     print(f'{idx = }')
     logsf_gev,rtime_gev = gev_return_time(bin_edges[:-1],time_block_size,shape,loc,scale)
+    pdb.set_trace()
     return bin_edges[:-1], hist, rtime[idx], logsf[idx], rtime_gev, logsf_gev, shape, loc, scale
 
 def compute_returnstats_preblocked(block_maxima, time_block_size, bounds=None):
