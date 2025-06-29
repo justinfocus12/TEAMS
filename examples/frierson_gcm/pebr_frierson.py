@@ -47,6 +47,7 @@ def pebr_paramset(i_expt):
     idx_multiparam = np.unravel_index(i_expt, tuple(len(mp) for mp in multiparams))
     seed_inc,std_sppt,tau_sppt,L_sppt = (multiparams[i][i_param] for (i,i_param) in enumerate(idx_multiparam))
 
+    config_gcm['resolution'] = 'T42'
     config_gcm['outputs_per_day'] = 4
     config_gcm['pert_type'] = 'SPPT'
     config_gcm['SPPT']['tau_sppt'] = tau_sppt
@@ -511,9 +512,9 @@ def old_thing():
 
 def pebr_single_procedure(i_param):
     tododict = dict({
-        'run':                           0,
+        'run':                           1,
         'analysis': dict({
-            'observable_spaghetti':      0,
+            'observable_spaghetti':      1,
             'dispersion_rate':           1, # including both Lyapunov analysis (FSLE) and expected leadtime until fractional saturation (ELFS)
             'running_max':               0, # watch extreme value statistics (curves and parameters) converge to the true values with longer time blocks
             }),

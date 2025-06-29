@@ -207,15 +207,15 @@ def gev_return_time(x,T,shape,loc,scale):
     rtime = convert_logsf_to_rtime(logsf,T)
     return logsf,rtime
 
-def compute_return_time_block_maxima(x,T):
+def compute_return_time_block_maxima(x,T,method="PWM"):
     block_maxima = compute_block_maxima(x,T)
-    return compute_return_time_block_maxima_preblocked(block_maxima,T)
+    return compute_return_time_block_maxima_preblocked(block_maxima,T,method=method)
 
-def compute_return_time_block_maxima_preblocked(block_maxima,T):
+def compute_return_time_block_maxima_preblocked(block_maxima,T, method="PWM"):
     rlev,logsf = compute_logsf_empirical(block_maxima)
     rtime = convert_logsf_to_rtime(logsf,T)
     # Also do a GEV fit 
-    shape,loc,scale = fit_gev_distn(block_maxima)
+    shape,loc,scale = fit_gev_distn(block_maxima, method=method)
     print(f'{rlev = }')
     print(f'{(shape,loc,scale) = }')
     logsf_gev,rtime_gev = gev_return_time(rlev,T,shape,loc,scale)
@@ -232,16 +232,15 @@ def convert_sf_to_rtime(sf, T):
     rtime = np.where(rtime <= T, np.nan, rtime)
     return rtime
 
-def compute_returnstats_and_histogram(f, time_block_size, bounds=None):
+def compute_returnstats_and_histogram(f, time_block_size, bounds=None, method="PWM"):
     if bounds is None:
         bounds = [np.min(f),np.max(f)]
     bins = np.linspace(bounds[0]-1e-10,bounds[1]+1e-10,30)
     hist,bin_edges = np.histogram(f, density=False, bins=bins)
-    rlev,rtime,logsf,rtime_gev,logsf_gev,shape,loc,scale = compute_return_time_block_maxima(f, time_block_size)
+    rlev,rtime,logsf,rtime_gev,logsf_gev,shape,loc,scale = compute_return_time_block_maxima(f, time_block_size, method=method)
     idx = np.searchsorted(rlev, bin_edges[:-1])
     print(f'{idx = }')
     logsf_gev,rtime_gev = gev_return_time(bin_edges[:-1],time_block_size,shape,loc,scale)
-    pdb.set_trace()
     return bin_edges[:-1], hist, rtime[idx], logsf[idx], rtime_gev, logsf_gev, shape, loc, scale
 
 def compute_returnstats_preblocked(block_maxima, time_block_size, bounds=None):

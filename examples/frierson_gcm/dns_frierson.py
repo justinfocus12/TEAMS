@@ -77,9 +77,8 @@ def dns_paramset(i_expt):
     expt_label = r'SPPT, $\sigma=%g$, $\tau=%g$ h, $L=%g$ km'%(std_sppt,tau_sppt/3600,L_sppt/1000)
     expt_abbrv = (r'SPPT_std%g_tau%gh_L%gkm'%(std_sppt,tau_sppt/3600,L_sppt/1000)).replace('.','p')
 
-    config_gcm['resolution'] = 'T21'
+    config_gcm['resolution'] = 'T42'
     config_gcm['outputs_per_day'] = 4
-    config_gcm['pert_type'] = 'SPPT'
     config_gcm['SPPT']['tau_sppt'] = tau_sppt
     config_gcm['SPPT']['std_sppt'] = std_sppt
     config_gcm['SPPT']['L_sppt'] = L_sppt
@@ -101,7 +100,7 @@ def dns_single_workflow(i_expt):
     param_abbrv_algo,param_label_algo = algorithms_frierson.FriersonGCMDirectNumericalSimulation.label_from_config(config_algo)
     config_analysis = dict()
     config_analysis['spinup_phys'] = 500 # at what time to start computing statistics
-    config_analysis['time_block_size_phys'] = 30 # size of block for method of block maxima
+    config_analysis['time_block_size_phys'] = 60 # size of block for method of block maxima
     config_analysis['lon_roll_step'] = 30 # size of longitudinal shift for purposes of zonal symmetry augmentation in method of block maxima
     config_analysis['duration_stats_phys'] = 100 * 365 # how long a chunk to pull from DNS for statistical analysis
     tu = 1/config_gcm['outputs_per_day']
@@ -109,7 +108,7 @@ def dns_single_workflow(i_expt):
     # Basic statistics to compute
     config_analysis['basic_stats'] = dict({
         'moments': [1,2,3],
-        'quantiles': [0.5,0.75,0.875],
+        'quantiles': list(map(lambda q: 1-1/(2**q), range(1,15))),
         })
     # Primary target location
     config_analysis['target_location'] = dict(lat=45,lon=180)
@@ -464,7 +463,7 @@ def plot_slice_summary(config_analysis, alg, dirdict):
             ax_zonalstats.plot(field_stats['quantiles'].isel(quantile=i_q).to_numpy().flatten(), lats, color=plt.cm.coolwarm(i_q/field_stats.coords['quantile'].size))
         ax_zonalstats.plot(field_stats['moment1'].to_numpy().flatten(), lats, color='black', linestyle='--', linewidth=2)
         comp_quants = [r"$\frac{1}{%d}$"%(int(round(1/(1-q)))) for q in config_analysis['basic_stats']['quantiles']]
-        ax_zonalstats.set_title("Mean,\ncomp. quants.\n"+(",".join(comp_quants)))
+        ax_zonalstats.set_title("Mean,\ncomp. quants.\n%s,%s,...,%s"%(comp_quants[0],comp_quants[1],comp_quants[-1]))
         ax_zonalstats.set_ylabel("Lat")
         ax_zonalstats.axhline(config_analysis['target_location']['lat'], color='gray', zorder=-1)
         # -------------- Hovmoller ---------------
@@ -479,7 +478,13 @@ def plot_slice_summary(config_analysis, alg, dirdict):
         # ----------- Timeseries --------------
         ax_timeseries.plot(field.sel(config_analysis['target_location'],method='nearest'), field['time'].to_numpy().flatten(), color='black')
         ax_timeseries.set_xlabel('Local value')
-        ax_zonalstats.set_xlim(ax_timeseries.get_xlim())
+        for ax in (ax_timeseries,ax_zonalstats):
+            ax.set_xlim([
+                field.sel(config_analysis['target_location'],method='nearest')
+                .min().item(), 
+                field_stats['quantiles'].isel(quantile=-1)
+                .max().item()
+                ])
         # ---------- Overall layout -------
         for ax in (ax_snapshot,ax_zonalstats):
             ax.xaxis.set_tick_params(which='both',labelbottom=True)
@@ -684,6 +689,7 @@ def compare_extreme_stats(workflows,config_meta_analysis,meta_dirdict):
     taus = tuple(workflowget(workflows[i],'config_gcm')['SPPT']['tau_sppt'] for i in range(num_expt))
     sigmas = tuple(workflowget(workflows[i],'config_gcm')['SPPT']['std_sppt'] for i in range(num_expt))
     tu = 1/workflowget(workflows[0],'config_gcm')['outputs_per_day']
+    tu_plot = 365
     Ltau = tuple(zip(Ls,taus))
     Ltau_unique = list(set(Ltau))
     Ltau_idx_groups = tuple(
@@ -706,14 +712,16 @@ def compare_extreme_stats(workflows,config_meta_analysis,meta_dirdict):
             for ii,i in enumerate(idx):
                 extstats = np.load(join(workflowget(workflows[i],'dirdict')['analysis'],r'extstats_zonsym_%s.npz'%(obs_props['abbrv'])))
                 shapes[ii],locs[ii],scales[ii] = extstats['shape'],extstats['loc'],extstats['scale']
-                h, = ax.plot(extstats['rtime']*tu, extstats['bin_lows'], color=colors[i], linestyle='-', label=r'$\sigma_{\mathrm{SPPT}}=%g$'%(sigmas[i]))
-                #ax.plot(extstats['rtime_gev']*tu, extstats['bin_lows'], color=colors[i], linestyle='--')
-                #handles_curves.append(h)
+                h, = ax.plot(extstats['rtime']*tu/tu_plot, extstats['bin_lows'], color=colors[i], linestyle='-', label=r'$\sigma_{\mathrm{SPPT}}=%g$'%(sigmas[i]))
+                handles_curves.append(h)
+                #ax.plot(extstats['rtime_gev']*tu/tu_plot, extstats['bin_lows'], color=colors[i], linestyle='--')
             group_label = r'$L=%g$km, $\tau=%g$h'%(Ltau_unique[i_group][0]/1000,Ltau_unique[i_group][1]/3600)
             group_color = plt.cm.Set1(i_group)
             ax.set_title(group_label)
-            ax.set_xlabel('Return time [days]')
-            ax.set_xlim([30,20000])
+            ax.set_xlabel('Return time [years]')
+            ax.set_ylabel(obs_props['label'])
+
+            #ax.set_xlim([30,20000])
             ax.set_xscale('log')
             if i_group == len(Ltau_idx_groups)-1:
                 ax.legend(handles=handles_curves,loc=(1,0))
@@ -726,7 +734,6 @@ def compare_extreme_stats(workflows,config_meta_analysis,meta_dirdict):
             ax.plot(sigmas_idx,locs,color=group_color,marker='.',linestyle='-')
             ax = axes_gevpar[2]
             ax.plot(sigmas_idx,scales,color=group_color,marker='.',linestyle='-')
-        fig_curves.suptitle(obs_props['label'], y=1.0)
         fig_curves.savefig(join(meta_dirdict['plots'], 'extstats_returncurves_%s.png'%(obs_props['abbrv'])), **pltkwargs)
         plt.close(fig_curves)
 
@@ -752,7 +759,7 @@ def compute_extreme_stats(config_analysis, alg, dirdict):
         fun = lambda ds: frierson_gcm.FriersonGCM.rolling_time_mean(frierson_gcm.FriersonGCM.sel_from_roi(field_props['fun'](ds), field_props['roi']), field_props['tavg']).isel(time=slice(field_props['tavg']-1,None)).compute() #**field_props['kwargs'])
         fxt = xr.concat(tuple(alg.ens.compute_observables([fun], mem)[0] for mem in mems2summarize), dim='time')
         lon_roll_step_requested = config_analysis['lon_roll_step']
-        bin_lows,hist,rtime,logsf,rtime_gev,logsf_gev,shape,loc,scale = alg.ens.dynsys.compute_stats_dns_zonsym(fxt, lon_roll_step_requested, time_block_size)
+        bin_lows,hist,rtime,logsf,rtime_gev,logsf_gev,shape,loc,scale = alg.ens.dynsys.compute_stats_dns_zonsym(fxt, lon_roll_step_requested, time_block_size, method="MLE")
         extstats = dict({'bin_lows': bin_lows, 'hist': hist, 'rtime': rtime, 'logsf': logsf, 'rtime_gev': rtime_gev, 'logsf_gev': logsf_gev, 'shape': shape, 'loc': loc, 'scale': scale})
         extstats['rtime_phys'] = rtime*tu
         extstats['rtime_gev_phys'] = rtime_gev*tu
@@ -768,13 +775,13 @@ def compute_extreme_stats(config_analysis, alg, dirdict):
         ax.set_ylabel('Prob. density')
         ax.set_yscale('log')
         ax = axes[1]
-        hemp, = ax.plot(rtime_phys/tu_disp,bin_lows,color='black',marker='.',label='Empirical')
-        hgev, = ax.plot(rtime_gev/tu_disp,bin_lows,color='cyan',marker='.',label='GEV fit')
+        hemp, = ax.plot(extstats["rtime_phys"]/tu_disp,bin_lows,color='black',marker='.',label='Empirical')
+        hgev, = ax.plot(extstats["rtime_gev_phys"]/tu_disp,bin_lows,color='cyan',marker='.',label='GEV fit')
         ax.legend(handles=[hemp,hgev])
         print(f'{rtime_gev = }')
         ax.set_ylim([bin_lows[np.argmax(rtime>0)],2*bin_lows[-1]-bin_lows[-2]])
         ax.set_xlabel('Return time [%s]'%(tu_disp_name))
-        ax.set_ylabel(field_prop['label'])
+        ax.set_ylabel(field_props['label'])
         ax.set_xscale('log')
         fig.savefig(join(dirdict['plots'],r'extstats_%s.png'%(field_props['abbrv'])),**pltkwargs)
         plt.close(fig)
@@ -789,7 +796,8 @@ def dns_meta_workflow(idx_param):
     date_str = "2025-05-16" #"2024-09-10"
     sub_date_str = "1"
     meta_dirdict = dict()
-    meta_dirdict['meta'] = join(scratch_dir,date_str,sub_date_str,'meta')
+    config_gcm = workflowget(workflows[0],'config_gcm')
+    meta_dirdict['meta'] = join(scratch_dir,date_str,sub_date_str,'meta_res%s'%(config_gcm['resolution']))
     for subdir in ['data','analysis','plots']:
         meta_dirdict[subdir] = join(meta_dirdict['meta'],subdir)
         makedirs(meta_dirdict[subdir], exist_ok=True)
@@ -818,7 +826,7 @@ def dns_single_procedure(i_expt):
         'run':                            0,
         'plot_snapshots':                 0,
         'plot_timeseries':                0,
-        'compute_basic_stats':            0,
+        'compute_basic_stats':            1,
         'compute_extreme_stats':          1,
         'plot_slice_summary':             1,
         })

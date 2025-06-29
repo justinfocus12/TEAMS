@@ -1123,6 +1123,11 @@ class TEAMS(EnsembleAlgorithm):
     def generate_icandf_from_parent(self, parent, branch_time):
         pass
     def take_next_step(self, saveinfo):
+        # CHECK TERMINATION!!!
+        nmem = self.ens.get_nmem()
+        if nmem >= self.num_members_max():
+            self.terminate = True
+            print(f"Terminating: nmem = {nmem}")
         if self.terminate:
             return
         if self.ens.get_nmem() < self.population_size:
@@ -1268,6 +1273,7 @@ class TEAMS(EnsembleAlgorithm):
                 self.branching_state['multiplicities'].append(0)
                 self.branching_state['log_weights'].append(self.branching_state['log_weights'][parent])
             level_raising_condition = (len(self.branching_state['members_active']) >= self.population_size and self.ens.get_nmem() >= self.population_size) # keep a constant active population. 
+
 
         if level_raising_condition:
             self.raise_level_replenish_queue()
@@ -1489,13 +1495,26 @@ class TEAMS(EnsembleAlgorithm):
         plt.close(fig)
         
     @staticmethod
-    def measure_plot_score_distribution(config_algo, algs, scmax_dns, returnstats_file, figfileh, figfilev, figfileseph, figfilesepv, confint_width_pooled=0.9, confint_width_sep=0.5, param_display=None, target_display=None, time_unit=1, time_unit_name="", severity_unit_name=""):
+    def measure_plot_score_distribution(config_algo, algs, scmax_dns, returnstats_file, figfileh, figfilev, figfileseph, figfilesepv, confint_width_pooled=0.9, confint_width_sep=0.5, param_display=None, target_display=None, time_unit=1, time_unit_name="", severity_unit_name="", budget=None):
+        # if budget is limited to a max number of members, somehow pretend like the algorithm stopped sooner 
         N_dns = len(scmax_dns)
         alpha_pooled = (1-confint_width_pooled)
         alpha_sep = (1-confint_width_sep)
         print(f'{N_dns = }')
         time_horizon_effective_phys = config_algo['time_horizon_phys'] - config_algo['advance_split_time_max_phys']
-        sf2rt = lambda sf: utils.convert_sf_to_rtime(sf, time_horizon_effective_phys) 
+        def sf2rt(sf):
+            sfisscalar = np.isscalar(sf)
+            if sfisscalar:
+                sf = np.array([sf])
+            assert sf.ndim == 1
+            zidx = np.where(sf <= 0)[0]
+            nzidx = np.setdiff1d(np.arange(len(sf)),zidx)
+            rt = np.zeros(len(sf))
+            rt[zidx] = np.inf
+            rt[nzidx] = utils.convert_sf_to_rtime(sf[nzidx], time_horizon_effective_phys)
+            if sfisscalar:
+                return rt[0]
+            return rt
         # ---------------- Calculate TEAMS statistics -------------------
         #Iterate through alg objects first to collect scores and define bin edges
         sclim = [np.min(scmax_dns),np.max(scmax_dns)]
@@ -1504,18 +1523,19 @@ class TEAMS(EnsembleAlgorithm):
         algs2keep = []
         for i_alg,alg in enumerate(algs):
             Ns_init[i_alg] = alg.population_size
-            Ns_fin[i_alg] = alg.ens.get_nmem()
+            Ns_fin[i_alg] = alg.ens.get_nmem() if budget is None else budget 
             if Ns_fin[i_alg] <= Ns_init[i_alg]:
+                # discard if incomplete 
                 continue
             algs2keep.append(i_alg)
-            scmax,logw,mult = (alg.branching_state[s] for s in 'scores_max,log_weights,multiplicities'.split(','))
-            # discard if incomplete 
+            scmax,logw,mult = (alg.branching_state[s][:Ns_fin[i_alg]] for s in 'scores_max,log_weights,multiplicities'.split(','))
             scmaxs.append(scmax)
             logws.append(logw)
             mults.append(mult)
-            if not (int(round(np.exp(logsumexp(logw,b=mult)))) == Ns_init[i_alg]):
+            if (budget is None) and not (int(round(np.exp(logsumexp(logw,b=mult)))) == Ns_init[i_alg]):
                 pdb.set_trace()
                 raise Exception
+            logw += np.log(Ns_init[i_alg]) - logsumexp(logw,b=mult)
             sclim[0],sclim[1] = min(sclim[0],np.min(scmax)),max(sclim[1],np.max(scmax))
         algs = [algs[i_alg] for i_alg in algs2keep]
         N_teams_init = np.sum(Ns_init)
@@ -1555,7 +1575,7 @@ class TEAMS(EnsembleAlgorithm):
             xord,logccdf_emp = utils.compute_logsf_empirical_with_multiplicities(scmaxs[i_alg][:alg.population_size],logw=np.zeros(alg.population_size),mults=np.ones(alg.population_size, dtype=int))
             rlevs_init[i_alg,:] = np.interp(logccdf_grid[::-1], logccdf_emp[::-1], xord[::-1])[::-1]
             # Calculate gains
-            A = alg.ens.construct_descent_matrix().toarray().astype(int)
+            A = alg.ens.construct_descent_matrix().toarray().astype(int)[:Ns_fin[i_alg],:Ns_fin[i_alg]]
             print(f'{np.min(A) = }, {np.max(A) = }')
             print(f'{np.sum(A,axis=1) = }')
             desc_scores = A * np.array(scmaxs[i_alg]) 
@@ -1686,22 +1706,10 @@ class TEAMS(EnsembleAlgorithm):
 
         # Set lowest bin for which we want to start penalizing differences
         i_bin_first = np.where(np.isfinite(utils.convert_sf_to_rtime(ccdf_dns,returnstats['time_horizon_effective_phys'])))[0][0]
+        i_bin_last = np.argmax(bin_edges > np.nanmax(rlevs_fin))
 
         # ---------------- PLOTTING -----------------
         # useful things 
-        def sf2rt(sf):
-            sfisscalar = np.isscalar(sf)
-            if sfisscalar:
-                sf = np.array([sf])
-            assert sf.ndim == 1
-            zidx = np.where(sf <= 0)[0]
-            nzidx = np.setdiff1d(np.arange(len(sf)),zidx)
-            rt = np.zeros(len(sf))
-            rt[zidx] = np.inf
-            rt[nzidx] = utils.convert_sf_to_rtime(sf[nzidx], returnstats['time_horizon_effective_phys'])
-            if sfisscalar:
-                return rt[0]
-            return rt
         teams_abbrv = 'TEAMS' if algs[0].advance_split_time>0 else 'AMS'
         # ++++ left-hand text label +++
         cost_display = '\n'.join([
@@ -1765,15 +1773,22 @@ class TEAMS(EnsembleAlgorithm):
         # need to cut off the return level estimates (return nothing) beyond the queried probabilities
         axv.fill_between(rt_grid[:i_rt_last_dns]/time_unit, rlevdnslo[:i_rt_last_dns], rlevdnshi[:i_rt_last_dns], color='gray', alpha=1.0, zorder=-1)
         for i_alg in range(Nalg):
-            axh.plot(sf2rt(ccdfs_fin_wted[i_alg,:])/time_unit, bin_edges[:-1], color='red', linewidth=0.5,zorder=1)
-            axv.plot(sf2rt(ccdfs_fin_wted[i_alg,:])/time_unit, bin_edges[:-1], color='red', linewidth=0.5,zorder=1)
+            # Don't plot indices same as previous
+            idx2plot = [np.where(np.isfinite(ccdfs_fin_wted[i_alg,:]))[0][-1]] #np.arange(len(bin_edges)-1)
+            for i in range(idx2plot[0]-1,-1,-1):
+                if ccdfs_fin_wted[i_alg,i] > ccdfs_fin_wted[i_alg,idx2plot[-1]]:
+                    idx2plot.append(i)
+            #pdb.set_trace()
+            #idxchanging = np.where(np.diff(ccdfs_fin_wted[i_alg,:]) != 0)[0]
+            axh.plot(sf2rt(ccdfs_fin_wted[i_alg,idx2plot])/time_unit, bin_edges[:-1][idx2plot], color='red', linewidth=0.5,zorder=1)
+            axv.plot(sf2rt(ccdfs_fin_wted[i_alg,idx2plot])/time_unit, bin_edges[:-1][idx2plot], color='red', linewidth=0.5,zorder=1)
         axh.plot(rtdnsmid/time_unit,bin_edges[:-1],color='black',linewidth=2.0,linestyle='--',zorder=2)
         axv.plot(rt_grid/time_unit, rlevdnsmid, color='black', linewidth=2.0, linestyle='--', zorder=2)
         for ax in (axh,axv):
             ax.set_ylabel(r'Return level [%s]'%(severity_unit_name))
             ax.set_title(r'Single %s runs & middle %d%s'%(teams_abbrv,int(100*confint_width_sep),"%"))
             ax.set_xscale('log')
-            ax.set_xlim([returnstats['time_horizon_effective_phys']/time_unit,5*sf2rt(min(np.nanmin(ccdf_dns),np.nanmin(ccdf_fin_wted)))/time_unit])
+            ax.set_xlim([returnstats['time_horizon_effective_phys']/time_unit,2*np.nanmax(rtdnsmid)/time_unit])
             ax.text(-0.15,0.5,display,fontsize=15,transform=ax.transAxes,horizontalalignment='right',verticalalignment='center')
 
         # F-divergences
@@ -1812,7 +1827,7 @@ class TEAMS(EnsembleAlgorithm):
                 ax.yaxis.set_tick_params(which='both',labelbottom=True)
             axes[1,1].axis('off')
             for ax in axes[0,:]:
-                ax.set_ylim([bin_edges[i_bin_first], 2*bin_edges[-1]-bin_edges[-2]])
+                ax.set_ylim([bin_edges[i_bin_first], np.nanmax(rlevs_fin)]) #2*bin_edges[i_bin_last]-bin_edges[i_bin_last-1]])
         figh.savefig(figfileseph, **pltkwargs)
         plt.close(figh)
         figv.savefig(figfilesepv, **pltkwargs)

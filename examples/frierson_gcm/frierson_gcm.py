@@ -654,7 +654,7 @@ class FriersonGCM(DynamicalSystem):
         for i_fun,fun in enumerate(obs_funs):
             obs.append(fun(ds)) #.compute())
         return obs
-    def compute_stats_dns_zonsym(self, fxt, lon_roll_step_requested, time_block_size, bounds=None):
+    def compute_stats_dns_zonsym(self, fxt, lon_roll_step_requested, time_block_size, method="PWM", bounds=None):
         # Given a physical input field f(x,y,t), augment it by rotations to compute return periods
         # constant parameters to adjust 
         # Concatenate a long array of timeseries at different longitudes
@@ -668,7 +668,7 @@ class FriersonGCM(DynamicalSystem):
         print(f"Concatenating...")
         fconcat = np.concatenate(tuple(f_subsel.isel(lon=i_lon).to_numpy() for i_lon in idx_lon))
         print(f"Done concatenating")
-        return utils.compute_returnstats_and_histogram(fconcat, time_block_size, bounds=bounds)
+        return utils.compute_returnstats_and_histogram(fconcat, time_block_size, bounds=bounds, method=method)
     @staticmethod
     def observable_props():
         # each key in this dictionary must also be the name of a static method
@@ -767,7 +767,7 @@ class FriersonGCM(DynamicalSystem):
         obslib["total_rain"] = dict({
             "abbrv": "Rtot",
             "unit_symbol": "mm/day",
-            "label": "Rain rate",
+            "label": "Precipitation",
             "cmap": "Blues",
             "vmin": 0.0, 
             "vmax": 80.0,

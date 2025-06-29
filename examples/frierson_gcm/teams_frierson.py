@@ -40,14 +40,15 @@ def teams_multiparams():
             target_fields = ["rainrate",'temp','surf_horz_wind',][:2],
             sigmas = [0.3],
             seed_incs = list(range(0,48)),
-            deltas_phys = np.array([8,10,12], dtype=int),
-            #deltas_phys = np.sort(
-            #    np.concatenate((
-            #        np.arange(0,25,step=4),
-            #        np.array([6,10,14,]),
-            #        )).astype(float)
-            #    ),
-            #deltas_phys = [11],
+            # T42 restricted set 
+            #deltas_phys = np.array([8,10,12], dtype=int),
+            # T21 extended set 
+            deltas_phys = np.sort(
+                np.concatenate((
+                    np.arange(0,25,step=4),
+                    np.array([6,10,14,]),
+                    )).astype(float)
+                ),
             split_landmarks = ['thx'],
             )
     return multiparams #target_fields,sigmas,seed_incs,deltas_phys,split_landmarks
@@ -64,7 +65,7 @@ def teams_paramset(i_expt):
 
     base_dir_absolute = '/home/ju26596/jf_conv_gray_smooth'
     config_gcm = frierson_gcm.FriersonGCM.default_config(base_dir_absolute,base_dir_absolute)
-    config_gcm['resolution'] = 'T42'
+    config_gcm['resolution'] = 'T21'
     config_gcm['outputs_per_day'] = 4
     config_gcm['pert_type'] = 'SPPT'
     config_gcm['SPPT']['tau_sppt'] = 6.0 * 3600
@@ -643,8 +644,11 @@ def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, refere
     figfileseph = join(dirdict['plots'],r'returnstats_seph_%s.png'%(param_suffix))
     figfilesepv = join(dirdict['plots'],r'returnstats_sepv_%s.png'%(param_suffix))
     param_display = '\n'.join([
+        r'%s resolution'%(algs[0].ens.dynsys.config['resolution']),
         r'$\sigma=%g$'%(algs[0].ens.dynsys.config['SPPT']['std_sppt']),
-        r'$\delta=%g$'%(config_algo['advance_split_time_phys']),
+        r'$\delta=%g$ days'%(config_algo['advance_split_time_phys']),
+        r'$T=%d$ days'%(config_algo['time_horizon_phys']),
+        r'$N=%d$ ancestors'%(config_algo['population_size']),
         ])
     obsprop = frierson_gcm.FriersonGCM.observable_props()
     obspropkey = next(iter(config_algo['score_components'].values()))['observable']
@@ -652,16 +656,14 @@ def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, refere
     print(obspropkey)
     target_display = (
     r"""
-    Target = %s
-    T = %d
+    Target: %s
     """
     )%(
             obsprop[obspropkey]['label'], 
-            config_algo['time_horizon_phys']
       )
     target_field = list(algs[0].score_params['components'].keys())[0]
     unit_symbol = obsprop[config_algo['score_components'][target_field]['observable']]['unit_symbol']
-    algorithms_frierson.FriersonGCMTEAMS.measure_plot_score_distribution(config_algo, algs, scmax_ref, returnstats_file, figfileh, figfilev, figfileseph, figfilesepv, param_display=param_display, target_display=target_display, time_unit=365, time_unit_name="years", severity_unit_name=unit_symbol)
+    algorithms_frierson.FriersonGCMTEAMS.measure_plot_score_distribution(config_algo, algs, scmax_ref, returnstats_file, figfileh, figfilev, figfileseph, figfilesepv, param_display=param_display, target_display=target_display, time_unit=365, time_unit_name="years", severity_unit_name=unit_symbol, budget=config_algo['num_members_max'])
 
     return
 
