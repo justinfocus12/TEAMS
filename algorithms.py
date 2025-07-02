@@ -1553,6 +1553,7 @@ class TEAMS(EnsembleAlgorithm):
         ccdf_min = 1/N_dns #np.exp(logw_pooled[np.argmax(scmaxs_pooled)])
         ccdf_max = 0.5 # arbitrary
         logccdf_grid = np.linspace(np.log(ccdf_max), np.log(ccdf_min), 30)
+        print(f'{logccdf_grid = }')
         rt_grid = sf2rt(np.exp(logccdf_grid))
         # Now put the scores from separate runs into this common set of bins
         hists_init,hists_fin_unif,hists_fin_wted,ccdfs_init,ccdfs_fin_unif,ccdfs_fin_wted = (np.zeros((len(algs),len(bin_edges)-1)) for i in range(6))
@@ -1714,18 +1715,20 @@ class TEAMS(EnsembleAlgorithm):
         # ++++ left-hand text label +++
         cost_display = '\n'.join([
             r'%s cost:'%(teams_abbrv),
-            r'%.1E %s'%(cost_teams_fin/len(algs)/time_unit,time_unit_name),
-            r'$\times$ %d runs'%(len(algs)),
-            r'$=$%.1E %s'%(cost_teams_fin/time_unit,time_unit_name),
-            r' ',
-            r'DNS cost:',
-            r'%.1E %s'%(cost_dns/time_unit,time_unit_name)
+            r'%.1E %s per run'%(cost_teams_fin/len(algs)/time_unit,time_unit_name),
+            #r'$\times$ %d runs'%(len(algs)),
+            #r'$=$%.1E %s'%(cost_teams_fin/time_unit,time_unit_name),
+            #r' ',
+            #r'DNS cost:',
+            #r'%.1E %s'%(cost_dns/time_unit,time_unit_name)
             ])
-        if target_display is None:
-            target_display = ''
-        if param_display is None:
-            param_display = ''
-        display = '\n'.join([target_display,'',param_display,'',cost_display])
+        display_list = []
+        if target_display is not None:
+            display_list.append(target_display)
+        if param_display is not None:
+            display_list.append(param_display)
+        display_list.append(cost_display)
+        display = '\n'.join(display_list)
 
         # ------------- Plot -------------------
 
@@ -1786,10 +1789,12 @@ class TEAMS(EnsembleAlgorithm):
         axv.plot(rt_grid/time_unit, rlevdnsmid, color='black', linewidth=2.0, linestyle='--', zorder=2)
         for ax in (axh,axv):
             ax.set_ylabel(r'Return level [%s]'%(severity_unit_name))
-            ax.set_title(r'Single %s runs & middle %d%s'%(teams_abbrv,int(100*confint_width_sep),"%"))
+            ax.set_xlabel(r'Return time [%s]'%(time_unit_name))
+            ax.xaxis.set_tick_params(which='both',labelbottom=True)
+            #ax.set_title(r'Single %s runs & middle %d%s'%(teams_abbrv,int(100*confint_width_sep),"%"))
             ax.set_xscale('log')
-            ax.set_xlim([returnstats['time_horizon_effective_phys']/time_unit,2*np.nanmax(rtdnsmid)/time_unit])
-            ax.text(-0.15,0.5,display,fontsize=15,transform=ax.transAxes,horizontalalignment='right',verticalalignment='center')
+            ax.set_xlim([returnstats['time_horizon_effective_phys']/time_unit, rt_grid[i_rt_last_teams]/time_unit])
+            ax.text(0.05,1.0,display,fontsize=15,transform=ax.transAxes,ha='left',va='top')
 
         # F-divergences
         nzidx = np.where(hist_dns > 0)[0]
