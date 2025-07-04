@@ -1523,7 +1523,7 @@ class TEAMS(EnsembleAlgorithm):
         algs2keep = []
         for i_alg,alg in enumerate(algs):
             Ns_init[i_alg] = alg.population_size
-            Ns_fin[i_alg] = alg.ens.get_nmem() if budget is None else budget 
+            Ns_fin[i_alg] = alg.ens.get_nmem() if budget is None else min(alg.ens.get_nmem(), budget)
             if Ns_fin[i_alg] <= Ns_init[i_alg]:
                 # discard if incomplete 
                 continue
@@ -1552,7 +1552,7 @@ class TEAMS(EnsembleAlgorithm):
         logw_pooled -= logsumexp(logw_pooled[finite_idx], b=mults_pooled[finite_idx])
         ccdf_min = 1/N_dns #np.exp(logw_pooled[np.argmax(scmaxs_pooled)])
         ccdf_max = 0.5 # arbitrary
-        logccdf_grid = np.linspace(np.log(ccdf_max), np.log(ccdf_min), 30)
+        logccdf_grid = np.linspace(np.log(ccdf_max), np.log(ccdf_min), 360)
         print(f'{logccdf_grid = }')
         rt_grid = sf2rt(np.exp(logccdf_grid))
         # Now put the scores from separate runs into this common set of bins
@@ -1607,13 +1607,13 @@ class TEAMS(EnsembleAlgorithm):
         rng_boot = default_rng(45839)
         n_boot = 5000
         idx_alg_boot = rng_boot.choice(np.arange(len(algs)), replace=True, size=(n_boot,len(algs)))
-        N_dns_boot_init = int(N_teams_init*config_algo['time_horizon_phys']/time_horizon_effective_phys)
+        N_dns_boot_init = int(N_teams_init*(time_horizon_effective_phys+config_algo['advance_split_time_phys'])/time_horizon_effective_phys)
         print(f'{N_dns_boot_init = }')
         idx_dns_boot_init = rng_boot.choice(np.arange(N_dns), replace=True, size=(n_boot, N_dns_boot_init))
-        N_dns_boot_fin = int(N_teams_fin*config_algo['time_horizon_phys']/time_horizon_effective_phys)
+        N_dns_boot_fin = int(N_teams_fin*(time_horizon_effective_phys+config_algo['advance_split_time_phys'])/time_horizon_effective_phys)
         print(f'{N_dns_boot_fin = }')
         idx_dns_boot_fin = rng_boot.choice(np.arange(N_dns), replace=True, size=(n_boot, N_dns_boot_fin))
-        N_dns_boot_fin_sep = int(N_teams_fin_sep*config_algo['time_horizon_phys']/time_horizon_effective_phys)
+        N_dns_boot_fin_sep = int(N_teams_fin_sep*(time_horizon_effective_phys+config_algo['advance_split_time_phys'])/time_horizon_effective_phys)
         print(f'{N_dns_boot_fin = }')
         idx_dns_boot_fin_sep = rng_boot.choice(np.arange(N_dns), replace=True, size=(n_boot, N_dns_boot_fin_sep))
         print(f'{idx_dns_boot_init[1] = }')
@@ -1647,9 +1647,9 @@ class TEAMS(EnsembleAlgorithm):
 
 
         # --------------------- Tally costs ------------------------
-        cost_teams_init = N_teams_init * (config_algo['time_horizon_phys'] - config_algo['advance_split_time_max_phys'] + config_algo['advance_split_time_phys'])
+        cost_teams_init = N_teams_init * (time_horizon_effective_phys+config_algo['advance_split_time_phys'])
         cost_teams_fin = N_teams_fin/N_teams_init * cost_teams_init
-        cost_dns = N_dns * (config_algo['time_horizon_phys'] - config_algo['advance_split_time_max_phys'])
+        cost_dns = N_dns * time_horizon_effective_phys
         # Get DNS stats, comparing either to a single TEAMS run or the aggregate in cost 
         ccdf_dns,ccdf_dns_sep_lower,ccdf_dns_sep_upper = utils.pmf2ccdf(hist_dns,bin_edges,return_errbars=True,alpha=alpha_pooled,N_errbars=int(N_dns * cost_teams_fin/cost_dns * 1/len(algs)))
         _,ccdf_dns_pooled_lower,ccdf_dns_pooled_upper = utils.pmf2ccdf(hist_dns,bin_edges,return_errbars=True,alpha=alpha_pooled,N_errbars=int(N_dns * cost_teams_fin/cost_dns))
@@ -1749,7 +1749,7 @@ class TEAMS(EnsembleAlgorithm):
         figv,axesv = plt.subplots(figsize=(12,9),ncols=2,nrows=2,width_ratios=[3,1],height_ratios=[3,1],sharex='col',sharey='row')
         # For vertical error bars, identify the longest plottable return period
         i_rt_last_teams = np.searchsorted(rt_grid, sf2rt(np.nanmin(ccdf_mins_sep)))
-        i_rt_last_dns = np.searchsorted(rt_grid, sf2rt(1/np.max(Ns_fin)))
+        i_rt_last_dns = np.searchsorted(rt_grid, sf2rt(1/N_dns_boot_fin_sep)) #np.max(Ns_fin)))
         ccdflo,ccdfhi = (np.quantile(np.nan_to_num(ccdfs_fin_wted,nan=0), q, axis=0) for q in [alpha_sep/2,1-alpha_sep/2])
         ccdfmid = np.nanmean(ccdfs_fin_wted, axis=0)
         rtmid,rthi,rtlo = (sf2rt(ccdf) for ccdf in(ccdfmid,ccdflo,ccdfhi))
@@ -1773,6 +1773,7 @@ class TEAMS(EnsembleAlgorithm):
         # Bootstrapped for return levels
         rlevdnsmid = rlev_dns
         rlevdnslo,rlevdnshi = [np.nanquantile(rlevs_dns_boot_fin_sep, q, axis=0) for q in [alpha_sep/2, 1-alpha_sep/2]]
+        #pdb.set_trace()
         # need to cut off the return level estimates (return nothing) beyond the queried probabilities
         axv.fill_between(rt_grid[:i_rt_last_dns]/time_unit, rlevdnslo[:i_rt_last_dns], rlevdnshi[:i_rt_last_dns], color='gray', alpha=1.0, zorder=-1)
         for i_alg in range(Nalg):

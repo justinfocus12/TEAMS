@@ -55,10 +55,12 @@ def teams_multiparams(Nanc,resolution):
             deltas_phys = deltas_phys,
             split_landmarks = ['thx'],
             )
-    # for (rain,10,T21), use i_expt = 4
-    # for (temperature,12,T21) use i_expt = 15
-    # for (rain,10,T42), use i_expt = 1
-    # for (temperature,12,T42) use i_expt = 5
+    # for (rain,delta=10,T21), use i_expt = 4
+    # for (temperature,delta=12,T21) use i_expt = 15
+    # for (rain,delta=10,T42), use i_expt = 1
+    # for (temperature,delta=12,T42) use i_expt = 5
+    # for (rain,delta=10,N=32,T21), use i_expt = 0
+    # for (temperature,delta=12,N=32,T21) use i_expt = 3
 
     return multiparams #target_fields,sigmas,seed_incs,deltas_phys,split_landmarks
 
