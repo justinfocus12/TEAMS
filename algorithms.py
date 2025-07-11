@@ -1495,7 +1495,7 @@ class TEAMS(EnsembleAlgorithm):
         plt.close(fig)
         
     @staticmethod
-    def measure_plot_score_distribution(config_algo, algs, scmax_dns, returnstats_file, figfileh, figfilev, figfileseph, figfilesepv, confint_width_pooled=0.9, confint_width_sep=0.5, param_display=None, target_display=None, time_unit=1, time_unit_name="", severity_unit_name="", budget=None):
+    def measure_plot_score_distribution(config_algo, algs, scmax_dns, returnstats_file, figfileh, figfilev, figfileseph, figfilesepv, confint_width_pooled=0.9, confint_width_sep=0.5, param_display=None, target_display=None, time_unit=1, time_unit_name="", severity_unit_name="", budget=None, extrap_choice="nan"):
         # if budget is limited to a max number of members, somehow pretend like the algorithm stopped sooner 
         N_dns = len(scmax_dns)
         alpha_pooled = (1-confint_width_pooled)
@@ -1542,7 +1542,7 @@ class TEAMS(EnsembleAlgorithm):
         N_teams_fin = np.sum(Ns_fin)
         Nalg = len(algs)
         N_teams_fin_sep = np.sum(Ns_fin)/Nalg
-        bin_edges = np.linspace(sclim[0]-1e-10,sclim[1]+1e-10,16)
+        bin_edges = np.linspace(sclim[0]-1e-10,sclim[1]+1e-10,60)
         hist_dns,_ = np.histogram(scmax_dns, bins=bin_edges, density=False)
         # determine bounds on measurable return periods 
         logw_pooled = np.concatenate(logws)
@@ -1552,12 +1552,12 @@ class TEAMS(EnsembleAlgorithm):
         logw_pooled -= logsumexp(logw_pooled[finite_idx], b=mults_pooled[finite_idx])
         ccdf_min = 1/N_dns #np.exp(logw_pooled[np.argmax(scmaxs_pooled)])
         ccdf_max = 0.5 # arbitrary
-        logccdf_grid = np.linspace(np.log(ccdf_max), np.log(ccdf_min), 360)
+        logccdf_grid = np.linspace(np.log(ccdf_max), np.log(ccdf_min), 120)
         print(f'{logccdf_grid = }')
         rt_grid = sf2rt(np.exp(logccdf_grid))
         # Now put the scores from separate runs into this common set of bins
         hists_init,hists_fin_unif,hists_fin_wted,ccdfs_init,ccdfs_fin_unif,ccdfs_fin_wted = (np.zeros((len(algs),len(bin_edges)-1)) for i in range(6))
-        rlevs_init,rlevs_fin = (np.zeros((len(algs), len(logccdf_grid))) for i in range(2))
+        rlevs_init,rlevs_fin_flat,rlevs_fin_nan = (np.zeros((len(algs), len(logccdf_grid))) for i in range(3))
         boost_family_mean = np.zeros(len(algs))
         boost_population = np.zeros(len(algs))
         ccdf_mins_sep = np.zeros(len(algs)) # Get the minimum weight for each individual TEAMS run 
@@ -1572,7 +1572,8 @@ class TEAMS(EnsembleAlgorithm):
             ccdf_mins_sep[i_alg] = ccdfs_fin_wted[i_alg,np.where(ccdfs_fin_wted[i_alg,:] > 0)[0][-1]]
             # return levels as function of return periods
             xord,logccdf_emp = utils.compute_logsf_empirical_with_multiplicities(scmaxs[i_alg],logw=logws[i_alg],mults=mults[i_alg])
-            rlevs_fin[i_alg,:] = np.interp(logccdf_grid[::-1], logccdf_emp[::-1], xord[::-1])[::-1]
+            rlevs_fin_flat[i_alg,:] = np.interp(logccdf_grid[::-1], logccdf_emp[::-1], xord[::-1])[::-1]
+            rlevs_fin_nan[i_alg,:] = np.interp(logccdf_grid[::-1], logccdf_emp[::-1], xord[::-1], left=np.nan)[::-1]
             xord,logccdf_emp = utils.compute_logsf_empirical_with_multiplicities(scmaxs[i_alg][:alg.population_size],logw=np.zeros(alg.population_size),mults=np.ones(alg.population_size, dtype=int))
             rlevs_init[i_alg,:] = np.interp(logccdf_grid[::-1], logccdf_emp[::-1], xord[::-1])[::-1]
             # Calculate gains
@@ -1682,7 +1683,8 @@ class TEAMS(EnsembleAlgorithm):
             'ccdf_fin_wted_pooled_upper': ccdf_fin_wted_pooled_upper,
             # Inverted
             'logccdf_grid': logccdf_grid,
-            'rlevs_fin': rlevs_fin,
+            'rlevs_fin_flat': rlevs_fin_flat,
+            'rlevs_fin_nan': rlevs_fin_nan,
             'rlev_fin_pooled': rlev_fin_pooled,
             'rlevs_fin_pooled_boot': rlevs_fin_pooled_boot,
             'rlevs_dns_boot_init': rlevs_dns_boot_init,
@@ -1707,7 +1709,7 @@ class TEAMS(EnsembleAlgorithm):
 
         # Set lowest bin for which we want to start penalizing differences
         i_bin_first = np.where(np.isfinite(utils.convert_sf_to_rtime(ccdf_dns,returnstats['time_horizon_effective_phys'])))[0][0]
-        i_bin_last = np.argmax(bin_edges > np.nanmax(rlevs_fin))
+        i_bin_last = np.argmax(bin_edges > np.nanmax(rlevs_fin_flat))
 
         # ---------------- PLOTTING -----------------
         # useful things 
@@ -1735,7 +1737,7 @@ class TEAMS(EnsembleAlgorithm):
         def cliprlev(rlev_curve):
             i0 = np.argmax(rlev_curve)
             rlev_clipped = np.copy(rlev_curve)
-            rlev_clipped[i0+1:] = np.NaN
+            #rlev_clipped[i0+1:] = np.NaN
             return rlev_clipped
 
         def caprlev(rlev_curve):
@@ -1745,15 +1747,21 @@ class TEAMS(EnsembleAlgorithm):
             return rlev_clipped
         # -------------- Plot distribution of short DNS return curves ------------------
 
+        # Extrapolate based on nan- or flat-continuation?
+        if "flat" == extrap_choice:
+            rlevs_fin_extrap = rlevs_fin_flat
+        elif "nan" == extrap_choice:
+            rlevs_fin_extrap = rlevs_fin_nan
+
         figh,axesh = plt.subplots(figsize=(12,9),ncols=2,nrows=2,width_ratios=[3,1],height_ratios=[3,1],sharex='col',sharey='row')
         figv,axesv = plt.subplots(figsize=(12,9),ncols=2,nrows=2,width_ratios=[3,1],height_ratios=[3,1],sharex='col',sharey='row')
         # For vertical error bars, identify the longest plottable return period
-        i_rt_last_teams = np.searchsorted(rt_grid, sf2rt(np.nanmin(ccdf_mins_sep)))
         i_rt_last_dns = np.searchsorted(rt_grid, sf2rt(1/N_dns_boot_fin_sep)) #np.max(Ns_fin)))
+        i_rt_last_teams = max(i_rt_last_dns, np.searchsorted(rt_grid, sf2rt(np.nanmin(ccdf_mins_sep))))
         ccdflo,ccdfhi = (np.quantile(np.nan_to_num(ccdfs_fin_wted,nan=0), q, axis=0) for q in [alpha_sep/2,1-alpha_sep/2])
         ccdfmid = np.nanmean(ccdfs_fin_wted, axis=0)
         rtmid,rthi,rtlo = (sf2rt(ccdf) for ccdf in(ccdfmid,ccdflo,ccdfhi))
-        rlevlo,rlevmid,rlevhi = (np.nanquantile(rlevs_fin, q, axis=0) for q in (alpha_sep/2,0.5,1-alpha_sep/2))
+        rlevlo,rlevmid,rlevhi = (np.nanquantile(rlevs_fin_extrap, q, axis=0) for q in (alpha_sep/2,0.5,1-alpha_sep/2))
 
         axh = axesh[0,0]
         axv = axesv[0,0]
@@ -1782,10 +1790,10 @@ class TEAMS(EnsembleAlgorithm):
             for i in range(idx2plot[0]-1,-1,-1):
                 if ccdfs_fin_wted[i_alg,i] > ccdfs_fin_wted[i_alg,idx2plot[-1]]:
                     idx2plot.append(i)
-            #pdb.set_trace()
-            #idxchanging = np.where(np.diff(ccdfs_fin_wted[i_alg,:]) != 0)[0]
             axh.plot(sf2rt(ccdfs_fin_wted[i_alg,idx2plot])/time_unit, bin_edges[:-1][idx2plot], color='red', linewidth=0.5,zorder=1)
-            axv.plot(sf2rt(ccdfs_fin_wted[i_alg,idx2plot])/time_unit, bin_edges[:-1][idx2plot], color='red', linewidth=0.5,zorder=1)
+            #axv.plot(np.minimum(rt_grid[-1],sf2rt(ccdfs_fin_wted[i_alg,idx2plot]))/time_unit, bin_edges[:-1][idx2plot], color='red', linewidth=0.5,zorder=1)
+            axv.plot(rt_grid[:i_rt_last_teams]/time_unit, rlevs_fin_extrap[i_alg,:i_rt_last_teams], color='red', linewidth=0.5, zorder=1)
+            #pdb.set_trace()
         axh.plot(rtdnsmid/time_unit,bin_edges[:-1],color='black',linewidth=2.0,linestyle='--',zorder=2)
         axv.plot(rt_grid/time_unit, rlevdnsmid, color='black', linewidth=2.0, linestyle='--', zorder=2)
         for ax in (axh,axv):
@@ -1820,7 +1828,7 @@ class TEAMS(EnsembleAlgorithm):
         axv = axesv[1,0]
         for i_alg in range(len(algs)):
             for ax in (axh,axv):
-                ax.plot(rt_grid/time_unit, (caprlev(rlevs_fin[i_alg])-caprlev(rlev_dns))**2, color='red', linewidth=0.5)
+                ax.plot(rt_grid/time_unit, (caprlev(rlevs_fin_flat[i_alg])-caprlev(rlev_dns))**2, color='red', linewidth=0.5)
                 ax.plot(rt_grid/time_unit, (caprlev(rlev_fin_pooled)-caprlev(rlev_dns))**2, color='purple', linewidth=2)
                 ax.set_yscale('log')
                 ax.axhline(0, color='black', linestyle='--', linewidth=2)
@@ -1833,7 +1841,8 @@ class TEAMS(EnsembleAlgorithm):
                 ax.yaxis.set_tick_params(which='both',labelbottom=True)
             axes[1,1].axis('off')
             for ax in axes[0,:]:
-                ax.set_ylim([bin_edges[i_bin_first], np.nanmax(rlevs_fin)]) #2*bin_edges[i_bin_last]-bin_edges[i_bin_last-1]])
+                ax.set_ylim([bin_edges[i_bin_first], np.nanmax(rlevs_fin_flat)]) #2*bin_edges[i_bin_last]-bin_edges[i_bin_last-1]])
+        pdb.set_trace()
         figh.savefig(figfileseph, **pltkwargs)
         plt.close(figh)
         figv.savefig(figfilesepv, **pltkwargs)
@@ -1854,7 +1863,7 @@ class TEAMS(EnsembleAlgorithm):
         ax = axesv[0]
         for i_alg,alg in enumerate(algs):
             ax.plot(rt_grid/time_unit, cliprlev(rlevs_init[i_alg]), color='dodgerblue', linestyle='-', linewidth=1, alpha=0.5, label=r'Init')
-            ax.plot(rt_grid/time_unit, cliprlev(rlevs_fin[i_alg]), color='red', linestyle='-', linewidth=1, alpha=0.5, label=teams_abbrv)
+            ax.plot(rt_grid/time_unit, cliprlev(rlevs_fin_nan[i_alg]), color='red', linestyle='-', linewidth=1, alpha=0.5, label=teams_abbrv)
         ax.plot(rt_grid/time_unit, rlev_dns, color='black')
 
 
@@ -1886,7 +1895,7 @@ class TEAMS(EnsembleAlgorithm):
         ax.legend(handles=[hinit,hfin_wted,hdns],bbox_to_anchor=(1,0),loc='lower right')
         ax.set_title('Pooled TEAMS runs')
 
-        xlim = [returnstats['time_horizon_effective_phys']/time_unit,5*sf2rt(min(np.nanmin(ccdf_dns),np.nanmin(ccdf_fin_wted)))/time_unit]
+        xlim = [returnstats['time_horizon_effective_phys']/time_unit,5*sf2rt(min(utils.nznanmin(ccdf_dns),utils.nznanmin(ccdf_fin_wted)))/time_unit]
         ylim = [bin_edges[np.argmax(sf2rt(ccdf_dns) > returnstats['time_horizon_effective_phys'])],bin_edges[-1]]
 
         ax = axesv[1]

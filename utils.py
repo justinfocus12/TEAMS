@@ -31,6 +31,9 @@ def concat_dict_of_arrays(d0,d1,axis=-1):
         d0[key] = np.concatenate((d0[key], d1[key]), axis=axis)
     return 
 
+def nznanmin(x):
+    return np.nanmin(x[x>0])
+
 # ------------ Statistical functions -----------------
 def compute_logsf_empirical_with_multiplicities(x,logw=None,mults=None):
     # x: scalar data samples
@@ -75,7 +78,7 @@ def clopper_pearson_confidence_interval(nsucc, ntot, alpha):
 def pmf2ccdf(hist,bin_edges,return_errbars=False,alpha=0.05,N_errbars=None): 
     N = np.sum(hist)
     ccdf = np.cumsum(hist[::-1])[::-1] 
-    ccdf_norm = np.where(ccdf>0, ccdf, np.nan) / N
+    ccdf_norm = ccdf / N #np.where(ccdf>0, ccdf, np.nan) / N
     if not return_errbars:
         return ccdf_norm
     if N_errbars is None:

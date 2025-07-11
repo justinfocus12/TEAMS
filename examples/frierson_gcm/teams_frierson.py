@@ -590,7 +590,7 @@ def plot_scorrelations(config_analysis, alg, dirdict, filedict, expt_label):
     return
 
 
-def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, reference='dns', param_suffix='', overwrite_reference=False):
+def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, reference='dns', param_suffix='', overwrite_reference=False, extrap_choice="nan"):
     tu = algs[0].ens.dynsys.dt_save
     if reference == 'buick':
         scmax_buick_file = join(dirdict['analysis'],'scmax_buick.npz')
@@ -652,8 +652,8 @@ def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, refere
     returnstats_file = join(dirdict['analysis'],'returnstats_%s.npz'%(param_suffix))
     figfileh = join(dirdict['plots'],r'returnstats_h_%s.png'%(param_suffix))
     figfilev = join(dirdict['plots'],r'returnstats_v_%s.png'%(param_suffix))
-    figfileseph = join(dirdict['plots'],r'returnstats_seph_%s.png'%(param_suffix))
-    figfilesepv = join(dirdict['plots'],r'returnstats_sepv_%s.png'%(param_suffix))
+    figfileseph = join(dirdict['plots'],r'returnstats_seph_%s_extrap%s.png'%(param_suffix,extrap_choice))
+    figfilesepv = join(dirdict['plots'],r'returnstats_sepv_%s_extrap%s.png'%(param_suffix,extrap_choice))
     param_display = '\n'.join([
         r'%s resolution'%(algs[0].ens.dynsys.config['resolution']),
         #r'$\sigma=%g$'%(algs[0].ens.dynsys.config['SPPT']['std_sppt']),
@@ -674,7 +674,7 @@ def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, refere
       )
     target_field = list(algs[0].score_params['components'].keys())[0]
     unit_symbol = obsprop[config_algo['score_components'][target_field]['observable']]['unit_symbol']
-    algorithms_frierson.FriersonGCMTEAMS.measure_plot_score_distribution(config_algo, algs, scmax_ref, returnstats_file, figfileh, figfilev, figfileseph, figfilesepv, param_display=param_display, target_display='', time_unit=365, time_unit_name="years", severity_unit_name=unit_symbol, budget=config_algo['num_members_max'])
+    algorithms_frierson.FriersonGCMTEAMS.measure_plot_score_distribution(config_algo, algs, scmax_ref, returnstats_file, figfileh, figfilev, figfileseph, figfilesepv, param_display=param_display, target_display='', time_unit=365, time_unit_name="years", severity_unit_name=unit_symbol, budget=config_algo['num_members_max'], extrap_choice=extrap_choice)
 
     return
 
@@ -723,7 +723,7 @@ def run_teams(dirdict,filedict,config_gcm,config_algo):
     return
 
 
-def teams_multiseed_procedure(Nanc,resolution,i_pop_ctrl,i_time_horizon,i_field,i_sigma,idx_seed,i_delta,i_slm,overwrite_reference=False): # Just different seeds for now
+def teams_multiseed_procedure(Nanc,resolution,extrap_choice,i_pop_ctrl,i_time_horizon,i_field,i_sigma,idx_seed,i_delta,i_slm,overwrite_reference=False): # Just different seeds for now
     tododict = dict({
         'score_distribution': 1,
         'boost_distribution': 0,
@@ -792,7 +792,7 @@ def teams_multiseed_procedure(Nanc,resolution,i_pop_ctrl,i_time_horizon,i_field,
     param_suffix = (r'std%g_ast%g'%(config_gcm['SPPT']['std_sppt'],config_algo['advance_split_time_phys'])).replace('.','p')
     if tododict['score_distribution']:
         print(f'{dirdict = }')
-        measure_plot_score_distribution(config_algo, algs, dirdict, filedict, reference='dns', param_suffix=param_suffix, overwrite_reference=overwrite_reference)
+        measure_plot_score_distribution(config_algo, algs, dirdict, filedict, reference='dns', param_suffix=param_suffix, overwrite_reference=overwrite_reference, extrap_choice=extrap_choice)
     if tododict['boost_distribution']:
         figfile = join(dirdict['plots'], r'boost_distn_%s.png'%(param_suffix))
         algorithms_frierson.FriersonGCMTEAMS.measure_plot_boost_distribution(config_algo, algs, figfile)
@@ -823,7 +823,7 @@ def teams_single_procedure(Nanc,resolution,i_expt):
         plot_fields_2d(config_analysis, alg, dirdict, filedict, expt_label, remove_old_plots=True)
     return
 
-def teams_multidelta_procedure(Nanc,resolution,i_pop_ctrl,i_time_horizon,i_field,i_sigma,idx_delta,i_slm):
+def teams_multidelta_procedure(Nanc,resolution,extrap_choice,i_pop_ctrl,i_time_horizon,i_field,i_sigma,idx_delta,i_slm):
     scratch_dir = "/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
     date_str = "2025-05-16"
     sub_date_str = "1"
@@ -864,7 +864,7 @@ def teams_multidelta_procedure(Nanc,resolution,i_pop_ctrl,i_time_horizon,i_field
         returnstats = np.load(returnstats_file)
         print(f'{returnstats["hist_fin_wted"] = }')
         # Calculate the integrated error metrics 
-        cirem = compute_integrated_returnstats_error_metrics(returnstats)
+        cirem = compute_integrated_returnstats_error_metrics(returnstats, extrap_choice)
         for ciremi in cirem:
             print(ciremi.shape)
         Nseed_actual = min(Nseed,len(cirem[1]))
@@ -949,7 +949,7 @@ def teams_multidelta_procedure(Nanc,resolution,i_pop_ctrl,i_time_horizon,i_field
     for ax in axes[:-1]:
         ax.set_xlabel("")
         ax.xaxis.set_tick_params(which='both', labelbottom=True)
-    fig.savefig(join(plot_dir,'fdivs_boosts.png'),**pltkwargs)
+    fig.savefig(join(plot_dir,'fdivs_boosts_extrap%s.png'%(extrap_choice)),**pltkwargs)
     return
 
 def sf2rt(sf, T):
@@ -966,7 +966,7 @@ def sf2rt(sf, T):
         return rt[0]
     return rt
 
-def compute_integrated_returnstats_error_metrics(returnstats):
+def compute_integrated_returnstats_error_metrics(returnstats, extrap_choice):
     # -------- F-divergences --------
     hist_dns = returnstats['hist_dns'] / np.sum(returnstats['hist_dns'])
     hist_teams = returnstats['hist_fin_wted'] / np.sum(returnstats['hist_fin_wted'])
@@ -990,13 +990,14 @@ def compute_integrated_returnstats_error_metrics(returnstats):
         nzidx_both = np.intersect1d(nzidx_dns, nzidx_teams)
         kldiv_sep[i_alg] = np.sum(hist_dns[nzidx_both] * np.log(hist_dns[nzidx_both] / hists_teams[i_alg,nzidx_both]))
         x2div_sep[i_alg] = np.sum((hist_dns[nzidx_dns] - hists_teams[i_alg,nzidx_dns])**2 / hist_dns[nzidx_dns]**2)
-        L2_sep[i_alg] = np.sqrt(np.mean((returnstats['rlevs_fin'][i_alg] - returnstats['rlev_dns'])**2 ))
+        L2_sep[i_alg] = np.sqrt(np.nanmean((returnstats['rlevs_fin_%s'%(extrap_choice)][i_alg] - returnstats['rlev_dns'])**2 ))
     return kldiv_pooled,kldiv_sep,x2div_pooled,x2div_sep,L2_pooled,L2_sep
 
 if __name__ == "__main__":
     print(f'Got into Main')
-    resolution = 'T21'
+    resolution = 'T42'
     Nanc = 16
+    extrap_choice = "nan"
     if len(sys.argv) > 1:
         procedure = sys.argv[1]
         idx_expt = [int(arg) for arg in sys.argv[2:]]
@@ -1025,7 +1026,7 @@ if __name__ == "__main__":
         i_slm = 0
         for i_expt in idx_expt:
             i_pop_ctrl,i_time_horizon,i_target_field,i_sigma,i_delta,i_slm = np.unravel_index(i_expt, (len(pop_ctrls),len(time_horizons),len(target_fields),len(sigmas),len(deltas_phys),len(split_landmarks)))
-            teams_multiseed_procedure(Nanc,resolution,i_pop_ctrl,i_time_horizon,i_target_field,i_sigma,seed_incs,i_delta,i_slm,overwrite_reference=False)
+            teams_multiseed_procedure(Nanc,resolution,extrap_choice,i_pop_ctrl,i_time_horizon,i_target_field,i_sigma,seed_incs,i_delta,i_slm,overwrite_reference=False)
     elif procedure == 'multidelta':
         multiparams = teams_multiparams(Nanc,resolution)
         pop_ctrls,time_horizons,target_fields,sigmas,seed_incs,deltas_phys,split_landmarks = (multiparams[key] for key in "pop_ctrls time_horizons target_fields sigmas seed_incs deltas_phys split_landmarks".split(" "))
@@ -1035,7 +1036,7 @@ if __name__ == "__main__":
         for i_expt in idx_expt:
             i_pop_ctrl,i_time_horizon,i_target_field,i_sigma,i_slm = np.unravel_index(i_expt, (len(pop_ctrls),len(time_horizons),len(target_fields),len(sigmas),len(split_landmarks)))
             idx_delta = range(len(deltas_phys))
-            teams_multidelta_procedure(Nanc,resolution,i_pop_ctrl,i_time_horizon,i_target_field,i_sigma,idx_delta,i_slm)
+            teams_multidelta_procedure(Nanc,resolution,extrap_choice,i_pop_ctrl,i_time_horizon,i_target_field,i_sigma,idx_delta,i_slm)
 
 
 
