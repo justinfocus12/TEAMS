@@ -77,7 +77,8 @@ def dns_paramset(i_expt):
     expt_label = r'SPPT, $\sigma=%g$, $\tau=%g$ h, $L=%g$ km'%(std_sppt,tau_sppt/3600,L_sppt/1000)
     expt_abbrv = (r'SPPT_std%g_tau%gh_L%gkm'%(std_sppt,tau_sppt/3600,L_sppt/1000)).replace('.','p')
 
-    config_gcm['resolution'] = 'T42'
+    config_gcm['resolution'] = 'T21'
+    config_gcm['pert_type'] = 'SPPT'
     config_gcm['outputs_per_day'] = 4
     config_gcm['SPPT']['tau_sppt'] = tau_sppt
     config_gcm['SPPT']['std_sppt'] = std_sppt
@@ -120,7 +121,7 @@ def dns_single_workflow(i_expt):
             'roi': dict(lat=slice(30,None)),
             'tavg': config_gcm['outputs_per_day'],
             'cmap': 'Blues',
-            'label': '1-day rain [mm]',
+            'label': '1-day precipitation [mm]',
             'abbrv': 'R1daylat30-90',
             }),
         'column_water_vapor': dict({
@@ -402,6 +403,73 @@ def run_dns(dirdict,filedict,config_gcm,config_algo):
         if exists(filedict['alg']):
             os.rename(filedict['alg'], filedict['alg_backup'])
         pickle.dump(alg, open(filedict['alg'], 'wb'))
+    return
+
+def plot_slice_summary_firstcolumn(config_analysis, alg, dirdict):
+    tu = alg.ens.dynsys.dt_save
+    spinup = int(config_analysis['spinup_phys']/tu)
+    duration_hov = int(25/tu)
+    dns_tinits,dns_tfins = alg.ens.get_all_timespans()
+    # Do snapshot and HovMoller plot 
+    mems_hov, = np.where((dns_tfins >= spinup) * (dns_tinits <= spinup+duration_hov))
+    # For basicstats, pull from the pre-analyzed basic stats, which uses the same config_analysis by design. 
+    for (field_name,field_props) in config_analysis['fields_lonlatdep'].items():
+        field_stats = xr.open_dataset(join(dirdict['analysis'], r'basic_stats_%s.nc'%(field_props['abbrv'])))
+        field_fun = lambda ds: frierson_gcm.FriersonGCM.sel_from_roi(field_props['fun'](ds), field_props['roi'])
+
+        field = xr.concat(
+                tuple(alg.ens.compute_observables([field_fun], mem, compute=True)[0] for mem in mems_hov), 
+                dim='time'
+                )
+        field = field.sel(time=slice(spinup*tu,(spinup+duration_hov)*tu))
+        i_t_snap = duration_hov//2
+        fmin,fmax = field.isel(time=i_t_snap).min().item(),field.isel(time=i_t_snap).max().item()
+        fig = plt.figure(figsize=(9,6)) #, ncols=2, width_ratios=[4,1], height_ratios=[0.05, 1, 2], sharex='col', sharey='row', gridspec_kw={'hspace': 0.25, 'wspace': 0.1})
+        gs = fig.add_gridspec(3,1, height_ratios=[0.1,2,3])
+        # TODO 
+        ax_cbar = fig.add_subplot(gs[0,0])
+        ax_snapshot = fig.add_subplot(gs[1,0], projection=ccrs.Robinson(central_longitude=180))
+        ax_snapshot.set_extent([0,360,30,90], crs=ccrs.PlateCarree())
+        ax_hovmoller = fig.add_subplot(gs[2,0])
+        img_snap = xr.plot.pcolormesh(
+                utils.interpolate_field_1deg(field.isel(time=i_t_snap)),  # TODO interpolate to smooth
+                #field.isel(time=i_t_snap),
+                x='lon', y='lat', cmap=field_props['cmap'], ax=ax_snapshot, vmin=fmin, vmax=fmax,
+                add_colorbar=False, add_labels=False, transform=ccrs.PlateCarree(),
+                )
+        ax_snapshot.set_ylabel('Latitude')
+        fig.colorbar(img_snap, cax=ax_cbar, orientation='horizontal', )
+        cbar_ticks = np.linspace(fmin,fmax,4)
+        cbar_ticklabels = ["%.0f"%(c) for c in cbar_ticks]
+        ax_cbar.set_xticks(cbar_ticks)
+        ax_cbar.set_xticklabels(cbar_ticklabels)
+
+        lons,lats = [field[c].to_numpy() for c in ['lon','lat']]
+        dlon,dlat = [c[1]-c[0] for c in (lons,lats)]
+        # -------- snapshot -------------
+        ax_snapshot.add_patch(
+                Rectangle(
+                    (config_analysis['target_location']['lon']-dlon/2,  config_analysis['target_location']['lat']-dlat/2), 
+                    dlon, dlat, edgecolor='black', facecolor='none', linewidth=2, transform=ccrs.PlateCarree()
+                    )
+                )
+        ax_snapshot.plot(lons, len(lons)*[config_analysis['target_location']['lat']], color='black', linestyle='--', transform=ccrs.PlateCarree())
+        ax_snapshot.set_ylabel("Latitude")
+        # -------------- Hovmoller ---------------
+        xr.plot.pcolormesh(
+                utils.interpolate_field_1deg(field.sel(lat=config_analysis['target_location']['lat'], method='nearest'), dims2interp=['lon'],),
+                x='lon', y='time', cmap=field_props['cmap'], ax=ax_hovmoller, vmin=fmin, vmax=fmax, add_colorbar=False, add_labels=False
+                )
+        ax_hovmoller.axhline(y=field['time'].isel(time=i_t_snap).item(), color='black', linestyle='--')
+        ax_hovmoller.axvline(x=config_analysis['target_location']['lon'], color='black', linestyle='--')
+        ax_hovmoller.set_xlabel("Longitude")
+        ax_hovmoller.set_ylabel('Time [days]')
+        # ---------- Overall layout -------
+        ax_snapshot.xaxis.set_tick_params(which='both',labelbottom=True)
+        ax_snapshot.set_xlabel('')
+        ax_cbar.set_title(field_props['label'])
+        fig.savefig(join(dirdict['plots'],r'%s_snap_hov_stats_timeseries_firstcolumn.png'%(field_props['abbrv'])), **pltkwargs)
+        plt.close(fig)
     return
 
 def plot_slice_summary(config_analysis, alg, dirdict):
@@ -712,19 +780,25 @@ def compare_extreme_stats(workflows,config_meta_analysis,meta_dirdict):
             for ii,i in enumerate(idx):
                 extstats = np.load(join(workflowget(workflows[i],'dirdict')['analysis'],r'extstats_zonsym_%s.npz'%(obs_props['abbrv'])))
                 shapes[ii],locs[ii],scales[ii] = extstats['shape'],extstats['loc'],extstats['scale']
-                h, = ax.plot(extstats['rtime']*tu/tu_plot, extstats['bin_lows'], color=colors[i], linestyle='-', label=r'$\sigma_{\mathrm{SPPT}}=%g$'%(sigmas[i]))
+                # Get rid of redundancies 
+                Nbin = len(extstats['bin_lows'])
+                idx2plot = [Nbin-1]
+                for i_bin in range(Nbin-2,-1,-1):
+                    if extstats['rtime'][i_bin] < extstats['rtime'][i_bin+1]:
+                        idx2plot.insert(0,i_bin)
+                h, = ax.plot(extstats['rtime'][idx2plot]*tu/tu_plot, extstats['bin_lows'][idx2plot], color=colors[i], linestyle='-', label=r'%g'%(sigmas[i]))
                 handles_curves.append(h)
                 #ax.plot(extstats['rtime_gev']*tu/tu_plot, extstats['bin_lows'], color=colors[i], linestyle='--')
             group_label = r'$L=%g$km, $\tau=%g$h'%(Ltau_unique[i_group][0]/1000,Ltau_unique[i_group][1]/3600)
             group_color = plt.cm.Set1(i_group)
-            ax.set_title(group_label)
+            #ax.set_title(group_label)
             ax.set_xlabel('Return time [years]')
             ax.set_ylabel(obs_props['label'])
 
             #ax.set_xlim([30,20000])
             ax.set_xscale('log')
             if i_group == len(Ltau_idx_groups)-1:
-                ax.legend(handles=handles_curves,loc=(1,0))
+                ax.legend(handles=handles_curves,bbox_to_anchor=(1,1), loc="upper left", title=r"$\sigma_{\mathrm{SPPT}}$")
 
             # GEV parameters
             ax = axes_gevpar[0]
@@ -826,8 +900,8 @@ def dns_single_procedure(i_expt):
         'run':                            0,
         'plot_snapshots':                 0,
         'plot_timeseries':                0,
-        'compute_basic_stats':            1,
-        'compute_extreme_stats':          1,
+        'compute_basic_stats':            0,
+        'compute_extreme_stats':          0,
         'plot_slice_summary':             1,
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = dns_single_workflow(i_expt)
@@ -844,7 +918,7 @@ def dns_single_procedure(i_expt):
     if todo['compute_extreme_stats']:
         compute_extreme_stats(config_analysis, alg, dirdict)
     if todo['plot_slice_summary']:
-        plot_slice_summary(config_analysis, alg, dirdict)
+        plot_slice_summary_firstcolumn(config_analysis, alg, dirdict)
     return
 
 

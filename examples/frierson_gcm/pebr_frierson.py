@@ -47,7 +47,7 @@ def pebr_paramset(i_expt):
     idx_multiparam = np.unravel_index(i_expt, tuple(len(mp) for mp in multiparams))
     seed_inc,std_sppt,tau_sppt,L_sppt = (multiparams[i][i_param] for (i,i_param) in enumerate(idx_multiparam))
 
-    config_gcm['resolution'] = 'T42'
+    config_gcm['resolution'] = 'T21'
     config_gcm['outputs_per_day'] = 4
     config_gcm['pert_type'] = 'SPPT'
     config_gcm['SPPT']['tau_sppt'] = tau_sppt
@@ -97,7 +97,7 @@ def pebr_single_workflow(i_expt):
                 'num_steps': config_gcm['outputs_per_day'],
                 }),
             'abbrv': 'Rtot',
-            'label': r'1-day Rain $(\phi,\lambda)=(%d,%d)$'%(config_analysis['target_location']['lat'],config_analysis['target_location']['lon']),
+            'label': r'1-day precip. (target)',
             'unit_symbol': 'mm/day',
             }),
         'temp': dict({
@@ -106,7 +106,7 @@ def pebr_single_workflow(i_expt):
                 dict(**config_analysis['target_location'], pfull=1000)),
             'kwargs': dict(),
             'abbrv': 'T',
-            'label': 'Temperature $(\phi,\lambda,\sigma)=(%d,%d,1.0)$'%(config_analysis['target_location']['lat'],config_analysis['target_location']['lon']),
+            'label': 'Temperature (target)',
             'unit_symbol': 'K',
             }),
         'surf_horz_wind': dict({
@@ -123,39 +123,47 @@ def pebr_single_workflow(i_expt):
     obs_names = list(observables_scalar.keys())
     # distance metrics
     dist_metrics = dict() 
-    for (lonrange,latrange) in ((40,10),(120,30),(360,90)):
-        areastr = r'%dx%d'%(lonrange,latrange)
+    for (lonrange,latrange) in ((40,10),(120,30),(360,90))[2:]:
+        areastr = r'%dx%d'%(lonrange,latrange) 
+        if (lonrange == 360) and (latrange == 90):
+            area_label = "NH"
+        else:
+            area_label = areastr
         roi = dict({
             'lat': slice(config_analysis['target_location']['lat']-latrange/2,config_analysis['target_location']['lat']+latrange/2),
             'lon': slice(config_analysis['target_location']['lon']-lonrange/2,config_analysis['target_location']['lon']+lonrange/2),
 
             })
-        dist_metrics[r'horzvel_%s'%(areastr)] = dict({
-            'fun': FriersonGCM.dist_euc_horzvel,
-            'kwargs': dict({'roi': dict(pfull=1000, **roi)}),
-            'abbrv': r'UVEuc%s'%(areastr),
-            'label': r'Surf. Horz. Vel. Eucl. dist. (%s)'%(areastr),
-            'unit_symbol': 'm/s',
-            })
         dist_metrics[r'rain_%s'%(areastr)] = dict({
             'fun': FriersonGCM.dist_euc_rain,
             'abbrv': r'RainEuc%s'%(areastr),
-            'label': r'1-day Rain Eucl. dist. (%s)'%(areastr),
+            'label': r'1-day Precip. Eucl. dist. (%s)'%(area_label),
+            'field_name': r'Precip',
             'kwargs': dict(roi=roi,outputs_per_day=config_gcm['outputs_per_day']),
             'unit_symbol': 'mm/day',
             })
         dist_metrics[r'temp_%s'%(areastr)] = dict({
             'fun': FriersonGCM.dist_euc_temp,
             'abbrv': r'TempEuc%s'%(areastr),
-            'label': r'Surf. Temp.  Eucl. dist. (%s)'%(areastr),
+            'label': r'Surf. Temp.  Eucl. dist. (%s)'%(area_label),
+            'field_name': r'Temp.',
             'kwargs': dict({'roi': dict(pfull=1000, **roi)}),
             'unit_symbol': 'K',
+            })
+        dist_metrics[r'horzvel_%s'%(areastr)] = dict({
+            'fun': FriersonGCM.dist_euc_horzvel,
+            'kwargs': dict({'roi': dict(pfull=1000, **roi)}),
+            'abbrv': r'UVEuc%s'%(areastr),
+            'field_name': "Windspeed",
+            'label': r'Surf. Horz. Vel. Eucl. dist. (%s)'%(areastr),
+            'unit_symbol': 'm/s',
             })
     dist_names = list(dist_metrics.keys())
     config_analysis['dist_metrics'] = dist_metrics
 
     # How to quantitatively measure perturbation growth, and also perhaps the Lyapunov exponents/power laws between them 
     config_analysis['satfracs'] = np.array([1/8,1/4,3/8,1/2])
+    config_analysis['satfrac_symbols'] = np.array(["1/8","1/4","3/8","1/2"])
 
 
     # Set up directories
@@ -245,7 +253,7 @@ def quantify_dispersion_rates(config_analysis, alg, dirdict, overwrite_dispersio
         groups2plot = np.arange(min(dispersion_stats['dists'].shape[0],10), dtype=int)
         alg.plot_dispersion(
                 dispersion_stats, figfile_prefix, groups2plot=groups2plot,  
-                title=dist_props['label'], logscale=False, time_unit_symbol='days', ylabel=r'[%s]'%(dist_props['unit_symbol']),
+                title=dist_props['label'], logscale=False, time_unit_symbol='days', ylabel=r'%s [%s]'%(dist_props['field_name'],dist_props['unit_symbol']), satfrac_symbols=config_analysis['satfrac_symbols'],
                 )
     return 
 
@@ -512,9 +520,9 @@ def old_thing():
 
 def pebr_single_procedure(i_param):
     tododict = dict({
-        'run':                           1,
+        'run':                           0,
         'analysis': dict({
-            'observable_spaghetti':      1,
+            'observable_spaghetti':      0,
             'dispersion_rate':           1, # including both Lyapunov analysis (FSLE) and expected leadtime until fractional saturation (ELFS)
             'running_max':               0, # watch extreme value statistics (curves and parameters) converge to the true values with longer time blocks
             }),

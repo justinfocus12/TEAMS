@@ -354,7 +354,7 @@ def teams_single_workflow(Nanc,resolution,i_expt):
     scratch_dir = "/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
     target_field = next(iter(config_algo['score_components'].keys()))
     date_str = "2025-05-16"
-    sub_date_str = "1"
+    sub_date_str = "2"
     if not (target_field in ["rainrate","temp","surf_horz_wind"]):
         raise Exception(f'Unsupported target field {target_field}')
     dirdict = dict()
@@ -674,7 +674,7 @@ def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, refere
       )
     target_field = list(algs[0].score_params['components'].keys())[0]
     unit_symbol = obsprop[config_algo['score_components'][target_field]['observable']]['unit_symbol']
-    algorithms_frierson.FriersonGCMTEAMS.measure_plot_score_distribution(config_algo, algs, scmax_ref, returnstats_file, figfileh, figfilev, figfileseph, figfilesepv, param_display=param_display, target_display='', time_unit=365, time_unit_name="years", severity_unit_name=unit_symbol, budget=config_algo['num_members_max'], extrap_choice=extrap_choice)
+    algorithms_frierson.FriersonGCMTEAMS.measure_plot_score_distribution(config_algo, algs, scmax_ref, returnstats_file, figfileh, figfilev, figfileseph, figfilesepv, param_display=param_display, target_display=None, time_unit=365, time_unit_name="years", severity_unit_name=unit_symbol, budget=config_algo['num_members_max'], extrap_choice=extrap_choice)
 
     return
 
@@ -732,7 +732,6 @@ def teams_multiseed_procedure(Nanc,resolution,extrap_choice,i_pop_ctrl,i_time_ho
     # Figure out which flat indices corresond to this set of seeds
     multiparams = teams_multiparams(Nanc,resolution)
     idx_multiparam = [(i_pop_ctrl,i_time_horizon,i_field,i_sigma,i_seed,i_delta,i_slm) for i_seed in idx_seed]
-    print(f'{len(idx_multiparam) = }')
     idx_expt = []
     for i_multiparam in idx_multiparam:
         i_expt = np.ravel_multi_index(i_multiparam,tuple(len(multiparams[key]) for key in multiparams.keys()))
@@ -839,6 +838,7 @@ def teams_multidelta_procedure(Nanc,resolution,extrap_choice,i_pop_ctrl,i_time_h
     x2div_sep = np.nan*np.ones((Nseed,Ndelta))
     L2_sep = np.nan*np.ones((Nseed,Ndelta))
     boost_family_mean = np.zeros((Nseed,Ndelta))
+    boost_family_mean_anconly = np.zeros((Nseed,Ndelta))
     plot_dir = ""
     for i_delta in idx_delta:
         param_suffix = (r'std%g_ast%g'%(sigmas[i_sigma],deltas_phys[i_delta])).replace('.','p')
@@ -876,6 +876,7 @@ def teams_multidelta_procedure(Nanc,resolution,extrap_choice,i_pop_ctrl,i_time_h
         L2_sep[:Nseed_actual,i_delta] = cirem[5][:Nseed_actual]
         # Load the max-gains metrics
         boost_family_mean[:Nseed_actual,i_delta] = returnstats['boost_family_mean'][:Nseed_actual]
+        boost_family_mean_anconly[:Nseed_actual,i_delta] = returnstats['boost_family_mean_anconly'][:Nseed_actual]
 
     # Make the meta-directory by replacing "ast<delta>" with "astall"
     #plot_dir = join(scratch_dir, date_str, sub_date_str, param_abbrv_gcm, param_abbrv_algo)
@@ -892,7 +893,7 @@ def teams_multidelta_procedure(Nanc,resolution,extrap_choice,i_pop_ctrl,i_time_h
 
     # TODO unify figures into one, and add a descriptive label with all run parameters
 
-    fig,axes = plt.subplots(figsize=(9,6),nrows=2,ncols=1,sharex='col') 
+    fig,axes = plt.subplots(figsize=(6,6),nrows=2,ncols=1,gridspec_kw={'hspace': 0.3}) 
     # L2 divergence
     handles = []
     ax = axes[0]
@@ -915,7 +916,6 @@ def teams_multidelta_procedure(Nanc,resolution,extrap_choice,i_pop_ctrl,i_time_h
     unit_symbol = obsprop[target_field]['unit_symbol']
     ax.set_xlabel(r'Advance split time $\delta$ [days]')
     ax.set_ylabel(r'$L^2$ error [%s]'%(unit_symbol))
-    ax.legend(handles=handles, bbox_to_anchor=(1.0, 1.05), loc='lower right')
     # gain
     ax = axes[1]
     handles = []
@@ -923,14 +923,18 @@ def teams_multidelta_procedure(Nanc,resolution,extrap_choice,i_pop_ctrl,i_time_h
     handles.append(h)
     h, = ax.plot(deltas,np.nanmean(boost_family_mean,axis=0),color='black',marker='.',label='mean')
     handles.append(h)
+    #h, = ax.plot(deltas,np.nanmedian(boost_family_mean_anconly,axis=0),color='purple',marker='o',label='median (ancestors only)')
+    #handles.append(h)
+    #h, = ax.plot(deltas,np.nanmean(boost_family_mean_anconly,axis=0),color='cyan',marker='o',label='mean (ancestors only)')
+    #handles.append(h)
     print(f'{np.nanmean(boost_family_mean,axis=0) = }')
     for i_alpha,alpha in enumerate(alphas):
         lo,hi = np.nanquantile(boost_family_mean, [alpha/2,1-alpha/2], axis=0)
-        print(f'{alpha = }')
-        print(f'{lo = }')
-        print(f'{hi = }')
         h = ax.fill_between(deltas, lo, hi, fc='red', ec='none', alpha=transparencies[i_alpha], zorder=-i_alpha-1, label=r'{:d}% CI'.format(int(round((1-alpha)*100))))
         handles.append(h)
+        #lo,hi = np.nanquantile(boost_family_mean_anconly, [alpha/2,1-alpha/2], axis=0)
+        #h = ax.fill_between(deltas, lo, hi, fc='red', ec='none', alpha=transparencies[i_alpha], zorder=-i_alpha-1, label=r'{:d}% CI'.format(int(round((1-alpha)*100))))
+        #handles.append(h)
     ax.set_xlabel(r'Advance split time $\delta$ [days]')
     ax.set_ylabel(r'Boost [%s]'%(unit_symbol))
 
@@ -946,9 +950,11 @@ def teams_multidelta_procedure(Nanc,resolution,extrap_choice,i_pop_ctrl,i_time_h
             configs_algo[0]['population_size'],
       )
     axes[0].text(0, 1.05, paramtext, transform=axes[0].transAxes, va='bottom')
-    for ax in axes[:-1]:
-        ax.set_xlabel("")
+    for ax in axes:
         ax.xaxis.set_tick_params(which='both', labelbottom=True)
+        ax.set_xlim([deltas[0],deltas[-1]])
+    axes[0].set_xlabel("")
+    axes[0].legend(handles=handles, bbox_to_anchor=(1.0, 1.05), loc='lower right')
     fig.savefig(join(plot_dir,'fdivs_boosts_extrap%s.png'%(extrap_choice)),**pltkwargs)
     return
 
@@ -997,7 +1003,7 @@ if __name__ == "__main__":
     print(f'Got into Main')
     resolution = 'T42'
     Nanc = 16
-    extrap_choice = "nan"
+    extrap_choice = "flat" # options: nan, flat 
     if len(sys.argv) > 1:
         procedure = sys.argv[1]
         idx_expt = [int(arg) for arg in sys.argv[2:]]

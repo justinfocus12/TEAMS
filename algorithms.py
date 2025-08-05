@@ -407,7 +407,8 @@ class PeriodicBranching(EnsembleAlgorithm):
             split_times[branch_group] = time[0] - 1
         print(f'{split_times = }')
         rmses = np.sqrt(np.mean(dists**2, axis=1))
-        rmsd = np.sqrt(np.mean(rmses[:,-1]**2))
+        # Assume converged in the last quarter of the simulation
+        rmsd = np.sqrt(np.nanmean(rmses[:,-(self.branch_duration//4):]**2))
         # Finite-size Lyapunov analysis (at fixed fractions of saturation)
         nfracs = len(satfracs)
         fsle = np.nan*np.ones((ngroups,nfracs))
@@ -461,7 +462,7 @@ class PeriodicBranching(EnsembleAlgorithm):
                 for i_frac,frac in enumerate(fracs):
                     t2fracsat[dist_name][i_pg,i_frac] = np.mean(np.argmax(rmse/rmsd > frac, axis=1))
         return fracs,t2fracsat
-    def plot_dispersion(self, dispersion_metrics, figfile_prefix, groups2plot=None, ylabel='', title='', logscale=False, time_unit_symbol=''):
+    def plot_dispersion(self, dispersion_metrics, figfile_prefix, groups2plot=None, ylabel='', title='', logscale=False, time_unit_symbol='', satfrac_symbols=None):
         # TODO add in the fractional saturation times 
         tu = self.ens.dynsys.dt_save
         split_times = dispersion_metrics['split_times']
@@ -469,42 +470,41 @@ class PeriodicBranching(EnsembleAlgorithm):
         rmses = dispersion_metrics['rmses']
         rmsd = dispersion_metrics['rmsd']
         satfracs = dispersion_metrics['satfracs']
-        elfs = dispersion_metrics['elfs']
+        elfs = dispersion_metrics['elfs'] # Times at which each group exceeds the fractional saturation 
         fsle = dispersion_metrics['fsle']
         diff_pows = dispersion_metrics['diffusive_powers']
         print(f'{rmses.max() = }, {rmsd = }')
         ngroups,nbranches,ntimes = dists.shape
+        # 
         time_since_split = 1 + np.arange(ntimes) # local time 
         if groups2plot is None:
             groups2plot = np.arange(ngroups, dtype=int)
         for group in groups2plot:
             fig,ax = plt.subplots()
             for i_mem1 in range(nbranches):
-                ax.plot((split_times[group]+time_since_split)*tu, dists[group,i_mem1,:], color='tomato',)
-            hrmse_conditional, = ax.plot((split_times[group]+time_since_split)*tu, rmses[group,:], color='black', label='Conditional RMSE')
-            hrmse_climatological, = ax.plot((split_times[group]+time_since_split)*tu, np.nanmean(rmses[:,:], axis=0), color='purple', label='Climatological RMSE')
+                ax.plot((time_since_split)*tu, dists[group,i_mem1,:], color='tomato',)
+            #hrmse_conditional, = ax.plot((split_times[group]+time_since_split)*tu, rmses[group,:], color='black', label='Conditional RMSE')
+            hrmse_climatological, = ax.plot((time_since_split)*tu, np.sqrt(np.nanmean(rmses[:,:]**2, axis=0)), color='purple', label='Climatological RMSE')
             ax.axhline(rmsd, color='black', linestyle='--', label='RMSD')
-            # Exponential growth model
-            i_time_prev = 0
+            handles = [hrmse_climatological]
+            if satfrac_symbols is None:
+                satfrac_symbols = list(map(lambda sf: f"{sf:.03f}", satfracs))
             for i_sf,sf in enumerate(satfracs):
-                tidx = np.arange(i_time_prev,elfs[group,i_sf], dtype=int)
-                #hpow, = ax.plot(time[tidx]*tu, rmses[group][tidx[0]] * (time/time[tidx[0]])**diff_pows[group,i_sf], color='dodgerblue', label='diffusive')
-                if len(tidx) > 0:
-                    if False:
-                        hexp, = ax.plot(
-                                time[tidx]*tu, 
-                                rmses[group,time[tidx[0]]] * np.exp(
-                                    (time[tidx]-time[tidx[0]]) * 
-                                    fsle[group,i_sf]), 
-                                color='limegreen', label='exp. growth')
-                    #ax.axvline((time[tidx[-1]]-time[0])*tu, color='black', linewidth=0.5)
+                elfs_mean = np.mean(elfs[:,i_sf])
+                elfs_std = np.std(elfs[:,i_sf])
+                if i_sf == 2:
+                    helf, = ax.plot(tu*(elfs_mean)*np.ones(2), [0,rmsd*sf], color="gray", label=r"$t_{%s}=%.1f\pm%.1f$ days"%(satfrac_symbols[i_sf],tu*elfs_mean,tu*elfs_std))
+                    handles.append(helf)
+                    ax.fill_betweenx([0,rmsd*sf], tu*(elfs_mean-elfs_std), tu*(elfs_mean+elfs_std), fc="gray", ec="none", alpha=0.25, zorder=-2)
                     ax.axhline(rmsd*satfracs[i_sf], color='black', linewidth=0.5)
-                    i_time_prev = tidx[-1]
-            ax.legend(handles=[hrmse_conditional,hrmse_climatological])
-            ax.set_xlabel(r'Time [%s]'%(time_unit_symbol))
+            ax.legend(handles=handles)
+            ax.set_xlabel(r'Time since split [%s]'%(time_unit_symbol))
             ax.set_ylabel(ylabel)
             ax.set_title(title)
-            if logscale: ax.set_yscale('log')
+            if logscale: 
+                ax.set_yscale('log')
+            else:
+                ax.set_ylim([0,np.nanmax(rmses)])
             figfile = r'%s_group%d.png'%(figfile_prefix,group)
             fig.savefig(figfile, **pltkwargs)
             plt.close(fig)
@@ -1125,7 +1125,7 @@ class TEAMS(EnsembleAlgorithm):
     def take_next_step(self, saveinfo):
         # CHECK TERMINATION!!!
         nmem = self.ens.get_nmem()
-        if nmem >= self.num_members_max():
+        if nmem >= self.num_members_max:
             self.terminate = True
             print(f"Terminating: nmem = {nmem}")
         if self.terminate:
@@ -1559,6 +1559,7 @@ class TEAMS(EnsembleAlgorithm):
         hists_init,hists_fin_unif,hists_fin_wted,ccdfs_init,ccdfs_fin_unif,ccdfs_fin_wted = (np.zeros((len(algs),len(bin_edges)-1)) for i in range(6))
         rlevs_init,rlevs_fin_flat,rlevs_fin_nan = (np.zeros((len(algs), len(logccdf_grid))) for i in range(3))
         boost_family_mean = np.zeros(len(algs))
+        boost_family_mean_anconly = np.zeros(len(algs))
         boost_population = np.zeros(len(algs))
         ccdf_mins_sep = np.zeros(len(algs)) # Get the minimum weight for each individual TEAMS run 
         for i_alg,alg in enumerate(algs):
@@ -1578,12 +1579,10 @@ class TEAMS(EnsembleAlgorithm):
             rlevs_init[i_alg,:] = np.interp(logccdf_grid[::-1], logccdf_emp[::-1], xord[::-1])[::-1]
             # Calculate gains
             A = alg.ens.construct_descent_matrix().toarray().astype(int)[:Ns_fin[i_alg],:Ns_fin[i_alg]]
-            print(f'{np.min(A) = }, {np.max(A) = }')
-            print(f'{np.sum(A,axis=1) = }')
             desc_scores = A * np.array(scmaxs[i_alg]) 
             maxboosts = np.maximum(0, np.max(desc_scores,axis=1) - np.array(scmaxs[i_alg]))
-            print(f'{np.min(maxboosts) = }, {np.max(maxboosts) = }')
             boost_family_mean[i_alg] = np.mean(maxboosts)
+            boost_family_mean_anconly[i_alg] = np.mean(maxboosts[:Ns_init[i_alg]])
             boost_population[i_alg] = np.max(maxboosts)
         hist_init = np.sum(hists_init, axis=0)
         hist_fin_unif = np.sum(hists_fin_unif, axis=0)
@@ -1667,6 +1666,7 @@ class TEAMS(EnsembleAlgorithm):
             'ccdfs_fin_wted': ccdf_fin_wted,
             'ccdfs_fin_unif': ccdf_fin_unif,
             'boost_family_mean': boost_family_mean,
+            'boost_family_mean_anconly': boost_family_mean_anconly,
             'boost_population': boost_population,
             # Pooled TEAMS runs
             'hist_init': hist_init,
@@ -1717,7 +1717,7 @@ class TEAMS(EnsembleAlgorithm):
         # ++++ left-hand text label +++
         cost_display = '\n'.join([
             r'%s cost:'%(teams_abbrv),
-            r'%.1E %s per run'%(cost_teams_fin/len(algs)/time_unit,time_unit_name),
+            r'%.1f %s per run'%(cost_teams_fin/len(algs)/time_unit,time_unit_name),
             #r'$\times$ %d runs'%(len(algs)),
             #r'$=$%.1E %s'%(cost_teams_fin/time_unit,time_unit_name),
             #r' ',
@@ -1753,8 +1753,8 @@ class TEAMS(EnsembleAlgorithm):
         elif "nan" == extrap_choice:
             rlevs_fin_extrap = rlevs_fin_nan
 
-        figh,axesh = plt.subplots(figsize=(12,9),ncols=2,nrows=2,width_ratios=[3,1],height_ratios=[3,1],sharex='col',sharey='row')
-        figv,axesv = plt.subplots(figsize=(12,9),ncols=2,nrows=2,width_ratios=[3,1],height_ratios=[3,1],sharex='col',sharey='row')
+        figh,axesh = plt.subplots(figsize=(12,9),ncols=2,nrows=2,width_ratios=[3,1],height_ratios=[3,1],sharex='col',sharey='row',gridspec_kw=dict(hspace=0.4,wspace=0.4,))
+        figv,axesv = plt.subplots(figsize=(12,9),ncols=2,nrows=2,width_ratios=[3,1],height_ratios=[3,1],sharex='col',sharey='row',gridspec_kw=dict(hspace=0.4,wspace=0.4,))
         # For vertical error bars, identify the longest plottable return period
         i_rt_last_dns = np.searchsorted(rt_grid, sf2rt(1/N_dns_boot_fin_sep)) #np.max(Ns_fin)))
         i_rt_last_teams = max(i_rt_last_dns, np.searchsorted(rt_grid, sf2rt(np.nanmin(ccdf_mins_sep))))
@@ -1765,17 +1765,24 @@ class TEAMS(EnsembleAlgorithm):
 
         axh = axesh[0,0]
         axv = axesv[0,0]
+        handles_h = []
+        handles_v = []
         axh.axhline(bin_edges[i_bin_first], color='gray')
         axv.axhline(bin_edges[i_bin_first], color='gray')
-        axh.fill_betweenx(bin_edges[:-1],rtlo/time_unit,rthi/time_unit,color='red',alpha=0.25,zorder=-1)
-        axv.fill_between(rt_grid[:i_rt_last_teams]/time_unit, rlevlo[:i_rt_last_teams],rlevhi[:i_rt_last_teams],color='red', alpha=0.25, zorder=-1)
-        axh.plot(rtmid/time_unit,bin_edges[:-1],color='purple',linestyle='-',linewidth=2.0,zorder=3)
-        axv.plot(rt_grid[:i_rt_last_teams]/time_unit, rlevmid[:i_rt_last_teams], color='purple', linestyle='-', linewidth=2.0, zorder=3)
+        h = axh.fill_betweenx(bin_edges[:-1],rtlo/time_unit,rthi/time_unit,color='red',alpha=0.25,zorder=-1,label="TEAMS IQR")
+        handles_h.append(h)
+        h = axv.fill_between(rt_grid[:i_rt_last_teams]/time_unit, rlevlo[:i_rt_last_teams],rlevhi[:i_rt_last_teams],color='red', alpha=0.25, zorder=-1,label="TEAMS IQR")
+        handles_v.append(h)
+        h, = axh.plot(rtmid/time_unit,bin_edges[:-1],color='purple',linestyle='-',linewidth=2.0,zorder=3, label="TEAMS median")
+        handles_h.append(h)
+        h, = axv.plot(rt_grid[:i_rt_last_teams]/time_unit, rlevmid[:i_rt_last_teams], color='purple', linestyle='-', linewidth=2.0, zorder=3, label="TEAMS median")
+        handles_v.append(h)
         # Should the DNS error bars be exact, or bootstrapped? 
         # Exact only for CCDFs
         ccdfmid,ccdflo,ccdfhi = utils.pmf2ccdf(hist_dns,bin_edges,return_errbars=True,alpha=alpha_sep,N_errbars=int(N_dns * cost_teams_fin/cost_dns/len(algs)))
         rtdnsmid,rtdnshi,rtdnslo = (sf2rt(ccdf) for ccdf in (ccdfmid,ccdflo,ccdfhi))
-        axh.fill_betweenx(bin_edges[:-1],rtdnslo/time_unit,rtdnshi/time_unit,color='gray',alpha=1.0,zorder=-1)
+        h = axh.fill_betweenx(bin_edges[:-1],rtdnslo/time_unit,rtdnshi/time_unit,color='gray',alpha=1.0,zorder=-1, label="DNS IQR (same cost)")
+        handles_h.append(h)
         # Exact for return levels
         #rlevdnsmid,rlevdnslo,rlevdnshi = (np.interp(rt_grid, rtdns, bin_edges[:-1]) for rtdns in (rtdnsmid,rtdnslo,rtdnshi))
         # Bootstrapped for return levels
@@ -1783,27 +1790,35 @@ class TEAMS(EnsembleAlgorithm):
         rlevdnslo,rlevdnshi = [np.nanquantile(rlevs_dns_boot_fin_sep, q, axis=0) for q in [alpha_sep/2, 1-alpha_sep/2]]
         #pdb.set_trace()
         # need to cut off the return level estimates (return nothing) beyond the queried probabilities
-        axv.fill_between(rt_grid[:i_rt_last_dns]/time_unit, rlevdnslo[:i_rt_last_dns], rlevdnshi[:i_rt_last_dns], color='gray', alpha=1.0, zorder=-1)
+        h = axv.fill_between(rt_grid[:i_rt_last_dns]/time_unit, rlevdnslo[:i_rt_last_dns], rlevdnshi[:i_rt_last_dns], color='gray', alpha=1.0, zorder=-1, label="DNS IQR (same cost)")
+        handles_v.append(h)
         for i_alg in range(Nalg):
             # Don't plot indices same as previous
             idx2plot = [np.where(np.isfinite(ccdfs_fin_wted[i_alg,:]))[0][-1]] #np.arange(len(bin_edges)-1)
             for i in range(idx2plot[0]-1,-1,-1):
                 if ccdfs_fin_wted[i_alg,i] > ccdfs_fin_wted[i_alg,idx2plot[-1]]:
                     idx2plot.append(i)
-            axh.plot(sf2rt(ccdfs_fin_wted[i_alg,idx2plot])/time_unit, bin_edges[:-1][idx2plot], color='red', linewidth=0.5,zorder=1)
+            h, = axh.plot(sf2rt(ccdfs_fin_wted[i_alg,idx2plot])/time_unit, bin_edges[:-1][idx2plot], color='red', linewidth=0.5,zorder=1, label="TEAMS single run")
+            if i_alg == 0:
+                handles_h.append(h)
             #axv.plot(np.minimum(rt_grid[-1],sf2rt(ccdfs_fin_wted[i_alg,idx2plot]))/time_unit, bin_edges[:-1][idx2plot], color='red', linewidth=0.5,zorder=1)
-            axv.plot(rt_grid[:i_rt_last_teams]/time_unit, rlevs_fin_extrap[i_alg,:i_rt_last_teams], color='red', linewidth=0.5, zorder=1)
+            h, = axv.plot(rt_grid[:i_rt_last_teams]/time_unit, rlevs_fin_extrap[i_alg,:i_rt_last_teams], color='red', linewidth=0.5, zorder=1, label="TEAMS single run")
+            if i_alg == 0:
+                handles_v.append(h)
             #pdb.set_trace()
-        axh.plot(rtdnsmid/time_unit,bin_edges[:-1],color='black',linewidth=2.0,linestyle='--',zorder=2)
-        axv.plot(rt_grid/time_unit, rlevdnsmid, color='black', linewidth=2.0, linestyle='--', zorder=2)
-        for ax in (axh,axv):
+        h, = axh.plot(rtdnsmid/time_unit,bin_edges[:-1],color='black',linewidth=2.0,linestyle='--',zorder=2, label="DNS")
+        handles_h.append(h)
+        h, = axv.plot(rt_grid/time_unit, rlevdnsmid, color='black', linewidth=2.0, linestyle='--', zorder=2, label="DNS")
+        handles_v.append(h)
+        for (ax,handles) in zip((axh,axv), (handles_h,handles_v)):
             ax.set_ylabel(r'Return level [%s]'%(severity_unit_name))
             ax.set_xlabel(r'Return time [%s]'%(time_unit_name))
             ax.xaxis.set_tick_params(which='both',labelbottom=True)
             #ax.set_title(r'Single %s runs & middle %d%s'%(teams_abbrv,int(100*confint_width_sep),"%"))
             ax.set_xscale('log')
             ax.set_xlim([returnstats['time_horizon_effective_phys']/time_unit, rt_grid[i_rt_last_teams]/time_unit])
-            ax.text(0.05,1.0,display,fontsize=15,transform=ax.transAxes,ha='left',va='top')
+            ax.text(0.02,0.98,display,fontsize=18,transform=ax.transAxes,ha='left',va='top')
+            ax.legend(handles=handles, ncols=2, bbox_to_anchor=(0.5,1.0), loc="lower center", frameon=True)
 
         # F-divergences
         nzidx = np.where(hist_dns > 0)[0]
@@ -1822,7 +1837,7 @@ class TEAMS(EnsembleAlgorithm):
             ax.plot((hist_dns[nzidx]/norm_dns - hist_fin_wted[nzidx]/norm_teams)**2 / (hist_dns[nzidx]/norm_dns)**2, bin_edges[nzidx], color='purple', linewidth=2)
             ax.set_xscale('log')
             ax.axvline(0.0, color='black', linestyle='--',linewidth=2)
-            ax.set_title(r"$[(p-\hat{p})/p]^2$")
+            ax.set_xlabel(r"$[(p-\hat{p})/p]^2$")
 
         axh = axesh[1,0]
         axv = axesv[1,0]
@@ -1837,12 +1852,14 @@ class TEAMS(EnsembleAlgorithm):
                 #ax.set_title(r'Return level errors')
         for axes in (axesh,axesv):
             for ax in axes.flat:
-                ax.xaxis.set_tick_params(which='both',labelbottom=True)
-                ax.yaxis.set_tick_params(which='both',labelbottom=True)
+                #ax.xaxis.set_tick_params(which='both',labelbottom=True)
+                #ax.yaxis.set_tick_params(which='both',labelbottom=True)
+                ax.tick_params(axis='both', labelsize=18, labelbottom=True)
+                ax.xaxis.label.set_size(20)
+                ax.yaxis.label.set_size(20)
             axes[1,1].axis('off')
             for ax in axes[0,:]:
                 ax.set_ylim([bin_edges[i_bin_first], np.nanmax(rlevs_fin_flat)]) #2*bin_edges[i_bin_last]-bin_edges[i_bin_last-1]])
-        pdb.set_trace()
         figh.savefig(figfileseph, **pltkwargs)
         plt.close(figh)
         figv.savefig(figfilesepv, **pltkwargs)
