@@ -55,6 +55,10 @@ def teams_multiparams(Nanc,resolution):
             deltas_phys = deltas_phys,
             split_landmarks = ['thx'],
             )
+    # Singles of interest:
+    # for (rain,delta=10,T21) use (i_target_field,i_seed_inc,i_delta)=(0,0,4) therefore i_expt = ravel_multi_index((0,0,4), (2,48,10))= 4
+    # for (temp,delta=12,T21) use (i_target_field,i_seed_inc,i_delta)=(1,0,5) therefore i_expt = ravel_multi_index((1,0,4), (2,48,10)) = 485
+    # Multiseeds of interest: 
     # for (rain,delta=10,T21), use i_expt = 4
     # for (temperature,delta=12,T21) use i_expt = 15
     # for (rain,delta=10,T42), use i_expt = 1
@@ -192,7 +196,7 @@ def teams_single_workflow(Nanc,resolution,i_expt):
                 .to_numpy().flatten(),
             'kwargs': dict(),
             'abbrv': 'T1000loc',
-            'label': 'Temperature $(\phi,\lambda,\sigma)=(%d,%d,1.0)$'%(config_analysis['target_location']['lat'],config_analysis['target_location']['lon']),
+            'label': 'Temperature (target)',
             'unit_symbol': 'K',
             }),
         'local_surface_pressure_neg': dict({
@@ -211,7 +215,7 @@ def teams_single_workflow(Nanc,resolution,i_expt):
                 'roi': config_analysis['target_location'],
                 }),
             'abbrv': 'Rloc',
-            'label': r'Rain rate $(\phi,\lambda)=(%d,%d)$'%(config_analysis['target_location']['lat'],config_analysis['target_location']['lon']),
+            'label': r'Precipitation (target)',
             'unit_symbol': 'mm/day',
             }),
         'local_dayavg_rain': dict({
@@ -222,7 +226,7 @@ def teams_single_workflow(Nanc,resolution,i_expt):
                 'num_steps': config_gcm['outputs_per_day'],
                 }),
             'abbrv': 'Rloc1day',
-            'label': r'Rain rate (1-day avg) $(\phi,\lambda)=(%d,%d)$'%(config_analysis['target_location']['lat'],config_analysis['target_location']['lon']),
+            'label': r'1-day Precipitation (target)',
             'unit_symbol': 'mm/day',
             }),
         'horizontal_wind_speed': dict({
@@ -354,7 +358,7 @@ def teams_single_workflow(Nanc,resolution,i_expt):
     scratch_dir = "/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
     target_field = next(iter(config_algo['score_components'].keys()))
     date_str = "2025-05-16"
-    sub_date_str = "2"
+    sub_date_str = "1"
     if not (target_field in ["rainrate","temp","surf_horz_wind"]):
         raise Exception(f'Unsupported target field {target_field}')
     dirdict = dict()
@@ -655,10 +659,10 @@ def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, refere
     figfileseph = join(dirdict['plots'],r'returnstats_seph_%s_extrap%s.png'%(param_suffix,extrap_choice))
     figfilesepv = join(dirdict['plots'],r'returnstats_sepv_%s_extrap%s.png'%(param_suffix,extrap_choice))
     param_display = '\n'.join([
-        r'%s resolution'%(algs[0].ens.dynsys.config['resolution']),
+        r'Resolution = %s'%(algs[0].ens.dynsys.config['resolution']),
         #r'$\sigma=%g$'%(algs[0].ens.dynsys.config['SPPT']['std_sppt']),
-        r'$N=%d$ ancestors'%(config_algo['population_size']),
-        r'AST $\delta=%g$ days'%(config_algo['advance_split_time_phys']),
+        r'$N=%d$'%(config_algo['population_size']),
+        r'AST$=%g$ days'%(config_algo['advance_split_time_phys']),
         #r'$T=%d$ days'%(config_algo['time_horizon_phys']),
         ])
     obsprop = frierson_gcm.FriersonGCM.observable_props()
@@ -674,7 +678,7 @@ def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, refere
       )
     target_field = list(algs[0].score_params['components'].keys())[0]
     unit_symbol = obsprop[config_algo['score_components'][target_field]['observable']]['unit_symbol']
-    algorithms_frierson.FriersonGCMTEAMS.measure_plot_score_distribution(config_algo, algs, scmax_ref, returnstats_file, figfileh, figfilev, figfileseph, figfilesepv, param_display=param_display, target_display=None, time_unit=365, time_unit_name="years", severity_unit_name=unit_symbol, budget=config_algo['num_members_max'], extrap_choice=extrap_choice)
+    algorithms_frierson.FriersonGCMTEAMS.measure_plot_score_distribution(config_algo, algs, scmax_ref, returnstats_file, figfileh, figfilev, figfileseph, figfilesepv, param_display=param_display, target_display=None, time_unit=365, time_unit_name="yr", severity_unit_name=unit_symbol, budget=config_algo['num_members_max'], extrap_choice=extrap_choice)
 
     return
 
@@ -802,7 +806,7 @@ def teams_multiseed_procedure(Nanc,resolution,extrap_choice,i_pop_ctrl,i_time_ho
 def teams_single_procedure(Nanc,resolution,i_expt):
 
     tododict = dict({
-        'run':                          1,
+        'run':                          0,
         'analysis': dict({
             'observable_spaghetti':     1,
             'scorrelation':             0,
@@ -943,18 +947,16 @@ def teams_multidelta_procedure(Nanc,resolution,extrap_choice,i_pop_ctrl,i_time_h
     paramtext = (
     r"""
     Target: %s
-    $N=%d$ ancestors
     """
     )%(
             obsprop[target_field]['label'], 
-            configs_algo[0]['population_size'],
       )
     axes[0].text(0, 1.05, paramtext, transform=axes[0].transAxes, va='bottom')
     for ax in axes:
         ax.xaxis.set_tick_params(which='both', labelbottom=True)
         ax.set_xlim([deltas[0],deltas[-1]])
     axes[0].set_xlabel("")
-    axes[0].legend(handles=handles, bbox_to_anchor=(1.0, 1.05), loc='lower right')
+    axes[0].legend(handles=handles, bbox_to_anchor=(1.0, 0.2), loc='upper left')
     fig.savefig(join(plot_dir,'fdivs_boosts_extrap%s.png'%(extrap_choice)),**pltkwargs)
     return
 
@@ -1001,7 +1003,7 @@ def compute_integrated_returnstats_error_metrics(returnstats, extrap_choice):
 
 if __name__ == "__main__":
     print(f'Got into Main')
-    resolution = 'T42'
+    resolution = 'T21'
     Nanc = 16
     extrap_choice = "flat" # options: nan, flat 
     if len(sys.argv) > 1:

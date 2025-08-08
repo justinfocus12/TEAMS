@@ -1717,7 +1717,7 @@ class TEAMS(EnsembleAlgorithm):
         # ++++ left-hand text label +++
         cost_display = '\n'.join([
             r'%s cost:'%(teams_abbrv),
-            r'%.1f %s per run'%(cost_teams_fin/len(algs)/time_unit,time_unit_name),
+            r'%.1f %s/run'%(cost_teams_fin/len(algs)/time_unit,time_unit_name),
             #r'$\times$ %d runs'%(len(algs)),
             #r'$=$%.1E %s'%(cost_teams_fin/time_unit,time_unit_name),
             #r' ',
