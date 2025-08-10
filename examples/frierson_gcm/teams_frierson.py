@@ -954,7 +954,7 @@ def teams_multidelta_procedure(Nanc,resolution,extrap_choice,i_pop_ctrl,i_time_h
     axes[0].text(0, 1.05, paramtext, transform=axes[0].transAxes, va='bottom')
     for ax in axes:
         ax.xaxis.set_tick_params(which='both', labelbottom=True)
-        ax.set_xlim([deltas[0],deltas[-1]])
+        ax.set_xlim([1.1*deltas[0]-0.1*deltas[1],1.1*deltas[-1]-0.1*deltas[-2]])
     axes[0].set_xlabel("")
     axes[0].legend(handles=handles, bbox_to_anchor=(1.0, 0.2), loc='upper left')
     fig.savefig(join(plot_dir,'fdivs_boosts_extrap%s.png'%(extrap_choice)),**pltkwargs)

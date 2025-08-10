@@ -266,14 +266,17 @@ def weighted_quantile(a, q, w, logscale=False):
         i = np.argmax(cumweight >= q*cumweight[-1])
     return a[order[i]]
 
-def interpolate_field_1deg(field, dims2interp=None):
+def interpolate_field_1deg(field, dims2interp=None, dimlims=None):
     if dims2interp is None:
         dims2interp = ['lon','lat']
-    interpdict = {}
+    if dimlims is None:
+        dimlims = {d: [field[d].min().item(), field[d].max().item()] for d in dims2interp}
+    coords = {}
     for d in dims2interp:
-        dmin,dmax = field.coords[d].min().item(),field.coords[d].max().item()
-        interpdict[d] = np.linspace(dmin,dmax,max(1,int((dmax-dmin)/1.0)))
-    field_interp = field.interp(**interpdict, method='linear')
+        dmin,dmax = dimlims[d] #field.coords[d].min().item(),field.coords[d].max().item()
+        dstep = 1.0
+        coords[d] = np.linspace(dmin+dstep/2,dmax-dstep/2,int(round((dmax-dmin)/dstep)))
+    field_interp = field.interp(coords, method='linear', kwargs=dict(fill_value='extrapolate'))
     #lon_min,lon_max = field['lon'].min().item(), field['lon'].max().item()
     #lat_min,lat_max = field['lat'].min().item(), field['lat'].max().item()
 

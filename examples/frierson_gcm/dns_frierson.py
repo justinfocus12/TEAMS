@@ -432,7 +432,7 @@ def plot_slice_summary_firstcolumn(config_analysis, alg, dirdict):
         ax_snapshot.set_extent([0,360,30,90], crs=ccrs.PlateCarree())
         ax_hovmoller = fig.add_subplot(gs[2,0])
         img_snap = xr.plot.pcolormesh(
-                utils.interpolate_field_1deg(field.isel(time=i_t_snap)),  # TODO interpolate to smooth
+                utils.interpolate_field_1deg(field.isel(time=i_t_snap), dims2interp=['lon','lat'], dimlims={'lon': [0,360], 'lat': [30,90]}),  # TODO interpolate to smooth
                 #field.isel(time=i_t_snap),
                 x='lon', y='lat', cmap=field_props['cmap'], ax=ax_snapshot, vmin=fmin, vmax=fmax,
                 add_colorbar=False, add_labels=False, transform=ccrs.PlateCarree(),
@@ -457,11 +457,12 @@ def plot_slice_summary_firstcolumn(config_analysis, alg, dirdict):
         ax_snapshot.set_ylabel("Latitude")
         # -------------- Hovmoller ---------------
         xr.plot.pcolormesh(
-                utils.interpolate_field_1deg(field.sel(lat=config_analysis['target_location']['lat'], method='nearest'), dims2interp=['lon'],),
+                utils.interpolate_field_1deg(field.sel(lat=config_analysis['target_location']['lat'], method='nearest'), dims2interp=['lon'], dimlims={'lon': [0,360]}),
                 x='lon', y='time', cmap=field_props['cmap'], ax=ax_hovmoller, vmin=fmin, vmax=fmax, add_colorbar=False, add_labels=False
                 )
         ax_hovmoller.axhline(y=field['time'].isel(time=i_t_snap).item(), color='black', linestyle='--')
         ax_hovmoller.axvline(x=config_analysis['target_location']['lon'], color='black', linestyle='--')
+        ax_hovmoller.set_xlim([0,360])
         ax_hovmoller.set_xlabel("Longitude")
         ax_hovmoller.set_ylabel('Time [days]')
         # ---------- Overall layout -------
@@ -496,7 +497,7 @@ def plot_slice_summary(config_analysis, alg, dirdict):
         # TODO 
         ax_cbar = fig.add_subplot(gs[0,0])
         ax_snapshot = fig.add_subplot(gs[1,0], projection=ccrs.Robinson(central_longitude=180))
-        ax_snapshot.set_extent([0,360,30,90], crs=ccrs.PlateCarree())
+        ax_snapshot.set_extent([0,359,30,90], crs=ccrs.PlateCarree())
         ax_zonalstats = fig.add_subplot(gs[1,1])
         ax_hovmoller = fig.add_subplot(gs[2,0])
         ax_timeseries = fig.add_subplot(gs[2,1])
