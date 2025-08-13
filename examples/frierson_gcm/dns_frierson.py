@@ -453,7 +453,7 @@ def plot_slice_summary_firstcolumn(config_analysis, alg, dirdict):
                     dlon, dlat, edgecolor='black', facecolor='none', linewidth=2, transform=ccrs.PlateCarree()
                     )
                 )
-        ax_snapshot.plot(lons, len(lons)*[config_analysis['target_location']['lat']], color='black', linestyle='--', transform=ccrs.PlateCarree())
+        #ax_snapshot.plot(lons, len(lons)*[config_analysis['target_location']['lat']], color='black', linestyle='--', transform=ccrs.PlateCarree())
         ax_snapshot.set_ylabel("Latitude")
         # -------------- Hovmoller ---------------
         xr.plot.pcolormesh(
