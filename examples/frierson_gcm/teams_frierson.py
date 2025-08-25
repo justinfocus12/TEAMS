@@ -51,7 +51,7 @@ def teams_multiparams(Nanc,resolution):
             time_horizons = [30,60][1:],
             target_fields = ["rainrate",'temp','surf_horz_wind',][:2],
             sigmas = [0.3],
-            seed_incs = list(range(0,48)),
+            seed_incs = list(range(6,48)),
             deltas_phys = deltas_phys,
             split_landmarks = ['thx'],
             )
@@ -776,7 +776,7 @@ def teams_multiseed_procedure(Nanc,resolution,extrap_choice,i_pop_ctrl,i_time_ho
     scratch_dir = "/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
     target_field = next(iter(config_algo['score_components'].keys()))
     date_str = "2025-05-16"
-    sub_date_str = "1"
+    sub_date_str = "2"
     if not (target_field in ["rainrate","temp","surf_horz_wind"]):
         raise Exception(f'Unsupported target field {target_field}')
     dirdict = dict()
@@ -806,7 +806,7 @@ def teams_multiseed_procedure(Nanc,resolution,extrap_choice,i_pop_ctrl,i_time_ho
 def teams_single_procedure(Nanc,resolution,i_expt):
 
     tododict = dict({
-        'run':                          0,
+        'run':                          1,
         'analysis': dict({
             'observable_spaghetti':     1,
             'scorrelation':             0,
@@ -829,7 +829,7 @@ def teams_single_procedure(Nanc,resolution,i_expt):
 def teams_multidelta_procedure(Nanc,resolution,extrap_choice,i_pop_ctrl,i_time_horizon,i_field,i_sigma,idx_delta,i_slm):
     scratch_dir = "/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
     date_str = "2025-05-16"
-    sub_date_str = "1"
+    sub_date_str = "2"
     multiparams = teams_multiparams(Nanc,resolution)
     seed_incs,sigmas,deltas_phys,split_landmarks = [multiparams[v] for v in "seed_incs,sigmas,deltas_phys,split_landmarks".split(",")]
 
@@ -1003,9 +1003,9 @@ def compute_integrated_returnstats_error_metrics(returnstats, extrap_choice):
 
 if __name__ == "__main__":
     print(f'Got into Main')
-    resolution = 'T21'
-    Nanc = 16
-    extrap_choice = "flat" # options: nan, flat 
+    resolution = 'T42'
+    Nanc = 32
+    extrap_choice = "nan" # options: nan, flat 
     if len(sys.argv) > 1:
         procedure = sys.argv[1]
         idx_expt = [int(arg) for arg in sys.argv[2:]]
