@@ -294,7 +294,7 @@ class Crommelin2004TracerODEDirectNumericalSimulation(algorithms.ODEDirectNumeri
         b = self.ens.dynsys.config['b']
         Nx,Ny = (self.ens.dynsys.timestep_constants[key] for key in ('Nx','Ny'))
         tu = self.ens.dynsys.dt_save
-        dt_plot = self.ens.dynsys.dt_plot
+        dt_plot = 1.0 #self.ens.dynsys.dt_plot
         x_s,y_s,basis_s,x_u,y_u,basis_u,x_v,y_v,basis_v,x_c,y_c = self.ens.dynsys.basis_functions(Nx, Ny)
         def psi_fun(t,x):
             Nt = len(t)

@@ -51,7 +51,7 @@ def teams_multiparams(Nanc,resolution):
             time_horizons = [30,60][1:],
             target_fields = ["rainrate",'temp','surf_horz_wind',][:2],
             sigmas = [0.3],
-            seed_incs = list(range(6,48)),
+            seed_incs = list(range(48)),
             deltas_phys = deltas_phys,
             split_landmarks = ['thx'],
             )
@@ -109,7 +109,7 @@ def teams_paramset(Nanc,resolution,i_expt):
 
     config_algo = dict({
         'num_levels_max': 20 if Nanc==16 else 40, # This parameter shouldn't affect the filenaming or anything like that 
-        'num_members_max': 150 if Nanc==16 else 300,
+        'num_members_max': 300, #if Nanc==16 else 300,
         'num_active_families_min': 1,
         'seed_min': 1000,
         'seed_max': 100000,

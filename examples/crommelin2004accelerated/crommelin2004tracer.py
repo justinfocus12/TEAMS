@@ -527,7 +527,7 @@ class Crommelin2004TracerODE(ODESystem):
         cfg['t_burnin_phys'] = 10.0
         cfg['dt_step'] = 0.025
         cfg['dt_save'] = 0.1
-        cfg["dt_plot"] = 0.25
+        cfg["dt_plot"] = 2.5 #0.25
         cfg['timestepper'] = 'monotone'
         cfg['frc'] = dict({
             'type': 'impulsive',
