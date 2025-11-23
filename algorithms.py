@@ -1495,14 +1495,72 @@ class TEAMS(EnsembleAlgorithm):
         plt.close(fig)
         
     @staticmethod
-    def measure_plot_progression_population(algs, plotdir):
+    def measure_plot_population_progression(algs, plotdir):
         # Plot the progression of levels and the rejection rate as a function of stages 
         # 1. Levels
-        fig,ax = plt.subplots()
+        fig,axes = plt.subplots(nrows=3, figsize=(12,12), sharex=True)
+        levelss = []
+        cohortsizess = []
+        numaccs = []
+        birthgoalss = []
+        scoress = []
+        birthgoalss_mean = []
+        scoress_mean = []
         for alg in algs:
-            ax.plot(np.arange(len(alg.levels)), alg.levels, color='gray')
-        ax.set_xlabel("Generation")
-        ax.set_ylabel("level")
+            levels = alg.branching_state['score_levels']
+            birthgoals = np.array(alg.branching_state['goals_at_birth'])
+            scores = np.array(alg.branching_state['scores_max'])
+            cohortsizes = np.zeros(len(levels), dtype=int)
+            numacc = np.zeros(len(levels), dtype=int)
+
+            birthgoals_mean,scores_mean = [np.zeros(len(levels)) for _ in range(2)]
+            for i_level,level in enumerate(levels):
+                cohort = np.where(birthgoals == level)[0]
+                cohortsizes[i_level] = len(cohort)
+                birthgoals_mean[i_level] = np.mean(birthgoals[cohort])
+                scores_mean[i_level] = np.mean(scores[cohort])
+                numacc[i_level] = np.sum(scores[cohort] > birthgoals[cohort])
+            levelss.append(levels)
+            birthgoalss_mean.append(birthgoals_mean)
+            scoress_mean.append(scores_mean)
+            cohortsizess.append(cohortsizes)
+            numaccs.append(numacc)
+
+        maxnlev = max(map(len, levelss))
+        nanpad = lambda lst: np.concatenate((lst, [np.nan for _ in range(maxnlev-len(lst))]))
+        combinelists = lambda lists: np.array(list(map(nanpad, lists)))
+        levelss, cohortsizess, birthgoalss_mean, scoress_mean, numaccs = map(combinelists, [levelss, cohortsizess, birthgoalss_mean, scoress_mean, numaccs])
+        print(f'{levelss = }')
+
+        ax = axes[0]
+        for i_alg in range(len(algs)):
+            ax.plot(range(maxnlev), levelss[i_alg,:], color='gray', linewidth=0.5)
+        ax.plot(range(maxnlev), np.nanmean(levelss, axis=0), color='black', linewidth=1.5)
+        ax.fill_between(range(maxnlev), *(np.nanquantile(levelss, 0.5+0.25*sgn, axis=0) for sgn in [-1,1]), color='gray', zorder=-1, alpha=0.25)
+        ax.plot(range(maxnlev), np.nanmean(scoress_mean, axis=0), color='purple', linewidth=1.5)
+        ax.fill_between(range(maxnlev), *(np.nanquantile(scoress_mean, 0.5+0.25*sgn, axis=0) for sgn in [-1,1]), color='red', zorder=-1, alpha=0.25)
+        ax.set_ylabel("Level") # TODO replace with units 
+
+        ax = axes[1]
+        cumpops = np.cumsum(np.nan_to_num(cohortsizess, 0), axis=1)
+        cumaccs = np.cumsum(np.nan_to_num(numaccs, 0), axis=1)
+        for i_alg in range(len(algs)):
+            ax.plot(np.arange(maxnlev), cumpops[i_alg,:], color='red', linewidth=0.5)
+        hall, = ax.plot(np.arange(maxnlev), np.mean(cumpops, axis=0), color='purple', linewidth=1.5, label="All")
+        hacc, = ax.plot(np.arange(maxnlev), np.mean(cumaccs, axis=0), color='dodgerblue', linewidth=1, label='Accepted')
+        ax.legend(handles=[hall,hacc], loc='upper left')
+        ax.set_ylabel("Cumulative population")
+
+        ax = axes[2]
+        for i_alg in range(len(algs)):
+            ax.plot(np.arange(maxnlev), cohortsizess[i_alg,:], color='red', linewidth=0.5)
+        hall, = ax.plot(np.arange(maxnlev), np.nanmean(cohortsizess, axis=0), color='purple', linewidth=1.5, label="All")
+        hacc, = ax.plot(np.arange(maxnlev), np.nanmean(numaccs, axis=0), color='dodgerblue', linewidth=1, label='Accepted')
+        ax.legend(handles=[hall,hacc], loc='upper left')
+        ax.set_ylabel("Population growth")
+
+
+        axes[-1].set_xlabel("Generation")
         fig.savefig(join(plotdir, "levprog.png"), **pltkwargs)
         plt.close(fig)
 

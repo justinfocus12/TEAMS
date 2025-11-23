@@ -45,11 +45,11 @@ def teams_multiparams(Nanc,resolution):
                     )).astype(float)
                 )
         elif 32 == Nanc:
-            deltas_phys = np.array([10,12])
+            deltas_phys = np.array([10,12])[1:]
     multiparams = dict(
             pop_ctrls = ["pog","jf"][:1],
             time_horizons = [30,60][1:],
-            target_fields = ["rainrate",'temp','surf_horz_wind',][:1],
+            target_fields = ["rainrate",'temp','surf_horz_wind',][1:2],
             sigmas = [0.3],
             seed_incs = list(range(48)),
             deltas_phys = deltas_phys,
@@ -740,9 +740,10 @@ def run_teams(dirdict,filedict,config_gcm,config_algo):
 
 def teams_multiseed_procedure(Nanc,resolution,extrap_choice,i_pop_ctrl,i_time_horizon,i_field,i_sigma,idx_seed,i_delta,i_slm,overwrite_reference=False): # Just different seeds for now
     tododict = dict({
-        'score_distribution': 1,
-        'boost_distribution': 0,
-        'boost_composites':   0,
+        'score_distribution':      0,
+        'boost_distribution':      0,
+        'boost_composites':        0,
+        'population_progression':  1,
         })
     # Figure out which flat indices corresond to this set of seeds
     multiparams = teams_multiparams(Nanc,resolution)
@@ -813,9 +814,10 @@ def teams_multiseed_procedure(Nanc,resolution,extrap_choice,i_pop_ctrl,i_time_ho
     if tododict['boost_composites']:
         algorithms_frierson.FriersonGCMTEAMS.plot_boost_composites(algs, config_analysis, dirdict['plots'], param_suffix)
 
-    if tododict["progression_population"]:
+    if tododict["population_progression"]:
         # TODO round this out
-        algorithms_frierson.FriersonGCMTEAMS.measure_plot_progression_population(algs, dirdict["plots"])
+        algorithms_frierson.FriersonGCMTEAMS.measure_plot_population_progression(algs, dirdict["plots"])
+        print(f'{dirdict["plots"] = }')
     return 
 
 def teams_single_procedure(Nanc,resolution,i_expt):
@@ -1018,7 +1020,7 @@ def compute_integrated_returnstats_error_metrics(returnstats, extrap_choice):
 
 if __name__ == "__main__":
     print(f'Got into Main')
-    resolution = 'T42'
+    resolution = 'T21'
     Nanc = 32
     extrap_choice = "nan" # options: nan, flat 
     if len(sys.argv) > 1:
