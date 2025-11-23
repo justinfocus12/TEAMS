@@ -10,6 +10,7 @@ dry_run = False
 if len(sys.argv) > 1:
     dry_run = not bool(eval(sys.argv[1]))
 for skel in [pathname_skeleton_anc,pathname_skeleton_dsc]:
+    print(f'{skel = }')
     for dir2remove in glob.glob(skel):
         print(f"about to remove {dir2remove}")
         if not dry_run:

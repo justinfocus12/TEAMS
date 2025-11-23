@@ -35,7 +35,7 @@ import algorithms_frierson; reload(algorithms_frierson)
 
 def teams_multiparams(Nanc,resolution):
     if 'T42' == resolution:
-        deltas_phys = np.array([8,10,12], dtype=int)
+        deltas_phys = np.array([4,6], dtype=int) #,8,10,12], dtype=int)
     elif 'T21' == resolution:
         if 16 == Nanc:
             deltas_phys = np.sort(
@@ -49,7 +49,7 @@ def teams_multiparams(Nanc,resolution):
     multiparams = dict(
             pop_ctrls = ["pog","jf"][:1],
             time_horizons = [30,60][1:],
-            target_fields = ["rainrate",'temp','surf_horz_wind',][:2],
+            target_fields = ["rainrate",'temp','surf_horz_wind',][:1],
             sigmas = [0.3],
             seed_incs = list(range(48)),
             deltas_phys = deltas_phys,
@@ -346,6 +346,8 @@ def teams_single_workflow(Nanc,resolution,i_expt):
             'cmap': 'Blues',
             }),
         })
+    # Make sure the fields to visulize only contain things actually output
+    config_analysis['fields_2d'] = {fieldname: config_analysis['fields_2d'][fieldname] for fieldname in ['area_rain_360x30','area_ps_360x30',]}
     config_analysis['composites'] = dict({
         'anc_scores': [20,30,40,50],
         'boost_sizes': [15],
@@ -410,8 +412,11 @@ def plot_fields_2d(config_analysis, alg, dirdict, filedict, expt_label, remove_o
         lineage = list(sorted(nx.ancestors(alg.ens.memgraph, best_desc) | {best_desc}))
         print(f'{lineage = }')
         obs_funs = [obs_props['fun'] for obs_props in config_analysis['fields_2d'].values()]
-        f_anc_multiobs,f_desc_multiobs = tuple(alg.ens.compute_observables(obs_funs, mem, compute=True) for mem in [lineage[0],lineage[-1]])
+        f_all_multiobs = tuple(alg.ens.compute_observables(obs_funs, mem, compute=True) for mem in lineage)
+        f_anc_multiobs = f_all_multiobs[0]
+        f_desc_multiobs = f_all_multiobs[-1]
         print(f'Computed multiobs')
+        # TODO plot the evolution of the max-field across the lineage 
         for i_obs,(obs_name,obs_props) in enumerate(config_analysis['fields_2d'].items()):
             print(f'Starting to plot field {obs_name = }')
             f_anc,f_desc = f_anc_multiobs[i_obs],f_desc_multiobs[i_obs]
@@ -433,17 +438,18 @@ def plot_fields_2d(config_analysis, alg, dirdict, filedict, expt_label, remove_o
                     #max(tinit+1, min(tmx_anc,tmx_dsc)-int(4/tu)),
                     #min(tinit+alg.time_horizon, max(tmx_anc,tmx_dsc)+int(3/tu))
                     #):
-                fig = plt.figure(tight_layout=True, figsize=(12,6))
-                gs = gridspec.GridSpec(3,2)
+                fig = plt.figure(tight_layout=True, figsize=(18,9))
+                gs = gridspec.GridSpec(3,2, height_ratios=[1,1,2])
                 ax0 = fig.add_subplot(gs[0,0]) # Ancestor 2D field
                 ax1 = fig.add_subplot(gs[1,0]) # Descendant 2D field
                 ax2 = fig.add_subplot(gs[1,1]) # Descendant - Ancestor
                 # Bottom row: the two timeseries, with a vertical line indicating the time of the snapshot
                 ax3 = fig.add_subplot(gs[2,:]) # Timeseries of precip
+                fig.subplots_adjust(hspace=0.1)
                 # Ancestor
                 ax = ax0
                 xr.plot.pcolormesh(f_anc.isel(time=time2plot-tinit-1), x='lon', y='lat', cmap=obs_props['cmap'], ax=ax, vmin=vmin, vmax=vmax, cbar_kwargs={'label': None})
-                ax.set_xlabel('Lon')
+                ax.set_xlabel('')
                 ax.set_ylabel('Lat')
                 ax.set_title('Ancestor')
 
@@ -461,6 +467,11 @@ def plot_fields_2d(config_analysis, alg, dirdict, filedict, expt_label, remove_o
                 ax.set_ylabel('Lat')
                 ax.set_title('Descendant $-$ Ancestor')
 
+                # mark the target
+                for ax in [ax0,ax1,ax2]:
+                    ax.axhline(config_analysis['target_location']['lat'], color='black', linewidth=0.5)
+                    ax.axvline(config_analysis['target_location']['lon'], color='black', linewidth=0.5)
+
                 # Timeseries
                 ax = ax3
                 linespecs_anc = dict(color='black',linewidth=2,linestyle='--',label='Anc.')
@@ -471,7 +482,6 @@ def plot_fields_2d(config_analysis, alg, dirdict, filedict, expt_label, remove_o
                     h, = ax.plot(np.arange(tinit+1,tfin+1)*tu, floc, **linespecs)
                     tmx_mem = alg.branching_state['scores_max_timing'][mem]
                     ax.scatter([tmx_mem*tu], floc[tmx_mem-tinit-1], marker='o', color=linespecs['color'])
-                    #ax.scatter([tmx_mem*tu], score_lineage[i_mem][tmx_mem-tinit-1], marker='o', color=linespecs['color'])
                 ax.axvline(tbr*tu, color='gray', linestyle='--')
                 ax.axvline(time2plot*tu, color='gray')
                 ax.set_ylabel(r'')
@@ -482,6 +492,7 @@ def plot_fields_2d(config_analysis, alg, dirdict, filedict, expt_label, remove_o
 
                 plt.close(fig)
                 print(f'Just saved to {filename}')
+
     return
 
 def plot_observable_spaghetti(config_analysis, alg, dirdict, filedict, remove_old_plots=False):
@@ -776,7 +787,7 @@ def teams_multiseed_procedure(Nanc,resolution,extrap_choice,i_pop_ctrl,i_time_ho
     scratch_dir = "/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
     target_field = next(iter(config_algo['score_components'].keys()))
     date_str = "2025-05-16"
-    sub_date_str = "2"
+    sub_date_str = "1"
     if not (target_field in ["rainrate","temp","surf_horz_wind"]):
         raise Exception(f'Unsupported target field {target_field}')
     dirdict = dict()
@@ -801,16 +812,20 @@ def teams_multiseed_procedure(Nanc,resolution,extrap_choice,i_pop_ctrl,i_time_ho
         algorithms_frierson.FriersonGCMTEAMS.measure_plot_boost_distribution(config_algo, algs, figfile)
     if tododict['boost_composites']:
         algorithms_frierson.FriersonGCMTEAMS.plot_boost_composites(algs, config_analysis, dirdict['plots'], param_suffix)
+
+    if tododict["progression_population"]:
+        # TODO round this out
+        algorithms_frierson.FriersonGCMTEAMS.measure_plot_progression_population(algs, dirdict["plots"])
     return 
 
 def teams_single_procedure(Nanc,resolution,i_expt):
 
     tododict = dict({
-        'run':                          1,
+        'run':                          0,
         'analysis': dict({
-            'observable_spaghetti':     1,
+            'observable_spaghetti':     0,
             'scorrelation':             0,
-            'fields_2d':                0,
+            'fields_2d':                1,
             }),
         })
     config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = teams_single_workflow(Nanc,resolution,i_expt)
@@ -823,7 +838,7 @@ def teams_single_procedure(Nanc,resolution,i_expt):
     if tododict['analysis']['scorrelation']:
         plot_scorrelations(config_analysis, alg, dirdict, filedict, expt_label)
     if tododict['analysis']['fields_2d']:
-        plot_fields_2d(config_analysis, alg, dirdict, filedict, expt_label, remove_old_plots=True)
+        plot_fields_2d(config_analysis, alg, dirdict, filedict, expt_label, remove_old_plots=False)
     return
 
 def teams_multidelta_procedure(Nanc,resolution,extrap_choice,i_pop_ctrl,i_time_horizon,i_field,i_sigma,idx_delta,i_slm):

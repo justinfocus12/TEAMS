@@ -1495,6 +1495,21 @@ class TEAMS(EnsembleAlgorithm):
         plt.close(fig)
         
     @staticmethod
+    def measure_plot_progression_population(algs, plotdir):
+        # Plot the progression of levels and the rejection rate as a function of stages 
+        # 1. Levels
+        fig,ax = plt.subplots()
+        for alg in algs:
+            ax.plot(np.arange(len(alg.levels)), alg.levels, color='gray')
+        ax.set_xlabel("Generation")
+        ax.set_ylabel("level")
+        fig.savefig(join(plotdir, "levprog.png"), **pltkwargs)
+        plt.close(fig)
+
+
+        return
+         
+    @staticmethod
     def measure_plot_score_distribution(config_algo, algs, scmax_dns, returnstats_file, figfileh, figfilev, figfileseph, figfilesepv, confint_width_pooled=0.9, confint_width_sep=0.5, param_display=None, target_display=None, time_unit=1, time_unit_name="", severity_unit_name="", budget=None, extrap_choice="nan"):
         # if budget is limited to a max number of members, somehow pretend like the algorithm stopped sooner 
         N_dns = len(scmax_dns)

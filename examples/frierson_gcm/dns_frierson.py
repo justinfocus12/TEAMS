@@ -77,7 +77,7 @@ def dns_paramset(i_expt):
     expt_label = r'SPPT, $\sigma=%g$, $\tau=%g$ h, $L=%g$ km'%(std_sppt,tau_sppt/3600,L_sppt/1000)
     expt_abbrv = (r'SPPT_std%g_tau%gh_L%gkm'%(std_sppt,tau_sppt/3600,L_sppt/1000)).replace('.','p')
 
-    config_gcm['resolution'] = 'T21'
+    config_gcm['resolution'] = 'T42'
     config_gcm['pert_type'] = 'SPPT'
     config_gcm['outputs_per_day'] = 4
     config_gcm['SPPT']['tau_sppt'] = tau_sppt
@@ -165,6 +165,7 @@ def dns_single_workflow(i_expt):
             'abbrv': 'PSlat30-90',
             }),
         })
+    config_analysis['fields_lonlatdep'] = {key: config_analysis['fields_lonlatdep'][key] for key in ['rain','T1000']}
     config_analysis['observables_onelat_londep'] = dict()
     for (field_name,field_props) in config_analysis['fields_lonlatdep'].items():
         if 'r_sppt_g' == field_name:
@@ -406,6 +407,7 @@ def run_dns(dirdict,filedict,config_gcm,config_algo):
     return
 
 def plot_slice_summary_firstcolumn(config_analysis, alg, dirdict):
+    print('Starting slice summary')
     tu = alg.ens.dynsys.dt_save
     spinup = int(config_analysis['spinup_phys']/tu)
     duration_hov = int(25/tu)
@@ -482,6 +484,7 @@ def plot_slice_summary(config_analysis, alg, dirdict):
     mems_hov, = np.where((dns_tfins >= spinup) * (dns_tinits <= spinup+duration_hov))
     # For basicstats, pull from the pre-analyzed basic stats, which uses the same config_analysis by design. 
     for (field_name,field_props) in config_analysis['fields_lonlatdep'].items():
+        print(f'Starting {field_name = }')
         field_stats = xr.open_dataset(join(dirdict['analysis'], r'basic_stats_%s.nc'%(field_props['abbrv'])))
         field_fun = lambda ds: frierson_gcm.FriersonGCM.sel_from_roi(field_props['fun'](ds), field_props['roi'])
 

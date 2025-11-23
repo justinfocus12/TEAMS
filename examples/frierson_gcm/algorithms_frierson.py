@@ -112,7 +112,7 @@ class FriersonGCMPeriodicBranching(algorithms.PeriodicBranching):
             #* config_gcm['outputs_per_day']))
 
     def obs_dict_names(self):
-        return ['total_rain','column_water_vapor','surface_pressure','surface_temperature']
+        return ['total_rain','surface_temperature'] #'column_water_vapor','surface_pressure','surface_temperature']
     def obs_fun(self, t, ds):
         lat = 45.0
         lon = 180.0

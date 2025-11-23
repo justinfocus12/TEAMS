@@ -47,7 +47,7 @@ def pebr_paramset(i_expt):
     idx_multiparam = np.unravel_index(i_expt, tuple(len(mp) for mp in multiparams))
     seed_inc,std_sppt,tau_sppt,L_sppt = (multiparams[i][i_param] for (i,i_param) in enumerate(idx_multiparam))
 
-    config_gcm['resolution'] = 'T21'
+    config_gcm['resolution'] = 'T42'
     config_gcm['outputs_per_day'] = 4
     config_gcm['pert_type'] = 'SPPT'
     config_gcm['SPPT']['tau_sppt'] = tau_sppt
@@ -109,16 +109,17 @@ def pebr_single_workflow(i_expt):
             'label': 'Temperature (target)',
             'unit_symbol': 'K',
             }),
-        'surf_horz_wind': dict({
-            'fun': lambda ds: FriersonGCM.sel_from_roi(
-                FriersonGCM.horizontal_wind_speed(ds), 
-                dict(**config_analysis['target_location'], pfull=1000)),
-            'kwargs': dict(),
-            'abbrv': 'UV',
-            'label': 'Horizontal wind speed $(\phi,\lambda,\sigma)=(%d,%d,1.0)$'%(config_analysis['target_location']['lat'],config_analysis['target_location']['lon']),
-            'unit_symbol': 'm/s',
-            }),
-        })
+         'surf_horz_wind': dict({
+             'fun': lambda ds: FriersonGCM.sel_from_roi(
+                 FriersonGCM.horizontal_wind_speed(ds), 
+                 dict(**config_analysis['target_location'], pfull=1000)),
+             'kwargs': dict(),
+             'abbrv': 'UV',
+             'label': 'Horizontal wind speed $(\phi,\lambda,\sigma)=(%d,%d,1.0)$'%(config_analysis['target_location']['lat'],config_analysis['target_location']['lon']),
+             'unit_symbol': 'm/s',
+             }),
+         })
+    observables_scalar.pop('surf_horz_wind')
     config_analysis['observables_scalar'] = observables_scalar
     obs_names = list(observables_scalar.keys())
     # distance metrics
@@ -150,14 +151,15 @@ def pebr_single_workflow(i_expt):
             'kwargs': dict({'roi': dict(pfull=1000, **roi)}),
             'unit_symbol': 'K',
             })
-        dist_metrics[r'horzvel_%s'%(areastr)] = dict({
-            'fun': FriersonGCM.dist_euc_horzvel,
-            'kwargs': dict({'roi': dict(pfull=1000, **roi)}),
-            'abbrv': r'UVEuc%s'%(areastr),
-            'field_name': "Windspeed",
-            'label': r'Surf. Horz. Vel. Eucl. dist. (%s)'%(areastr),
-            'unit_symbol': 'm/s',
-            })
+        if False:
+            dist_metrics[r'horzvel_%s'%(areastr)] = dict({
+                'fun': FriersonGCM.dist_euc_horzvel,
+                'kwargs': dict({'roi': dict(pfull=1000, **roi)}),
+                'abbrv': r'UVEuc%s'%(areastr),
+                'field_name': "Windspeed",
+                'label': r'Surf. Horz. Vel. Eucl. dist. (%s)'%(areastr),
+                'unit_symbol': 'm/s',
+                })
     dist_names = list(dist_metrics.keys())
     config_analysis['dist_metrics'] = dist_metrics
 
@@ -170,7 +172,7 @@ def pebr_single_workflow(i_expt):
     dirdict = dict()
     scratch_dir = "/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
     date_str = "2025-05-16"
-    sub_date_str = "1"
+    sub_date_str = "2"
     dirdict['expt'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_gcm, param_abbrv_algo)
     dirdict['data'] = join(dirdict['expt'], 'data')
     dirdict['analysis'] = join(dirdict['expt'], 'analysis')
@@ -184,6 +186,7 @@ def pebr_single_workflow(i_expt):
     # Initial conditions
     filedict['angel'] = join(
             f'/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/2025-05-16/1',
+            #f'/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/2025-05-16/2',
             param_abbrv_gcm, 'DNS_si0', 'data',
             'alg.pickle') 
     
@@ -520,9 +523,9 @@ def old_thing():
 
 def pebr_single_procedure(i_param):
     tododict = dict({
-        'run':                           0,
+        'run':                           1,
         'analysis': dict({
-            'observable_spaghetti':      0,
+            'observable_spaghetti':      1,
             'dispersion_rate':           1, # including both Lyapunov analysis (FSLE) and expected leadtime until fractional saturation (ELFS)
             'running_max':               0, # watch extreme value statistics (curves and parameters) converge to the true values with longer time blocks
             }),
