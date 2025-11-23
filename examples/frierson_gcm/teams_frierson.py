@@ -35,7 +35,7 @@ import algorithms_frierson; reload(algorithms_frierson)
 
 def teams_multiparams(Nanc,resolution):
     if 'T42' == resolution:
-        deltas_phys = np.array([4,6], dtype=int) #,8,10,12], dtype=int)
+        deltas_phys = np.array([4], dtype=int) #,8,10,12], dtype=int)
     elif 'T21' == resolution:
         if 16 == Nanc:
             deltas_phys = np.sort(
@@ -44,12 +44,14 @@ def teams_multiparams(Nanc,resolution):
                     np.array([6,10,14,]),
                     )).astype(float)
                 )
+            # hacky
+            deltas_phys = [10.0] 
         elif 32 == Nanc:
-            deltas_phys = np.array([10,12])[1:]
+            deltas_phys = [10.0] #np.array([10,12])[1:2]
     multiparams = dict(
             pop_ctrls = ["pog","jf"][:1],
             time_horizons = [30,60][1:],
-            target_fields = ["rainrate",'temp','surf_horz_wind',][1:2],
+            target_fields = ["rainrate",'temp','surf_horz_wind',][:1],
             sigmas = [0.3],
             seed_incs = list(range(48)),
             deltas_phys = deltas_phys,
@@ -688,8 +690,14 @@ def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, refere
             obsprop[obspropkey]['label'], 
       )
     target_field = list(algs[0].score_params['components'].keys())[0]
+    ylim_imposed = None
+    if 'rainrate' == target_field:
+        ylim_imposed = [20,100]
+    elif 'temp' == target_field:
+        ylim_imposed = [290,303]
+    xlim_imposed = [config_algo['time_horizon_phys']*factor/365 for factor in [2, 6000]]
     unit_symbol = obsprop[config_algo['score_components'][target_field]['observable']]['unit_symbol']
-    algorithms_frierson.FriersonGCMTEAMS.measure_plot_score_distribution(config_algo, algs, scmax_ref, returnstats_file, figfileh, figfilev, figfileseph, figfilesepv, param_display=param_display, target_display=None, time_unit=365, time_unit_name="yr", severity_unit_name=unit_symbol, budget=config_algo['num_members_max'], extrap_choice=extrap_choice)
+    algorithms_frierson.FriersonGCMTEAMS.measure_plot_score_distribution(config_algo, algs, scmax_ref, returnstats_file, figfileh, figfilev, figfileseph, figfilesepv, param_display=param_display, target_display=None, time_unit=365, time_unit_name="yr", severity_unit_name=unit_symbol, budget=config_algo['num_members_max'], extrap_choice=extrap_choice, ylim_imposed=ylim_imposed, xlim_imposed=xlim_imposed)
 
     return
 
@@ -740,7 +748,7 @@ def run_teams(dirdict,filedict,config_gcm,config_algo):
 
 def teams_multiseed_procedure(Nanc,resolution,extrap_choice,i_pop_ctrl,i_time_horizon,i_field,i_sigma,idx_seed,i_delta,i_slm,overwrite_reference=False): # Just different seeds for now
     tododict = dict({
-        'score_distribution':      0,
+        'score_distribution':      1,
         'boost_distribution':      0,
         'boost_composites':        0,
         'population_progression':  1,
@@ -1020,7 +1028,7 @@ def compute_integrated_returnstats_error_metrics(returnstats, extrap_choice):
 
 if __name__ == "__main__":
     print(f'Got into Main')
-    resolution = 'T21'
+    resolution = 'T42'
     Nanc = 32
     extrap_choice = "nan" # options: nan, flat 
     if len(sys.argv) > 1:

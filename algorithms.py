@@ -1568,7 +1568,7 @@ class TEAMS(EnsembleAlgorithm):
         return
          
     @staticmethod
-    def measure_plot_score_distribution(config_algo, algs, scmax_dns, returnstats_file, figfileh, figfilev, figfileseph, figfilesepv, confint_width_pooled=0.9, confint_width_sep=0.5, param_display=None, target_display=None, time_unit=1, time_unit_name="", severity_unit_name="", budget=None, extrap_choice="nan"):
+    def measure_plot_score_distribution(config_algo, algs, scmax_dns, returnstats_file, figfileh, figfilev, figfileseph, figfilesepv, confint_width_pooled=0.9, confint_width_sep=0.5, param_display=None, target_display=None, time_unit=1, time_unit_name="", severity_unit_name="", budget=None, extrap_choice="nan", ylim_imposed=None, xlim_imposed=None):
         # if budget is limited to a max number of members, somehow pretend like the algorithm stopped sooner 
         N_dns = len(scmax_dns)
         alpha_pooled = (1-confint_width_pooled)
@@ -1840,8 +1840,8 @@ class TEAMS(EnsembleAlgorithm):
         axv = axesv[0,0]
         handles_h = []
         handles_v = []
-        axh.axhline(bin_edges[i_bin_first], color='gray')
-        axv.axhline(bin_edges[i_bin_first], color='gray')
+        #axh.axhline(bin_edges[i_bin_first], color='gray')
+        #axv.axhline(bin_edges[i_bin_first], color='gray')
         h = axh.fill_betweenx(bin_edges[:-1],rtlo/time_unit,rthi/time_unit,color='red',alpha=0.25,zorder=-1,label="TEAMS IQR")
         handles_h.append(h)
         h = axv.fill_between(rt_grid[:i_rt_last_teams]/time_unit, rlevlo[:i_rt_last_teams],rlevhi[:i_rt_last_teams],color='red', alpha=0.25, zorder=-1,label="TEAMS IQR")
@@ -1889,7 +1889,7 @@ class TEAMS(EnsembleAlgorithm):
             ax.xaxis.set_tick_params(which='both',labelbottom=True)
             #ax.set_title(r'Single %s runs & middle %d%s'%(teams_abbrv,int(100*confint_width_sep),"%"))
             ax.set_xscale('log')
-            ax.set_xlim([returnstats['time_horizon_effective_phys']/time_unit, rt_grid[i_rt_last_teams]/time_unit])
+            ax.set_xlim(xlim_imposed if xlim_imposed is not None else [returnstats['time_horizon_effective_phys']/time_unit, rt_grid[i_rt_last_teams]/time_unit])
             ax.text(0.02,0.98,display,fontsize=18,transform=ax.transAxes,ha='left',va='top')
             ax.legend(handles=handles, ncols=2, bbox_to_anchor=(0.5,1.0), loc="lower center", frameon=True)
 
@@ -1932,7 +1932,7 @@ class TEAMS(EnsembleAlgorithm):
                 ax.yaxis.label.set_size(20)
             axes[1,1].axis('off')
             for ax in axes[0,:]:
-                ax.set_ylim([bin_edges[i_bin_first], np.nanmax(rlevs_fin_flat)]) #2*bin_edges[i_bin_last]-bin_edges[i_bin_last-1]])
+                ax.set_ylim(ylim_imposed if ylim_imposed is not None else [bin_edges[i_bin_first], np.nanmax(rlevs_fin_flat)]) #2*bin_edges[i_bin_last]-bin_edges[i_bin_last-1]])
         figh.savefig(figfileseph, **pltkwargs)
         plt.close(figh)
         figv.savefig(figfilesepv, **pltkwargs)
@@ -1986,7 +1986,7 @@ class TEAMS(EnsembleAlgorithm):
         ax.set_title('Pooled TEAMS runs')
 
         xlim = [returnstats['time_horizon_effective_phys']/time_unit,5*sf2rt(min(utils.nznanmin(ccdf_dns),utils.nznanmin(ccdf_fin_wted)))/time_unit]
-        ylim = [bin_edges[np.argmax(sf2rt(ccdf_dns) > returnstats['time_horizon_effective_phys'])],bin_edges[-1]]
+        ylim = ylim_imposed if ylim_imposed is not None else [bin_edges[np.argmax(sf2rt(ccdf_dns) > returnstats['time_horizon_effective_phys'])],bin_edges[-1]]
 
         ax = axesv[1]
         ax.plot(rt_grid/time_unit, cliprlev(rlev_fin_pooled), color='red')
