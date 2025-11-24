@@ -124,7 +124,7 @@ def pebr_single_workflow(i_expt):
     obs_names = list(observables_scalar.keys())
     # distance metrics
     dist_metrics = dict() 
-    for (lonrange,latrange) in ((40,10),(120,30),(360,90))[2:]:
+    for (lonrange,latrange) in ((40,10),(120,30),(360,90)):
         areastr = r'%dx%d'%(lonrange,latrange) 
         if (lonrange == 360) and (latrange == 90):
             area_label = "NH"
@@ -523,9 +523,9 @@ def old_thing():
 
 def pebr_single_procedure(i_param):
     tododict = dict({
-        'run':                           1,
+        'run':                           0,
         'analysis': dict({
-            'observable_spaghetti':      1,
+            'observable_spaghetti':      0,
             'dispersion_rate':           1, # including both Lyapunov analysis (FSLE) and expected leadtime until fractional saturation (ELFS)
             'running_max':               0, # watch extreme value statistics (curves and parameters) converge to the true values with longer time blocks
             }),

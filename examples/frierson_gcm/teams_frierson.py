@@ -51,7 +51,7 @@ def teams_multiparams(Nanc,resolution):
     multiparams = dict(
             pop_ctrls = ["pog","jf"][:1],
             time_horizons = [30,60][1:],
-            target_fields = ["rainrate",'temp','surf_horz_wind',][:1],
+            target_fields = ["rainrate",'temp','surf_horz_wind',][0:1],
             sigmas = [0.3],
             seed_incs = list(range(48)),
             deltas_phys = deltas_phys,
@@ -748,7 +748,7 @@ def run_teams(dirdict,filedict,config_gcm,config_algo):
 
 def teams_multiseed_procedure(Nanc,resolution,extrap_choice,i_pop_ctrl,i_time_horizon,i_field,i_sigma,idx_seed,i_delta,i_slm,overwrite_reference=False): # Just different seeds for now
     tododict = dict({
-        'score_distribution':      1,
+        'score_distribution':      0,
         'boost_distribution':      0,
         'boost_composites':        0,
         'population_progression':  1,
@@ -812,6 +812,7 @@ def teams_multiseed_procedure(Nanc,resolution,extrap_choice,i_pop_ctrl,i_time_ho
         if alg.ens.get_nmem() < alg.population_size:
             continue
         algs.append(alg)
+    obsprop = algs[0].ens.dynsys.observable_props()
     param_suffix = (r'std%g_ast%g'%(config_gcm['SPPT']['std_sppt'],config_algo['advance_split_time_phys'])).replace('.','p')
     if tododict['score_distribution']:
         print(f'{dirdict = }')
@@ -823,8 +824,16 @@ def teams_multiseed_procedure(Nanc,resolution,extrap_choice,i_pop_ctrl,i_time_ho
         algorithms_frierson.FriersonGCMTEAMS.plot_boost_composites(algs, config_analysis, dirdict['plots'], param_suffix)
 
     if tododict["population_progression"]:
+        param_display = '\n'.join([
+            r'Resolution = %s'%(algs[0].ens.dynsys.config['resolution']),
+            #r'$\sigma=%g$'%(algs[0].ens.dynsys.config['SPPT']['std_sppt']),
+            r'$N=%d$'%(config_algo['population_size']),
+            r'AST$=%g$ days'%(config_algo['advance_split_time_phys']),
+            #r'$T=%d$ days'%(config_algo['time_horizon_phys']),
+            ])
         # TODO round this out
-        algorithms_frierson.FriersonGCMTEAMS.measure_plot_population_progression(algs, dirdict["plots"])
+        unit_symbol = obsprop[config_algo['score_components'][target_field]['observable']]['unit_symbol']
+        algorithms_frierson.FriersonGCMTEAMS.measure_plot_population_progression(algs, dirdict["plots"], param_display, unit_symbol, config_algo['num_members_max'])
         print(f'{dirdict["plots"] = }')
     return 
 
@@ -1028,7 +1037,7 @@ def compute_integrated_returnstats_error_metrics(returnstats, extrap_choice):
 
 if __name__ == "__main__":
     print(f'Got into Main')
-    resolution = 'T42'
+    resolution = 'T21'
     Nanc = 32
     extrap_choice = "nan" # options: nan, flat 
     if len(sys.argv) > 1:

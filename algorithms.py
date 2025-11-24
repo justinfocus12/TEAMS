@@ -1495,10 +1495,9 @@ class TEAMS(EnsembleAlgorithm):
         plt.close(fig)
         
     @staticmethod
-    def measure_plot_population_progression(algs, plotdir):
+    def measure_plot_population_progression(algs, plotdir, param_display, unit_symbol, budget):
         # Plot the progression of levels and the rejection rate as a function of stages 
         # 1. Levels
-        fig,axes = plt.subplots(nrows=3, figsize=(12,12), sharex=True)
         levelss = []
         cohortsizess = []
         numaccs = []
@@ -1508,8 +1507,8 @@ class TEAMS(EnsembleAlgorithm):
         scoress_mean = []
         for alg in algs:
             levels = alg.branching_state['score_levels']
-            birthgoals = np.array(alg.branching_state['goals_at_birth'])
-            scores = np.array(alg.branching_state['scores_max'])
+            birthgoals = np.array(alg.branching_state['goals_at_birth'])[:budget]
+            scores = np.array(alg.branching_state['scores_max'][:budget])
             cohortsizes = np.zeros(len(levels), dtype=int)
             numacc = np.zeros(len(levels), dtype=int)
 
@@ -1532,35 +1531,45 @@ class TEAMS(EnsembleAlgorithm):
         levelss, cohortsizess, birthgoalss_mean, scoress_mean, numaccs = map(combinelists, [levelss, cohortsizess, birthgoalss_mean, scoress_mean, numaccs])
         print(f'{levelss = }')
 
+        fig,axes = plt.subplots(nrows=3, figsize=(12,9), sharex=True, gridspec_kw={'hspace': 0.15})
         ax = axes[0]
         for i_alg in range(len(algs)):
             ax.plot(range(maxnlev), levelss[i_alg,:], color='gray', linewidth=0.5)
-        ax.plot(range(maxnlev), np.nanmean(levelss, axis=0), color='black', linewidth=1.5)
+        hlev, = ax.plot(range(maxnlev), np.nanmean(levelss, axis=0), color='black', linewidth=1.5, marker='o', label="Levels")
         ax.fill_between(range(maxnlev), *(np.nanquantile(levelss, 0.5+0.25*sgn, axis=0) for sgn in [-1,1]), color='gray', zorder=-1, alpha=0.25)
-        ax.plot(range(maxnlev), np.nanmean(scoress_mean, axis=0), color='purple', linewidth=1.5)
+        hscores, = ax.plot(range(maxnlev), np.nanmean(scoress_mean, axis=0), color='purple', linewidth=1.5, label="Scores", marker='o')
         ax.fill_between(range(maxnlev), *(np.nanquantile(scoress_mean, 0.5+0.25*sgn, axis=0) for sgn in [-1,1]), color='red', zorder=-1, alpha=0.25)
-        ax.set_ylabel("Level") # TODO replace with units 
+        ax.set_title("Level-raising") # TODO replace with units 
+        ax.set_ylabel(r"Level [%s]"%(unit_symbol))
+        ax.legend(handles=[hlev,hscores], loc='upper left')
 
         ax = axes[1]
         cumpops = np.cumsum(np.nan_to_num(cohortsizess, 0), axis=1)
         cumaccs = np.cumsum(np.nan_to_num(numaccs, 0), axis=1)
         for i_alg in range(len(algs)):
             ax.plot(np.arange(maxnlev), cumpops[i_alg,:], color='red', linewidth=0.5)
-        hall, = ax.plot(np.arange(maxnlev), np.mean(cumpops, axis=0), color='purple', linewidth=1.5, label="All")
-        hacc, = ax.plot(np.arange(maxnlev), np.mean(cumaccs, axis=0), color='dodgerblue', linewidth=1, label='Accepted')
+        hall, = ax.plot(np.arange(maxnlev), np.mean(cumpops, axis=0), color='purple', linewidth=1.5, label="All", marker='o')
+        ax.fill_between(np.arange(maxnlev), *(np.quantile(cumpops, 0.5+0.25*sgn, axis=0) for sgn in [-1,1]), color='red', alpha=0.25)
+        hacc, = ax.plot(np.arange(maxnlev), np.mean(cumaccs, axis=0), color='dodgerblue', linewidth=1, label='Accepted', marker='o')
+        ax.fill_between(np.arange(maxnlev), *(np.quantile(cumaccs, 0.5+0.25*sgn, axis=0) for sgn in [-1,1]), color='dodgerblue', alpha=0.25)
         ax.legend(handles=[hall,hacc], loc='upper left')
-        ax.set_ylabel("Cumulative population")
+        ax.set_title("Cumulative population")
 
         ax = axes[2]
         for i_alg in range(len(algs)):
-            ax.plot(np.arange(maxnlev), cohortsizess[i_alg,:], color='red', linewidth=0.5)
-        hall, = ax.plot(np.arange(maxnlev), np.nanmean(cohortsizess, axis=0), color='purple', linewidth=1.5, label="All")
-        hacc, = ax.plot(np.arange(maxnlev), np.nanmean(numaccs, axis=0), color='dodgerblue', linewidth=1, label='Accepted')
+            ax.plot(np.arange(maxnlev), cohortsizess[i_alg,:], color='red', linewidth=0.25)
+        hall, = ax.plot(np.arange(maxnlev), np.nanmean(cohortsizess, axis=0), color='purple', linewidth=1.5, label="All", marker='o')
+        ax.fill_between(np.arange(maxnlev), *(np.quantile(cohortsizess, 0.5+0.25*sgn, axis=0) for sgn in [-1,1]), color='red', alpha=0.25)
+        hacc, = ax.plot(np.arange(maxnlev), np.nanmean(numaccs, axis=0), color='dodgerblue', linewidth=1, label='Accepted', marker='o')
+        ax.fill_between(np.arange(maxnlev), *(np.quantile(numaccs, 0.5+0.25*sgn, axis=0) for sgn in [-1,1]), color='dodgerblue', alpha=0.25)
         ax.legend(handles=[hall,hacc], loc='upper left')
-        ax.set_ylabel("Population growth")
+        ax.set_title("Population growth")
 
-
+        for ax in axes[:-1]:
+            ax.tick_params(axis='x',labelbottom=False)
         axes[-1].set_xlabel("Generation")
+
+        axes[0].text(0, 1, param_display, ha='left', va='bottom', transform=axes[0].transAxes) 
         fig.savefig(join(plotdir, "levprog.png"), **pltkwargs)
         plt.close(fig)
 
