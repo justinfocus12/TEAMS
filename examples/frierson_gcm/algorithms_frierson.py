@@ -410,6 +410,10 @@ class FriersonGCMTEAMS(algorithms.TEAMS):
             })
         return icandf
     @staticmethod
+    def plot_extreme_composites(algs, config_analysis, plotdir, param_suffix):
+        # Select all members above a threshold and plot their average on the day of the extreme.Compare with DNS. 
+        return
+    @staticmethod
     def plot_boost_composites(algs, config_analysis, plotdir, param_suffix):
         for boost_size in config_analysis['composites']['boost_sizes']:
             for anc_score in config_analysis['composites']['anc_scores']:

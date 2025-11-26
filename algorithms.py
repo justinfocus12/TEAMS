@@ -1501,6 +1501,7 @@ class TEAMS(EnsembleAlgorithm):
         levelss = []
         cohortsizess = []
         numaccs = []
+        accrates = []
         birthgoalss = []
         scoress = []
         birthgoalss_mean = []
@@ -1511,27 +1512,32 @@ class TEAMS(EnsembleAlgorithm):
             scores = np.array(alg.branching_state['scores_max'][:budget])
             cohortsizes = np.zeros(len(levels), dtype=int)
             numacc = np.zeros(len(levels), dtype=int)
+            accrate = np.zeros(len(levels), dtype=float)
 
             birthgoals_mean,scores_mean = [np.zeros(len(levels)) for _ in range(2)]
+            i_level_max = 0
             for i_level,level in enumerate(levels):
                 cohort = np.where(birthgoals == level)[0]
                 cohortsizes[i_level] = len(cohort)
+                if cohortsizes[i_level] > 0: i_level_max = i_level
                 birthgoals_mean[i_level] = np.mean(birthgoals[cohort])
                 scores_mean[i_level] = np.mean(scores[cohort])
                 numacc[i_level] = np.sum(scores[cohort] > birthgoals[cohort])
-            levelss.append(levels)
-            birthgoalss_mean.append(birthgoals_mean)
-            scoress_mean.append(scores_mean)
-            cohortsizess.append(cohortsizes)
-            numaccs.append(numacc)
+                accrate[i_level] = numacc[i_level]/cohortsizes[i_level]
+            levelss.append(levels[:i_level_max+1])
+            birthgoalss_mean.append(birthgoals_mean[:i_level_max+1])
+            scoress_mean.append(scores_mean[:i_level_max+1])
+            cohortsizess.append(cohortsizes[:i_level_max+1])
+            numaccs.append(numacc[:i_level_max+1])
+            accrates.append(accrate[:i_level_max+1])
 
         maxnlev = max(map(len, levelss))
         nanpad = lambda lst: np.concatenate((lst, [np.nan for _ in range(maxnlev-len(lst))]))
         combinelists = lambda lists: np.array(list(map(nanpad, lists)))
-        levelss, cohortsizess, birthgoalss_mean, scoress_mean, numaccs = map(combinelists, [levelss, cohortsizess, birthgoalss_mean, scoress_mean, numaccs])
+        levelss, cohortsizess, birthgoalss_mean, scoress_mean, numaccs, accrates = map(combinelists, [levelss, cohortsizess, birthgoalss_mean, scoress_mean, numaccs, accrates])
         print(f'{levelss = }')
 
-        fig,axes = plt.subplots(nrows=3, figsize=(12,9), sharex=True, gridspec_kw={'hspace': 0.15})
+        fig,axes = plt.subplots(nrows=2, figsize=(8,5), sharex=True, gridspec_kw={'hspace': 0.2})
         ax = axes[0]
         for i_alg in range(len(algs)):
             ax.plot(range(maxnlev), levelss[i_alg,:], color='gray', linewidth=0.5)
@@ -1544,25 +1550,20 @@ class TEAMS(EnsembleAlgorithm):
         ax.legend(handles=[hlev,hscores], loc='upper left')
 
         ax = axes[1]
-        cumpops = np.cumsum(np.nan_to_num(cohortsizess, 0), axis=1)
-        cumaccs = np.cumsum(np.nan_to_num(numaccs, 0), axis=1)
-        for i_alg in range(len(algs)):
-            ax.plot(np.arange(maxnlev), cumpops[i_alg,:], color='red', linewidth=0.5)
-        hall, = ax.plot(np.arange(maxnlev), np.mean(cumpops, axis=0), color='purple', linewidth=1.5, label="All", marker='o')
-        ax.fill_between(np.arange(maxnlev), *(np.quantile(cumpops, 0.5+0.25*sgn, axis=0) for sgn in [-1,1]), color='red', alpha=0.25)
-        hacc, = ax.plot(np.arange(maxnlev), np.mean(cumaccs, axis=0), color='dodgerblue', linewidth=1, label='Accepted', marker='o')
-        ax.fill_between(np.arange(maxnlev), *(np.quantile(cumaccs, 0.5+0.25*sgn, axis=0) for sgn in [-1,1]), color='dodgerblue', alpha=0.25)
-        ax.legend(handles=[hall,hacc], loc='upper left')
-        ax.set_title("Cumulative population")
-
-        ax = axes[2]
         for i_alg in range(len(algs)):
             ax.plot(np.arange(maxnlev), cohortsizess[i_alg,:], color='red', linewidth=0.25)
         hall, = ax.plot(np.arange(maxnlev), np.nanmean(cohortsizess, axis=0), color='purple', linewidth=1.5, label="All", marker='o')
-        ax.fill_between(np.arange(maxnlev), *(np.quantile(cohortsizess, 0.5+0.25*sgn, axis=0) for sgn in [-1,1]), color='red', alpha=0.25)
+        ax.fill_between(np.arange(maxnlev), *(np.nanquantile(cohortsizess, 0.5+0.25*sgn, axis=0) for sgn in [-1,1]), color='red', alpha=0.25)
         hacc, = ax.plot(np.arange(maxnlev), np.nanmean(numaccs, axis=0), color='dodgerblue', linewidth=1, label='Accepted', marker='o')
-        ax.fill_between(np.arange(maxnlev), *(np.quantile(numaccs, 0.5+0.25*sgn, axis=0) for sgn in [-1,1]), color='dodgerblue', alpha=0.25)
-        ax.legend(handles=[hall,hacc], loc='upper left')
+        ax.fill_between(np.arange(maxnlev), *(np.nanquantile(numaccs, 0.5+0.25*sgn, axis=0) for sgn in [-1,1]), color='dodgerblue', alpha=0.25)
+        ax.set_ylabel("New descendants")
+        ax2 = ax.twinx()
+        haccrate, = ax2.plot(np.arange(maxnlev), np.nanmean(accrates, axis=0), color='black', linewidth=1, label='Acceptance rate', marker='o')
+        ax2.fill_between(np.arange(maxnlev), *(np.nanquantile(accrates, 0.5+0.25*sgn, axis=0) for sgn in [-1,1]), color='gray', alpha=0.5, zorder=-1)
+        ax2.set_ylim([0,1])
+        ax2.tick_params(axis='y', color='black')
+        ax2.set_ylabel("Acceptance rate")
+        ax.legend(handles=[hall,hacc,haccrate], loc='upper left', bbox_to_anchor=(0,-0.3), ncol=3)
         ax.set_title("Population growth")
 
         for ax in axes[:-1]:

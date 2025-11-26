@@ -33,25 +33,23 @@ import algorithms; reload(algorithms)
 import frierson_gcm; reload(frierson_gcm)
 import algorithms_frierson; reload(algorithms_frierson)
 
-def teams_multiparams(Nanc,resolution):
+def teams_multiparams(Nanc,resolution,target):
     if 'T42' == resolution:
-        deltas_phys = np.array([4], dtype=int) #,8,10,12], dtype=int)
+        deltas_phys = np.array([10 if target=='temp' else 4], dtype=int) #,8,10,12], dtype=int)
     elif 'T21' == resolution:
-        if 16 == Nanc:
+        if False and (16 == Nanc):
             deltas_phys = np.sort(
                 np.concatenate((
                     np.arange(0,25,step=4),
                     np.array([6,10,14,]),
                     )).astype(float)
                 )
-            # hacky
-            deltas_phys = [10.0] 
-        elif 32 == Nanc:
-            deltas_phys = [10.0] #np.array([10,12])[1:2]
+        deltas_phys = [12.0 if target=='temp' else 10.0] 
     multiparams = dict(
             pop_ctrls = ["pog","jf"][:1],
             time_horizons = [30,60][1:],
-            target_fields = ["rainrate",'temp','surf_horz_wind',][0:1],
+            target_fields = [target],
+            #target_fields = ["rainrate",'temp','surf_horz_wind',][1:2],
             sigmas = [0.3],
             seed_incs = list(range(48)),
             deltas_phys = deltas_phys,
@@ -70,8 +68,8 @@ def teams_multiparams(Nanc,resolution):
 
     return multiparams #target_fields,sigmas,seed_incs,deltas_phys,split_landmarks
 
-def teams_paramset(Nanc,resolution,i_expt):
-    multiparams = teams_multiparams(Nanc,resolution)
+def teams_paramset(Nanc,resolution,target,i_expt):
+    multiparams = teams_multiparams(Nanc,resolution,target)
     pop_ctrls,time_horizons,target_fields,sigmas,seed_incs,deltas_phys,split_landmarks = (multiparams[key] for key in "pop_ctrls time_horizons target_fields sigmas seed_incs deltas_phys split_landmarks".split(" "))
     # TODO switch i_seed_inc with i_sigma below for the next round of runs, so as to avoid interference 
     #pdb.set_trace()
@@ -181,10 +179,10 @@ def teams_paramset(Nanc,resolution,i_expt):
 
     return config_gcm,config_algo,expt_label,expt_abbrv
 
-def teams_single_workflow(Nanc,resolution,i_expt):
+def teams_single_workflow(Nanc,resolution,target,i_expt):
     # i_expt is a flat index, from which both i_param and i_buick are derived
     # Cluge; rely on knowing the menu of options from the Buick dealership and from the parameter sets 
-    config_gcm,config_algo,expt_label,expt_abbrv = teams_paramset(Nanc,resolution,i_expt)
+    config_gcm,config_algo,expt_label,expt_abbrv = teams_paramset(Nanc,resolution,target,i_expt)
     param_abbrv_gcm,param_label_gcm = frierson_gcm.FriersonGCM.label_from_config(config_gcm)
     param_abbrv_algo,param_label_algo = algorithms_frierson.FriersonGCMTEAMS.label_from_config(config_algo)
     config_analysis = dict()
@@ -621,7 +619,7 @@ def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, refere
                     mems_buick.append(next(angel.ens.memgraph.successors(angel.branching_state['generation_0'][i])))
             score_fun = lambda ds: algs[0].score_combined(algs[0].score_components(ds['time'].to_numpy(),ds))
             lonroll = lambda ds,dlon: ds.roll(lon=int(round(dlon/ds['lon'][:2].diff('lon').item())))
-            score_funs_rolled = [lambda ds: score_fun(lonroll(ds,dlon)) for dlon in [0,30,60,90,120,150,180,210,240,270,300,330]][:1]
+            score_funs_rolled = [lambda ds: score_fun(lonroll(ds,dlon)) for dlon in range(0,360,step=10)]
 
             scbuick = np.concatenate(tuple(
                 angel.ens.compute_observables(score_funs_rolled, mem) 
@@ -643,11 +641,11 @@ def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, refere
             # TODO conctenate before taking score_dombined
             score_comp = lambda ds: algs[0].score_components(ds['time'].to_numpy(),ds)
             lonroll = lambda ds,dlon: ds.roll(lon=int(round(dlon/ds['lon'][:2].diff('lon').item())))
-            dlons = range(0,360,6) 
+            dlons = range(0,360,1) 
             score_comp_rolled = [lambda ds,dlon=dlon: score_comp(lonroll(ds,dlon)) for dlon in dlons]
             sccomp = []
-            for mem in mems_dns:
-                print(f'Appending score for {mem = }')
+            for i_mem,mem in enumerate(mems_dns):
+                print(f'Appending score for {i_mem = } out of {len(mems_dns)}')
                 sccomp.append(dns.ens.compute_observables(score_comp_rolled,mem))
             scmax_alllon = []
             for i_lon in range(len(dlons)): 
@@ -692,10 +690,17 @@ def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, refere
     target_field = list(algs[0].score_params['components'].keys())[0]
     ylim_imposed = None
     if 'rainrate' == target_field:
-        ylim_imposed = [20,100]
+        xlim_imposed = [config_algo['time_horizon_phys']*factor/365 for factor in [2, 3000]]
+        if 'T21' == algs[0].ens.dynsys.config['resolution']:
+            ylim_imposed = [20,100]
+        elif 'T42' == algs[0].ens.dynsys.config['resolution']:
+            ylim_imposed = [20,120]
     elif 'temp' == target_field:
-        ylim_imposed = [290,303]
-    xlim_imposed = [config_algo['time_horizon_phys']*factor/365 for factor in [2, 6000]]
+        xlim_imposed = [config_algo['time_horizon_phys']*factor/365 for factor in [2, 8000]]
+        if 'T21' == algs[0].ens.dynsys.config['resolution']:
+            ylim_imposed = [293,303]
+        if 'T42' == algs[0].ens.dynsys.config['resolution']:
+            ylim_imposed = [293,298.5]
     unit_symbol = obsprop[config_algo['score_components'][target_field]['observable']]['unit_symbol']
     algorithms_frierson.FriersonGCMTEAMS.measure_plot_score_distribution(config_algo, algs, scmax_ref, returnstats_file, figfileh, figfilev, figfileseph, figfilesepv, param_display=param_display, target_display=None, time_unit=365, time_unit_name="yr", severity_unit_name=unit_symbol, budget=config_algo['num_members_max'], extrap_choice=extrap_choice, ylim_imposed=ylim_imposed, xlim_imposed=xlim_imposed)
 
@@ -746,15 +751,16 @@ def run_teams(dirdict,filedict,config_gcm,config_algo):
     return
 
 
-def teams_multiseed_procedure(Nanc,resolution,extrap_choice,i_pop_ctrl,i_time_horizon,i_field,i_sigma,idx_seed,i_delta,i_slm,overwrite_reference=False): # Just different seeds for now
+def teams_multiseed_procedure(Nanc,resolution,target,extrap_choice,i_pop_ctrl,i_time_horizon,i_field,i_sigma,idx_seed,i_delta,i_slm,overwrite_reference=False): # Just different seeds for now
     tododict = dict({
         'score_distribution':      0,
         'boost_distribution':      0,
         'boost_composites':        0,
-        'population_progression':  1,
+        'extreme_composites':      1,
+        'population_progression':  0,
         })
     # Figure out which flat indices corresond to this set of seeds
-    multiparams = teams_multiparams(Nanc,resolution)
+    multiparams = teams_multiparams(Nanc,resolution,target)
     idx_multiparam = [(i_pop_ctrl,i_time_horizon,i_field,i_sigma,i_seed,i_delta,i_slm) for i_seed in idx_seed]
     idx_expt = []
     for i_multiparam in idx_multiparam:
@@ -764,7 +770,7 @@ def teams_multiseed_procedure(Nanc,resolution,extrap_choice,i_pop_ctrl,i_time_ho
     configs_gcm,configs_algo,configs_analysis,expt_labels,expt_abbrvs,dirdicts,filedicts = [[] for _ in range(7)]
     idx_expt_incomplete = []
     for i_expt in idx_expt:
-        workflow = teams_single_workflow(Nanc,resolution,i_expt)
+        workflow = teams_single_workflow(Nanc,resolution,target,i_expt)
         alg_file = workflow[6]['alg']
         if exists(alg_file):
             workflows.append(workflow)
@@ -823,6 +829,9 @@ def teams_multiseed_procedure(Nanc,resolution,extrap_choice,i_pop_ctrl,i_time_ho
     if tododict['boost_composites']:
         algorithms_frierson.FriersonGCMTEAMS.plot_boost_composites(algs, config_analysis, dirdict['plots'], param_suffix)
 
+    if tododict['extreme_composites']:
+        algorithms_frierson.FriersonGCMTEAMS.plot_extreme_composites(algs, config_analysis, dirdict['plots'], param_suffix)
+
     if tododict["population_progression"]:
         param_display = '\n'.join([
             r'Resolution = %s'%(algs[0].ens.dynsys.config['resolution']),
@@ -837,7 +846,7 @@ def teams_multiseed_procedure(Nanc,resolution,extrap_choice,i_pop_ctrl,i_time_ho
         print(f'{dirdict["plots"] = }')
     return 
 
-def teams_single_procedure(Nanc,resolution,i_expt):
+def teams_single_procedure(Nanc,resolution,target,i_expt):
 
     tododict = dict({
         'run':                          0,
@@ -847,7 +856,7 @@ def teams_single_procedure(Nanc,resolution,i_expt):
             'fields_2d':                1,
             }),
         })
-    config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = teams_single_workflow(Nanc,resolution,i_expt)
+    config_gcm,config_algo,config_analysis,expt_label,expt_abbrv,dirdict,filedict = teams_single_workflow(Nanc,resolution,target,i_expt)
     if tododict['run']:
         run_teams(dirdict,filedict,config_gcm,config_algo)
     alg = pickle.load(open(filedict['alg'], 'rb'))
@@ -860,11 +869,11 @@ def teams_single_procedure(Nanc,resolution,i_expt):
         plot_fields_2d(config_analysis, alg, dirdict, filedict, expt_label, remove_old_plots=False)
     return
 
-def teams_multidelta_procedure(Nanc,resolution,extrap_choice,i_pop_ctrl,i_time_horizon,i_field,i_sigma,idx_delta,i_slm):
+def teams_multidelta_procedure(Nanc,resolution,target,extrap_choice,i_pop_ctrl,i_time_horizon,i_field,i_sigma,idx_delta,i_slm):
     scratch_dir = "/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
     date_str = "2025-05-16"
     sub_date_str = "2"
-    multiparams = teams_multiparams(Nanc,resolution)
+    multiparams = teams_multiparams(Nanc,resolution,target)
     seed_incs,sigmas,deltas_phys,split_landmarks = [multiparams[v] for v in "seed_incs,sigmas,deltas_phys,split_landmarks".split(",")]
 
     Ndelta = len(idx_delta)
@@ -885,7 +894,7 @@ def teams_multidelta_procedure(Nanc,resolution,extrap_choice,i_pop_ctrl,i_time_h
         for i_multiparam in idx_multiparam:
             i_expt = np.ravel_multi_index(i_multiparam,tuple(len(multiparams[key]) for key in multiparams.keys()))
             idx_expt.append(i_expt) #list(range(1,21))
-        workflows = tuple(teams_single_workflow(Nanc,resolution,i_expt) for i_expt in idx_expt)
+        workflows = tuple(teams_single_workflow(Nanc,resolution,target,i_expt) for i_expt in idx_expt)
         configs_gcm,configs_algo,configs_analysis,expt_labels,expt_abbrvs,dirdicts,filedicts = tuple(
             tuple(workflows[i][j] for i in range(len(workflows)))
             for j in range(len(workflows[0])))
@@ -1037,14 +1046,14 @@ def compute_integrated_returnstats_error_metrics(returnstats, extrap_choice):
 
 if __name__ == "__main__":
     print(f'Got into Main')
-    resolution = 'T21'
-    Nanc = 32
     extrap_choice = "nan" # options: nan, flat 
     if len(sys.argv) > 1:
         procedure = sys.argv[1]
         idx_expt = [int(arg) for arg in sys.argv[2:]]
     else:
         procedure = 'meta'
+        Nanc = 16
+        resolution = 'T21'
         sigmas,seed_incs,deltas_phys,split_landmarks = teams_multiparams(Nanc,resolution)
         iseed_isigma_idelta_islm = [
                 (i_seed,i_sigma,i_delta,0)
@@ -1058,19 +1067,30 @@ if __name__ == "__main__":
             i_expt = np.ravel_multi_index(i_multiparam,shp)
             idx_expt.append(i_expt)
     if procedure == 'single':
+        Nanc = 32
+        resolution = 'T42'
+        target = 'rainrate'
         for i_expt in idx_expt:
-            teams_single_procedure(Nanc,resolution,i_expt)
+            teams_single_procedure(Nanc,resolution,target,i_expt)
     elif procedure == 'multiseed':
-        multiparams = teams_multiparams(Nanc,resolution)
-        pop_ctrls,time_horizons,target_fields,sigmas,seed_incs,deltas_phys,split_landmarks = (multiparams[key] for key in "pop_ctrls time_horizons target_fields sigmas seed_incs deltas_phys split_landmarks".split(" "))
-        #pdb.set_trace()
-        i_sigma = 0
-        i_slm = 0
-        for i_expt in idx_expt:
-            i_pop_ctrl,i_time_horizon,i_target_field,i_sigma,i_delta,i_slm = np.unravel_index(i_expt, (len(pop_ctrls),len(time_horizons),len(target_fields),len(sigmas),len(deltas_phys),len(split_landmarks)))
-            teams_multiseed_procedure(Nanc,resolution,extrap_choice,i_pop_ctrl,i_time_horizon,i_target_field,i_sigma,seed_incs,i_delta,i_slm,overwrite_reference=False)
+        for (resolution,Nanc,target) in (
+                ('T21',32,'rainrate'),('T21',32,'temp'),
+                ('T21',16,'rainrate'),('T21',16,'temp'),
+                ('T42',32,'rainrate'),('T42',32,'temp'),
+                ):
+            multiparams = teams_multiparams(Nanc,resolution,target)
+            pop_ctrls,time_horizons,target_fields,sigmas,seed_incs,deltas_phys,split_landmarks = (multiparams[key] for key in "pop_ctrls time_horizons target_fields sigmas seed_incs deltas_phys split_landmarks".split(" "))
+            #pdb.set_trace()
+            i_sigma = 0
+            i_slm = 0
+            i_target_field = 0
+            for i_expt in idx_expt:
+                i_pop_ctrl,i_time_horizon,i_target_field,i_sigma,i_delta,i_slm = np.unravel_index(i_expt, (len(pop_ctrls),len(time_horizons),len(target_fields),len(sigmas),len(deltas_phys),len(split_landmarks)))
+                teams_multiseed_procedure(Nanc,resolution,target,extrap_choice,i_pop_ctrl,i_time_horizon,i_target_field,i_sigma,seed_incs,i_delta,i_slm,overwrite_reference=False) # TODO overwrite the refernce 
     elif procedure == 'multidelta':
-        multiparams = teams_multiparams(Nanc,resolution)
+        Nanc = 32
+        resolution = 'T42'
+        multiparams = teams_multiparams(Nanc,resolution,target)
         pop_ctrls,time_horizons,target_fields,sigmas,seed_incs,deltas_phys,split_landmarks = (multiparams[key] for key in "pop_ctrls time_horizons target_fields sigmas seed_incs deltas_phys split_landmarks".split(" "))
         #pdb.set_trace()
         i_sigma = 0
@@ -1078,7 +1098,7 @@ if __name__ == "__main__":
         for i_expt in idx_expt:
             i_pop_ctrl,i_time_horizon,i_target_field,i_sigma,i_slm = np.unravel_index(i_expt, (len(pop_ctrls),len(time_horizons),len(target_fields),len(sigmas),len(split_landmarks)))
             idx_delta = range(len(deltas_phys))
-            teams_multidelta_procedure(Nanc,resolution,extrap_choice,i_pop_ctrl,i_time_horizon,i_target_field,i_sigma,idx_delta,i_slm)
+            teams_multidelta_procedure(Nanc,resolution,target,extrap_choice,i_pop_ctrl,i_time_horizon,i_target_field,i_sigma,idx_delta,i_slm)
 
 
 
