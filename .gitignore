@@ -1,4 +1,5 @@
 .*.swp
+.*.swo
 *.png
 __pycache__/
 *.npy
