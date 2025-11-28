@@ -138,16 +138,16 @@ def pebr_single_workflow(i_expt):
         dist_metrics[r'rain_%s'%(areastr)] = dict({
             'fun': FriersonGCM.dist_euc_rain,
             'abbrv': r'RainEuc%s'%(areastr),
-            'label': r'1-day Precip. Eucl. dist. (%s)'%(area_label),
-            'field_name': r'Precip',
+            'label': r'%s, Precip., %s'%(config_gcm['resolution'], area_label),
+            'field_name': r'Precip. RMSE',
             'kwargs': dict(roi=roi,outputs_per_day=config_gcm['outputs_per_day']),
             'unit_symbol': 'mm/day',
             })
         dist_metrics[r'temp_%s'%(areastr)] = dict({
             'fun': FriersonGCM.dist_euc_temp,
             'abbrv': r'TempEuc%s'%(areastr),
-            'label': r'Surf. Temp.  Eucl. dist. (%s)'%(area_label),
-            'field_name': r'Temp.',
+            'label': r'%s, Temp., %s'%(config_gcm['resolution'], area_label),
+            'field_name': r'Temp. RMSE',
             'kwargs': dict({'roi': dict(pfull=1000, **roi)}),
             'unit_symbol': 'K',
             })
@@ -172,7 +172,7 @@ def pebr_single_workflow(i_expt):
     dirdict = dict()
     scratch_dir = "/orcd/archive/pog/001/ju26596/TEAMS/examples/frierson_gcm/"
     date_str = "2025-05-16"
-    sub_date_str = "2"
+    sub_date_str = "2" if config_gcm['resolution']=='T42' else "1"
     dirdict['expt'] = join(scratch_dir, date_str, sub_date_str, param_abbrv_gcm, param_abbrv_algo)
     dirdict['data'] = join(dirdict['expt'], 'data')
     dirdict['analysis'] = join(dirdict['expt'], 'analysis')
@@ -251,6 +251,7 @@ def quantify_dispersion_rates(config_analysis, alg, dirdict, overwrite_dispersio
         if (not exists(dispersion_file)) or overwrite_dispersion_stats:
             dispersion_stats = alg.measure_dispersion(dist_fun, config_analysis['satfracs'], dispersion_file)
         dispersion_stats = np.load(dispersion_file)
+        # TODO augment the ELFs contained within the dispersion file to new custom thresholds
         # Plot 
         figfile_prefix = join(dirdict['plots'],r'dispersion_%s'%(dist_props['abbrv']))
         groups2plot = np.arange(min(dispersion_stats['dists'].shape[0],10), dtype=int)

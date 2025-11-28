@@ -753,10 +753,10 @@ def run_teams(dirdict,filedict,config_gcm,config_algo):
 
 def teams_multiseed_procedure(Nanc,resolution,target,extrap_choice,i_pop_ctrl,i_time_horizon,i_field,i_sigma,idx_seed,i_delta,i_slm,overwrite_reference=False): # Just different seeds for now
     tododict = dict({
-        'score_distribution':      0,
+        'score_distribution':      1,
         'boost_distribution':      0,
         'boost_composites':        0,
-        'extreme_composites':      1,
+        'extreme_composites':      0,
         'population_progression':  0,
         })
     # Figure out which flat indices corresond to this set of seeds
@@ -1077,7 +1077,7 @@ if __name__ == "__main__":
                 ('T21',32,'rainrate'),('T21',32,'temp'),
                 ('T21',16,'rainrate'),('T21',16,'temp'),
                 ('T42',32,'rainrate'),('T42',32,'temp'),
-                ):
+                )[5:6]:
             multiparams = teams_multiparams(Nanc,resolution,target)
             pop_ctrls,time_horizons,target_fields,sigmas,seed_incs,deltas_phys,split_landmarks = (multiparams[key] for key in "pop_ctrls time_horizons target_fields sigmas seed_incs deltas_phys split_landmarks".split(" "))
             #pdb.set_trace()
@@ -1086,7 +1086,7 @@ if __name__ == "__main__":
             i_target_field = 0
             for i_expt in idx_expt:
                 i_pop_ctrl,i_time_horizon,i_target_field,i_sigma,i_delta,i_slm = np.unravel_index(i_expt, (len(pop_ctrls),len(time_horizons),len(target_fields),len(sigmas),len(deltas_phys),len(split_landmarks)))
-                teams_multiseed_procedure(Nanc,resolution,target,extrap_choice,i_pop_ctrl,i_time_horizon,i_target_field,i_sigma,seed_incs,i_delta,i_slm,overwrite_reference=False) # TODO overwrite the refernce 
+                teams_multiseed_procedure(Nanc,resolution,target,extrap_choice,i_pop_ctrl,i_time_horizon,i_target_field,i_sigma,seed_incs,i_delta,i_slm,overwrite_reference=True) # TODO overwrite the refernce 
     elif procedure == 'multidelta':
         Nanc = 32
         resolution = 'T42'
