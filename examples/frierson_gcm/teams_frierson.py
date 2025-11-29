@@ -109,7 +109,7 @@ def teams_paramset(Nanc,resolution,target,i_expt):
 
     config_algo = dict({
         'num_levels_max': 20 if Nanc==16 else 40, # This parameter shouldn't affect the filenaming or anything like that 
-        'num_members_max': 300, #if Nanc==16 else 300,
+        'num_members_max': 150 if Nanc==16 else 300,
         'num_active_families_min': 1,
         'seed_min': 1000,
         'seed_max': 100000,
@@ -349,8 +349,8 @@ def teams_single_workflow(Nanc,resolution,target,i_expt):
     # Make sure the fields to visulize only contain things actually output
     config_analysis['fields_2d'] = {fieldname: config_analysis['fields_2d'][fieldname] for fieldname in ['area_rain_360x30','area_ps_360x30',]}
     config_analysis['composites'] = dict({
-        'anc_scores': [20,30,40,50],
-        'boost_sizes': [15],
+        'anc_scores': [70],
+        'boost_sizes': [20],
         'score_tolerance': 5,
         })
     
@@ -638,6 +638,7 @@ def measure_plot_score_distribution(config_algo, algs, dirdict, filedict, refere
             dns = pickle.load(open(filedict['dns'], 'rb'))
             mems_dns = list(range(dns.ens.get_nmem()))
             print(f'{mems_dns = }')
+            pdb.set_trace()
             # TODO conctenate before taking score_dombined
             score_comp = lambda ds: algs[0].score_components(ds['time'].to_numpy(),ds)
             lonroll = lambda ds,dlon: ds.roll(lon=int(round(dlon/ds['lon'][:2].diff('lon').item())))
@@ -1077,7 +1078,7 @@ if __name__ == "__main__":
                 ('T21',32,'rainrate'),('T21',32,'temp'),
                 ('T21',16,'rainrate'),('T21',16,'temp'),
                 ('T42',32,'rainrate'),('T42',32,'temp'),
-                )[5:6]:
+                )[4:5]:
             multiparams = teams_multiparams(Nanc,resolution,target)
             pop_ctrls,time_horizons,target_fields,sigmas,seed_incs,deltas_phys,split_landmarks = (multiparams[key] for key in "pop_ctrls time_horizons target_fields sigmas seed_incs deltas_phys split_landmarks".split(" "))
             #pdb.set_trace()
@@ -1086,7 +1087,7 @@ if __name__ == "__main__":
             i_target_field = 0
             for i_expt in idx_expt:
                 i_pop_ctrl,i_time_horizon,i_target_field,i_sigma,i_delta,i_slm = np.unravel_index(i_expt, (len(pop_ctrls),len(time_horizons),len(target_fields),len(sigmas),len(deltas_phys),len(split_landmarks)))
-                teams_multiseed_procedure(Nanc,resolution,target,extrap_choice,i_pop_ctrl,i_time_horizon,i_target_field,i_sigma,seed_incs,i_delta,i_slm,overwrite_reference=True) # TODO overwrite the refernce 
+                teams_multiseed_procedure(Nanc,resolution,target,extrap_choice,i_pop_ctrl,i_time_horizon,i_target_field,i_sigma,seed_incs,i_delta,i_slm,overwrite_reference=False) # TODO overwrite the refernce 
     elif procedure == 'multidelta':
         Nanc = 32
         resolution = 'T42'
